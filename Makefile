@@ -16,7 +16,7 @@ TSX  := war.tsx
 TSX_SHA := 13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208
 SYMS := work/msx.sym
 
-.PHONY: all verify clean extract cuerpos trazado listados sanity test cinta imagenes web
+.PHONY: all verify clean extract cuerpos trazado listados sanity test cinta imagenes web parche verifica_parche
 
 all: verify
 
@@ -124,6 +124,21 @@ imagenes: extracted/.stamp
 	@mkdir -p docs/imagenes
 	@python3 tools/render_carga.py work/pantalla.raw docs/imagenes/carga.png
 	@python3 tools/render_graficos.py work/alto.raw docs/imagenes
+
+# ------------------------------------------------------------------ el parche
+# EL PARCHE DE ARAUBI. Aplica la tabla de tools/parchea.py sobre los cuerpos de
+# la cinta (work/*.raw, que salen de `make extract`, o sea de TU cinta) y arma
+# la cinta parcheada war_parche.tsx: unidades enemigas visibles y los valores
+# numericos de cada unidad en su ficha. Ver INVESTIGACION.md.
+parche: extract src/parche/ficha_valores.asm
+	python3 tools/parchea.py work war_parche.tsx
+
+# Verificacion en openMSX (necesita el estado guardado; ver INVESTIGACION.md):
+#   make verifica_parche
+verifica_parche: parche
+	@python3 tools/parchea.py work war_parche.tsx >/dev/null
+	@echo "cinta parcheada lista: war_parche.tsx"
+	@echo "para verla: openmsx -machine Philips_VG_8020 -ext cassetteplayer -cassetteplayer war_parche.tsx"
 
 verify: listados sanity
 	@echo "=================================================================="
