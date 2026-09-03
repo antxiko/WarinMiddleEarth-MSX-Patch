@@ -128,10 +128,18 @@ imagenes: extracted/.stamp
 # ------------------------------------------------------------------ el parche
 # EL PARCHE DE ARAUBI. Aplica la tabla de tools/parchea.py sobre los cuerpos de
 # la cinta (work/*.raw, que salen de `make extract`, o sea de TU cinta) y arma
-# la cinta parcheada war_parche.tsx: unidades enemigas visibles y los valores
-# numericos de cada unidad en su ficha. Ver INVESTIGACION.md.
-parche: extract src/parche/ficha_valores.asm
+# la cinta parcheada war_parche.tsx: enemigas visibles y con el Ojo de Sauron,
+# los valores numericos en la ficha y el plazo del Anillo. Ver INVESTIGACION.md.
+parche: extract src/parche/ficha_valores.asm src/parche/icono_enemigo.asm
 	python3 tools/parchea.py work war_parche.tsx
+
+# El parche a secas, para repartirlo SIN repartir el juego: solo los bytes que
+# cambian, para aplicar sobre tu propia cinta. Se comprueba en el sitio que,
+# aplicado, devuelve exactamente la cinta parcheada.
+ips: parche
+	python3 tools/ips.py war.tsx war_parche.tsx war_parche.ips
+	@python3 tools/ips.py --aplica war.tsx war_parche.ips work/ips_comprobacion.tsx
+	@cmp war_parche.tsx work/ips_comprobacion.tsx && 	 echo "el IPS aplicado sobre war.tsx da war_parche.tsx byte a byte" 
 
 # Verificacion en openMSX (necesita el estado guardado; ver INVESTIGACION.md):
 #   make verifica_parche

@@ -1,20 +1,18 @@
 # War in Middle Earth (MSX) — el parche de Araubi
 
-> ## ⚠️ TRABAJO EN CURSO — este parche **no esta terminado**
+> ## Jugable, y sin terminar
 >
-> Las tres cosas que hace estan puestas y verificadas en un MSX real con
-> openMSX, pero se publica como trabajo en curso a proposito: nadie ha jugado
-> una partida entera con el puesto, la ficha se ha visto en el jefe de una
-> formacion pero no en todos los tipos de unidad, y el medidor del Anillo
-> siempre a la vista esta sin hacer. La lista completa esta al final. Leela
-> antes de juzgar una captura.
+> Todo lo de aqui abajo esta hecho y medido en openMSX, pero **nadie ha jugado
+> una partida entera con el parche puesto**. Lo que se sabe que falta esta al
+> final. Leelo antes de juzgar una captura.
 
 Un parche de bytes para la cinta MSX de **War in Middle Earth** (Melbourne House
 / Dro Soft, 1989), montado encima del
 [desensamblado comentado](https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly).
 Hace las tres cosas que **Araubi** pidio en el foro: hacer visibles las unidades
 enemigas, ensenar el valor numerico de cada apartado de una unidad, y sacar a la
-luz el contador de corrupcion del Anillo.
+luz cuanto le queda al portador del Anillo. Y una cuarta: las enemigas llevan
+ahora icono propio, para poder distinguir los dos bandos.
 
 [README in English](README.md) · Investigacion completa: [INVESTIGACION.md](INVESTIGACION.md)
 
@@ -33,49 +31,72 @@ para un MSX1 real (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.
 
 ## Que cambia
 
-Todo cae en el bloque medio del juego (corre en `0x5E00`), **80 bytes en tres
-cambios**, cada uno comprobando los bytes que espera antes de escribir — nada se
-desplaza, y `make parche` falla si cambia un solo byte fuera de la tabla
-(`tools/parchea.py`).
+Todo cae en el bloque medio del juego (el que corre desde `0x5E00`) mas cuatro
+tiles del bloque alto: **197 bytes en siete cambios**. Cada uno comprueba antes
+de escribir que los bytes originales son los que espera; nada se desplaza, y
+`make parche` avisa si cambia un solo byte fuera de la tabla (`tools/parchea.py`).
 
 **1 · Las unidades enemigas se ven.** El mapa guarda un bit de "aqui hay
 alguien" por casilla, y `RECENTRA_EL_MAPA` (0x7FAC) lo vuelve a sembrar unidad a
-unidad — pero su bucle para en la unidad `0x78`, justo donde empieza el bando
-enemigo, asi que al enemigo nunca se le siembra ni se le dibuja. Cambiar el tope
-del bucle de `0x78` a `0x00` (**un byte, en 0x7FD1**) hace que recorra las 256
-unidades. Verificado: **se siembran 136 unidades enemigas donde antes cero**.
+unidad; pero su bucle **para en la unidad 0x78**, justo donde empieza el bando
+enemigo, asi que las enemigas no se siembran y no se dibujan. Cambiando el tope
+de `0x78` a `0x00` -**un byte, en 0x7FD1**- recorre las 256. Comprobado: **136
+unidades enemigas se siembran donde antes se sembraban cero.**
+
+| sin parche | con parche |
+|---|---|
+| ![](docs/imagenes/mapa_sin_parche.png) | ![](docs/imagenes/mapa_con_parche.png) |
 
 **2 · Cada apartado ensena su numero.** La ficha de una unidad lista seis
-cualidades —Valioso, Habil, Duro, Bravo, Energico, Decidido— como adverbio +
-adjetivo ("Muy Bravo"), nunca como numero. Una rutina nueva
+cualidades -Valioso, Habil, Duro, Bravo, Energico y Decidido- como adverbio mas
+adjetivo ("es muy bravo"), nunca como cifra. Una rutina nueva
 (`MUESTRA_LOS_VALORES`, 76 bytes), escrita encima del **motor del altavoz del ZX
-Spectrum de 0x6600 que en esta conversion no llama nadie**, lee los seis valores
-(de `0xC000`/`0xC100`/`0xC200`/`0xC300`) y los escribe en cifras en la ficha. La
-engancha un trampolin de tres bytes en `0x708A`. Verificado contra los valores
-reales: los seis coinciden.
+Spectrum de 0x6600, que en esta conversion no llama nadie**, lee los seis
+valores (de `0xC000`/`0xC100`/`0xC200`/`0xC300`) y los escribe en cifras. La
+engancha un trampolin de tres bytes en `0x708A`. Comprobado contra los valores
+reales: coinciden los seis.
 
-**3 · El contador de corrupcion del Anillo se ve.** `0xC300+n` es el contador
-que el mensaje mensual "El Anillo corrompe al que lo usa" sube a cada unidad;
-para el portador (Frodo) es su corrupcion. Con el cambio 2 ya sale como numero
-en su ficha (Frodo empieza cerca de **176 de 255**). En el binario no hay una
-variable de "resistencia" aparte — el Anillo es ese contador y ese mensaje.
+**3 · El plazo del portador, al lado del anillo.** El reloj del juego cuenta
+tics, dias y meses; cada mes baja uno el operando de **0x8333** -que 0x7F4F deja
+en 255 al empezar-, saca el mensaje *"El Anillo corrompe al que lo usa"* y hace
+`jp z,DERROTA`. Ese operando es, literalmente, lo que te queda, y el juego no lo
+ensena en ningun sitio. `MARCA_AL_PORTADOR` dibuja el anillo en 0x7C46, la
+ultima columna de la segunda fila de la ficha; las tres columnas de su izquierda
+estaban libres, y ahi va ahora el numero.
 
-Toda la evidencia, las direcciones y la salida de openMSX estan en
+![](docs/imagenes/plazo_del_anillo.png)
+
+**4 · Las enemigas llevan el Ojo de Sauron.** Con el cambio 1 las enemigas
+salian... con **tu** casco, que es media solucion. La rutina que dibuja solo
+mira el byte del mapa, asi que no puede saber de que bando es una unidad; pero
+**el bit 5 de ese byte estaba libre** (medido: cero usos en las 13.260 casillas).
+Ahi va ahora la marca de "esta es del otro bando", y el icono son cuatro tiles
+nuevos al final de la tabla de 0x9E00 (los 111 a 114, que estaban a cero).
+
+| las enemigas con tu casco | las enemigas con el Ojo |
+|---|---|
+| ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
+
+Ninguna de estas imagenes es una captura de pantalla: el juego resube la
+pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres
+segundos ya salen con el 37 % de los pixels distintos. Estan dibujadas desde el
+bufer de pantalla del ZX que el juego lleva en RAM, volcado en un instante fijo.
+Las direcciones, las medidas y la salida de openMSX estan en
 [INVESTIGACION.md](INVESTIGACION.md).
 
 ## Lo que falta
 
 - **Nadie ha jugado una partida entera** con el parche puesto.
-- La ficha se ha visto en el jefe de una formacion (Gandalf) y forzada en el
-  portador (Frodo); **no se ha comprobado en todos los tipos de unidad** que el
-  numero no choque con un rotulo largo.
-- **El medidor del Anillo siempre a la vista no esta hecho.** Ahora el numero
-  esta en la ficha; un "Anillo: NNN" fijo en la pantalla de partida queda como
-  ampliacion (el gancho esta localizado: `0x733E` da el portador, `0xC300+portador`
-  el valor).
-- Las siluetas enemigas se dibujan igual que las amigas (sin color que las
-  distinga); sembrar tambien para el enemigo el atributo con brillo es una
-  opcion documentada.
+- La ficha se ha visto en el jefe de una formacion (Gandalf) y en el portador
+  (Frodo); **no se han comprobado todos los tipos de unidad** por si el numero
+  choca con una etiqueta larga.
+- **El plazo solo se ve abriendo la ficha del portador.** Un contador siempre en
+  pantalla pide enganchar el bucle de partida (0x7F57) y escribir cada cuadro:
+  codigo nuevo y mas riesgo, asi que queda como ampliacion.
+- **Las unidades 0x16 y 0x17 siguen invisibles.** El bucle de siembra las salta
+  a proposito (`cp 016h` / `cp 017h` en 0x7FB3) y no se ha averiguado por que.
+  De las diez casillas con enemigos dentro se siembran nueve; en la decima solo
+  esta la 0x16.
 
 ## Licencia
 

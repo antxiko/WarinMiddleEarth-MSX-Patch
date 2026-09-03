@@ -54,6 +54,24 @@ ORIG_FICHA = bytes.fromhex(
     "cd1467ed53e766cd1467ed538366cd1467ed53bd66cd1467ed53c666cd1467ed53"
     "0667cd1467ed538c66cd")
 
+# La segunda tanda (src/parche/icono_enemigo.asm), ensamblada a org 0x664C:
+# el Ojo de Sauron para las enemigas y el plazo del Anillo. Va justo detras de
+# la rutina de los valores, en la misma zona muerta del motor del altavoz.
+RUTINA_ICONO = bytes.fromhex(
+    "cd0881cbfe79fe78d8cbeec9cb6f2806218566c32077cb773e11c217773e15c317773e"
+    "5f32467cc5d5e53a338321437ccd1371e1d1c13e5fc9eff0f1f2")
+
+# Los 61 bytes originales de 0x664C: mas motor de altavoz, igual de muerto.
+ORIG_ICONO = bytes.fromhex(
+    "1467ed53f9667ef52a80667cb52824ed4bba6678b1281c227a66af0808d3feee10082b"
+    "7db4c26e660b79b02806210000c36866210000110000193e00b7")
+
+# Los cuatro tiles del Ojo de Sauron (tools/icono_a_tiles.py sobre el PNG de
+# 16x16). Nueve bytes cada uno: ocho de dibujo y el atributo del ZX detras,
+# 0x38 = tinta negra sobre papel blanco, el mismo que usan las unidades aliadas.
+TILES_OJO = bytes.fromhex(
+    "011608502041418138806014888482c2c138814140215108060938c1c282040a14609038")
+
 # ==========================================================================
 # LA TABLA DE PARCHES
 # ==========================================================================
@@ -77,6 +95,36 @@ PARCHES = [
     dict(grupo="valores", bloque="medio", dir=0x6600, orig=ORIG_FICHA.hex(),
          nuevo=RUTINA_FICHA.hex(),
          motivo="MUESTRA_LOS_VALORES: 0xC000/0xC100/0xC200/0xC300 en cifras en la ficha"),
+    # ---- (3) EL OJO DE SAURON PARA LAS ENEMIGAS --------------------------
+    # El juego elige el dibujo de una casilla mirando SOLO su byte de mapa, asi
+    # que al dibujar no sabe de que bando es. El bit 5 de ese byte esta libre
+    # (medido: cero usos en las 13.260 casillas), y ahi va la marca de bando.
+    dict(grupo="icono", bloque="medio", dir=0x664C, orig=ORIG_ICONO.hex(),
+         nuevo=RUTINA_ICONO.hex(),
+         motivo="siembra con bando, dibujo con bando y el plazo del Anillo"),
+    # La siembra: donde hacia `call CELDA_DEL_MAPA` + `set 7,(hl)`, ahora llama
+    # a SIEMBRA_CON_BANDO, que ademas pone el bit 5 si la unidad es >= 0x78.
+    dict(grupo="icono", bloque="medio", dir=0x7FC9, orig="cd0881cbfe", nuevo="cd4c660000",
+         motivo="call SIEMBRA_CON_BANDO (0x664C): bit 7 siempre, bit 5 si es enemiga"),
+    # El dibujo: el cuerpo de PINTA_LA_UNIDAD desde 0x770A se va a la rutina
+    # nueva, que mira el bit 5 antes que el 6. El `or a` / `ret p` de 0x7708 se
+    # queda donde estaba.
+    dict(grupo="icono", bloque="medio", dir=0x770A, orig="cb773e1120073e151803",
+         nuevo="c3586600000000000000",
+         motivo="jp DIBUJO_SEGUN_BANDO (0x6658): el Ojo de Sauron si la casilla es enemiga"),
+    # Y los tiles, en el hueco del final de la tabla de 0x9E00 (111-127 estaban
+    # a cero; se usan los cuatro primeros).
+    dict(grupo="icono", bloque="alto", dir=0xA1E7, orig="00" * 36, nuevo=TILES_OJO.hex(),
+         motivo="tiles 111-114: el dibujo del Ojo de Sauron, 8 bytes + atributo"),
+
+    # ---- (4) EL PLAZO QUE QUEDA, AL LADO DEL ANILLO ----------------------
+    # El reloj baja un mes el operando de 0x8333 (255 al empezar) y a cero salta
+    # a DERROTA, con el mensaje "El Anillo corrompe al que lo usa.". Donde
+    # MARCA_AL_PORTADOR escribia solo el anillo en 0x7C46, ahora llama a
+    # ANILLO_CON_PLAZO, que escribe tambien ese numero en las tres columnas de
+    # su izquierda (0x7C43).
+    dict(grupo="anillo", bloque="medio", dir=0x6F77, orig="3e5f32467c", nuevo="cd6d660000",
+         motivo="call ANILLO_CON_PLAZO (0x666D): el anillo y los meses que quedan"),
 ]
 
 
@@ -129,7 +177,7 @@ def main(argv):
     # 2. Comprobar que SOLO ha cambiado lo de la tabla.
     print("== parches aplicados ==")
     total = 0
-    for grupo in ("visibilidad", "valores", "anillo"):
+    for grupo in ("visibilidad", "valores", "icono", "anillo"):
         gp = [p for p in PARCHES if p["grupo"] == grupo]
         if not gp:
             continue
