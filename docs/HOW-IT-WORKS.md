@@ -1,6 +1,6 @@
 # How it works
 
-The four things, one by one, with an address behind every claim.
+The five things, one by one, with an address behind every claim.
 
 ## A unit's map
 
@@ -132,5 +132,82 @@ as the helmet does.
 
 **The ZX's colour is per 8×8 cell, not per pixel.** Giving the Eye red ink would
 be one byte per quadrant; it was left black on white, as it was drawn.
+
+## 5 · The text finishes its translation
+
+Animagic's conversion translated the game half way: the map's place names stayed
+in English and three race names came across truncated. Fifteen strings change,
+and **not one byte moves**. What makes that possible is that the game keeps its
+text in three different shapes, and each one allows something different.
+
+**The place table, `0x7A5E`.** `BUSCA_EL_SITIO` (`0x6E50`) walks it. Each record
+is
+
+```
+[x][y][2 + width*rows][width<<4 | rows][text]
+```
+
+with no terminator: the length comes out of the third byte, which is also what
+you add to reach the next record. The fourth byte is the **size of the signpost**
+`VENTANA_DEL_SITIO` (`0x6E2D`) draws, and the text fills it whole, row by row —
+that is why `Minas Tirith` is twelve letters in 6×2 and `Monte   Gundabad`
+sixteen in 8×2, with the spaces put in by hand. A new name has to measure
+**exactly width × rows**:
+
+| address | was | is | fits because |
+|---|---|---|---|
+| `0x7B34` | Bywater | **Delagua** | 7×1, seven letters exactly |
+| `0x7B28` | Buckland | **LosGamos** | 8×1 |
+| `0x7B5D` | Far Downs | **Quebradas** | 9×1 |
+| `0x7B4B` | Michel Delving | **Cavada Grande** | 7×2: `Cavada ` + `Grande ` |
+| `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6×2: `Ptos  ` + `Grises` |
+| `0x7AA5` | Rivendell | **Rivendel** | 9×1: eight letters and a space |
+| `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10×1 |
+| `0x7A79` | Morannon | **Puerta N** | 8×1 |
+| `0x7B0D` | Dale | **Vale** | 4×1 |
+| `0x7B7F` | HelmsDeep | **AbismHelm** | 5×2: `Abism` + `Helm ` |
+
+**The lists of packed strings**, each ending with **bit 7 set on its last
+letter**. String N is reached by counting terminators from a base
+(`SALTA_B_TEXTOS`, `0x6E98`). There are four: races in the plural (`0x7D06`), in
+the singular (`0x7D39`), the side labels (`0x7D6A`) and the adverbs (`0x7D9A`).
+Inside a list a string **may** change length as long as the total does not — and
+that is what pays for the longer words. `Hum` → `Hombre` is three bytes more and
+`Elf` → `Elfo` one more; there is no room behind, because `0x7D6A` is a fixed
+address in the code. But `Brujo ` → `Mago` is two bytes less, and `Brujo`
+appears **twice in each list** (races 0 and 7 are two kinds of wizard):
+
+```
+singular (0x7D3A, 44 bytes, races 0..8)
+  Brujo 6  Nazgul 6  Hum 3     Elf 3   Enano 5  Orc 3  Hobbit 6  Brujo 6  Gollum 6  = 44
+  Mago 4   Nazgul 6  Hombre 6  Elfo 4  Enano 5  Orc 3  Hobbit 6  Mago 4   Gollum 6  = 44
+
+plural (0x7D07, 45 bytes, races 0..7)
+  Brujos 7  Nazgul 6  Hum 3      Elfos 5  Enanos 7  Orcs 4  Hobbits 7  Brujo 6  = 45
+  Magos 5   Nazgul 6  Hombres 7  Elfos 5  Enanos 7  Orcs 4  Hobbits 7  Mago 4   = 45
+```
+
+`Gollum` closes both lists and is not touched: its last byte **is** the base of
+the next list.
+
+The three race changes were asked for in the singular, but `Brujo` and `Hum` sit
+in **both** tables — leaving the plural alone would have left the game saying
+"Formacion de 005 Hum". It was changed too, **in the plural** (`Magos`,
+`Hombres`), which is what that place wants: its neighbours are `Enanos`, `Orcs`
+and `Hobbits`. `Elfos` was already right. Race 7 of the plural table was written
+by the game in the singular (`Brujo `), and that is respected: it reads `Mago`.
+
+**The list of 24 proper names, `0x6B46`**, separated by `0xB7` and copied up to
+that separator (`0x6E23`, `0x6F38`). `Brand III` → **`Bardo III`**, nine letters
+for nine.
+
+And one loose string: the sheet's fourth adjective, at `0x7DF0` and pointed at by
+`0x6FEF`. `Valioso` → **`Integro`**, seven letters and the bit 7 at the end.
+
+The font settles which letters are available: `0xC800` holds 128 characters of
+eight bytes, and everything from `0x21` to `0x7F` is drawn (only `0x20`, the
+space, is blank). Codes with bit 7 set are not letters — they are artwork from
+the `0x9E00` table — so **there are no accents**, and `Nazgul` keeps going
+without its circumflex.
 
 What could **not** be done, and why, is in [Findings](FINDINGS.md).

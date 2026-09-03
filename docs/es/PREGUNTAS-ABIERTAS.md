@@ -53,6 +53,20 @@ No se ha hecho porque el color del ZX va por celda de 8×8 y habría que ver en
 pantalla si el rojo sobre el tramado del mapa se lee bien o ensucia. Es una
 prueba, no un problema.
 
+## El texto, en todas las pantallas
+
+Las quince cadenas se han leído de la RAM del emulador y se han visto en
+pantalla en el cartel del mapa, en la ficha de una unidad con nombre y en la de
+una formación sin nombre. Lo que **no** está comprobado:
+
+- los topónimos que se han dejado siguen en inglés o con la grafía de Tolkien
+  (`Orthanc`, `Barad-Dur`, `Minas Tirith`...), que era lo pedido;
+- `Ga. Hierro` y `Puerta N` son abreviaturas que obliga el ancho del cartel
+  (10x1 y 8x1). Nada más largo cabe sin rehacer el cartel;
+- y de las razas se han visto `Mago`, `Hombre` y `Hombres`. `Elfo`, `Elfos` y
+  las dos casillas de `Mago` se leen bien de la RAM, pero no se ha cazado cada
+  una en pantalla.
+
 ## Lo que este parche no toca
 
 - **La batalla.** El tablero se monta encima del código del menú y tiene sus

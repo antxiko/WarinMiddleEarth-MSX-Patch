@@ -9,8 +9,9 @@ you apply it to your own copy.
 
 ## The quick way: the IPS
 
-The repository carries a **`war_parche.ips`** of 249 bytes. It holds only the
-bytes that change — our own code and the drawing of the Eye of Sauron — and it
+The repository carries a **`war_parche.ips`** of 487 bytes. It holds only the
+bytes that change — our own code, the drawing of the Eye of Sauron and the new
+text — and it
 applies to your own tape with any IPS tool, or with the one included here:
 
     python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx
@@ -26,7 +27,7 @@ You need Python 3 and `make`. Put your `war.tsx` in the root and:
     make extract     # pulls the block bodies out of your tape into work/
     make parche      # applies the table and writes war_parche.tsx
     make ips         # and war_parche.ips, the patch on its own
-    make test        # the 23 checks
+    make test        # the 30 checks
 
 `make parche` does not write blind: **each change first checks that the original
 bytes are the ones it expects**, and if a single byte outside the table differs

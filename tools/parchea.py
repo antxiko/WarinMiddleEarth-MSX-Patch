@@ -20,6 +20,26 @@ Con los cuerpos ya parcheados se vuelve a montar la cinta: cada bloque del ZX
 Spectrum se reenvuelve con su bandera delante y su XOR detras (la unica
 verificacion de integridad que trae la cinta), y tools/tsx_build.py arma el TSX.
 
+LOS TRES FORMATOS DE TEXTO del juego, que es lo que manda en el grupo "textos":
+
+  1. La tabla de SITIOS del mapa (0x7A5E, la recorre BUSCA_EL_SITIO en 0x6E50).
+     Cada registro es [x][y][2+ancho*filas][ancho<<4 | filas][texto], sin
+     terminador: el largo sale del cuarto byte, que ademas es el tamano del
+     cartel que dibuja VENTANA_DEL_SITIO. Por eso un toponimo nuevo tiene que
+     medir EXACTAMENTE ancho*filas, y los de dos filas se reparten fila a fila
+     ("Cavada " + "Grande " se lee "Cavada Grande" en un cartel de 7x2).
+
+  2. Las LISTAS de cadenas pegadas con el bit 7 en su ultima letra: las razas en
+     plural (0x7D06) y en singular (0x7D39), los carteles de bando (0x7D6A) y
+     los adverbios (0x7D9A). Se llega a la cadena N contando bits 7 desde la
+     base (SALTA_B_TEXTOS, 0x6E98), asi que DENTRO de una lista las cadenas
+     pueden cambiar de largo mientras el total no cambie; el total si es
+     intocable, porque la base de la lista siguiente es una direccion absoluta
+     del codigo.
+
+  3. Los NOMBRES de las 24 unidades con nombre propio (0x6B46), separados por
+     0xB7 y copiados hasta ese separador (0x6E23, 0x6F38).
+
 Uso:  parchea.py [work] [salida.tsx]
 """
 import os
@@ -125,6 +145,82 @@ PARCHES = [
     # su izquierda (0x7C43).
     dict(grupo="anillo", bloque="medio", dir=0x6F77, orig="3e5f32467c", nuevo="cd6d660000",
          motivo="call ANILLO_CON_PLAZO (0x666D): el anillo y los meses que quedan"),
+
+    # ---- (5) LOS TEXTOS EN ESPANOL ---------------------------------------
+    # La conversion dejo los toponimos del mapa en ingles y tres nombres de raza
+    # a medio traducir. Aqui van con los nombres de la traduccion de Tolkien al
+    # castellano. NINGUNA cadena cambia de longitud, que es lo que permite que
+    # nada se desplace. Ver "Los tres formatos de texto" arriba.
+    #
+    # (5a) La tabla de sitios de 0x7A5E. Cada registro es
+    #      [x][y][2+ancho*filas][ancho<<4 | filas][texto], y el texto se pinta en
+    #      un cartel de ancho x filas: el largo del texto TIENE que seguir siendo
+    #      ancho*filas, asi que las cadenas cortas se rellenan con espacios y las
+    #      de dos filas se reparten fila a fila.
+    dict(grupo="textos", bloque="medio", dir=0x7A79,
+         orig="4d6f72616e6e6f6e", nuevo="507565727461204e",
+         motivo="sitio 8x1: 'Morannon' -> 'Puerta N'"),
+    dict(grupo="textos", bloque="medio", dir=0x7AA5,
+         orig="526976656e64656c6c", nuevo="526976656e64656c20",
+         motivo="sitio 9x1: 'Rivendell' -> 'Rivendel ' (8 letras + un espacio)"),
+    dict(grupo="textos", bloque="medio", dir=0x7AB2,
+         orig="4973656e6d6f75746865", nuevo="47612e2048696572726f",
+         motivo="sitio 10x1: 'Isenmouthe' -> 'Ga. Hierro'"),
+    dict(grupo="textos", bloque="medio", dir=0x7B0D,
+         orig="44616c65", nuevo="56616c65",
+         motivo="sitio 4x1: 'Dale' -> 'Vale'"),
+    dict(grupo="textos", bloque="medio", dir=0x7B28,
+         orig="4275636b6c616e64", nuevo="4c6f7347616d6f73",
+         motivo="sitio 8x1: 'Buckland' -> 'LosGamos'"),
+    dict(grupo="textos", bloque="medio", dir=0x7B34,
+         orig="42797761746572", nuevo="44656c61677561",
+         motivo="sitio 7x1: 'Bywater' -> 'Delagua'"),
+    dict(grupo="textos", bloque="medio", dir=0x7B4B,
+         orig="4d696368656c2044656c76696e67", nuevo="436176616461204772616e646520",
+         motivo="sitio 7x2: 'Michel '/'Delving' -> 'Cavada '/'Grande '"),
+    dict(grupo="textos", bloque="medio", dir=0x7B5D,
+         orig="46617220446f776e73", nuevo="517565627261646173",
+         motivo="sitio 9x1: 'Far Downs' -> 'Quebradas'"),
+    dict(grupo="textos", bloque="medio", dir=0x7B7F,
+         orig="48656c6d734465657020", nuevo="416269736d48656c6d20",
+         motivo="sitio 5x2: 'Helms'/'Deep ' -> 'Abism'/'Helm '"),
+    dict(grupo="textos", bloque="medio", dir=0x7BC7,
+         orig="477265792020486176656e73", nuevo="50746f732020477269736573",
+         motivo="sitio 6x2: 'Grey  '/'Havens' -> 'Ptos  '/'Grises'"),
+    # (5b) La lista de los 24 nombres de 0x6B46, separados por 0xB7.
+    dict(grupo="textos", bloque="medio", dir=0x6BA5,
+         orig="4272616e6420494949", nuevo="426172646f20494949",
+         motivo="nombre 9 letras: 'Brand III' -> 'Bardo III'"),
+    # (5c) El cuarto adjetivo de la ficha, al que apunta 0x6FEF (0x7DEF, con su
+    #      espacio delante); acaba con el bit 7 en la ultima letra.
+    dict(grupo="textos", bloque="medio", dir=0x7DF0,
+         orig="56616c696f73ef", nuevo="496e74656772ef",
+         motivo="adjetivo de la ficha: 'Valioso' -> 'Integro'"),
+    # (5d) Las dos tablas de razas. Se escriben ENTERAS de una vez porque las
+    #      cadenas van pegadas y se llega a cada una contando bits 7 desde la
+    #      base (SALTA_B_TEXTOS, 0x6E98): dentro de la tabla las cadenas pueden
+    #      cambiar de largo mientras el TOTAL no cambie, y ese total no puede
+    #      cambiar porque justo detras empieza la tabla siguiente.
+    #      Plural (base 0x7D06, la lee FORMACION_SIN_NOMBRE en 0x6F57), entradas
+    #      0..7; la 8 ('Gollum') no se toca y cierra en 0x7D39, que es la base de
+    #      la tabla en singular. 45 bytes antes y 45 despues:
+    #      7+6+3+5+7+4+7+6 = 45   ->   5+6+7+5+7+4+7+4 = 45
+    dict(grupo="textos", bloque="medio", dir=0x7D07,
+         orig="4272756a6f73a04e617a6775ec4875ed456c666ff3456e616e6f73a04f7263f3"
+              "486f62626974f34272756a6fa0",
+         nuevo="4d61676ff34e617a6775ec486f6d627265f3456c666ff3456e616e6f73a04f7263f3"
+               "486f62626974f34d6167ef",
+         motivo="razas en plural: 'Brujos'->'Magos', 'Hum'->'Hombres', 'Brujo'->'Mago'"),
+    #      Singular (base 0x7D39, la lee NOMBRE_DEL_TIPO en 0x6DF6), entradas
+    #      0..8; la 9 ('Mujer') no se toca y cierra en 0x7D6A, que es la base de
+    #      los carteles de bando. 44 bytes antes y 44 despues:
+    #      6+6+3+3+5+3+6+6+6 = 44   ->   4+6+6+4+5+3+6+4+6 = 44
+    dict(grupo="textos", bloque="medio", dir=0x7D3A,
+         orig="4272756a6fa04e617a6775ec4875ed456ce6456e616eef4f72e3486f626269f4"
+              "4272756a6fa0476f6c6c75ed",
+         nuevo="4d6167ef4e617a6775ec486f6d6272e5456c66ef456e616eef4f72e3486f626269f4"
+               "4d6167ef476f6c6c75ed",
+         motivo="razas en singular: 'Brujo'->'Mago', 'Hum'->'Hombre', 'Elf'->'Elfo'"),
 ]
 
 
@@ -177,7 +273,7 @@ def main(argv):
     # 2. Comprobar que SOLO ha cambiado lo de la tabla.
     print("== parches aplicados ==")
     total = 0
-    for grupo in ("visibilidad", "valores", "icono", "anillo"):
+    for grupo in ("visibilidad", "valores", "icono", "anillo", "textos"):
         gp = [p for p in PARCHES if p["grupo"] == grupo]
         if not gp:
             continue

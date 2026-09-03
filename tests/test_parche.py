@@ -52,6 +52,52 @@ class TestTabla(unittest.TestCase):
         self.assertIn("visibilidad", grupos)
         self.assertIn("valores", grupos)
 
+    def test_los_textos_no_cambian_el_numero_de_cadenas(self):
+        """En las listas de cadenas pegadas se llega a la numero N contando bits
+        7 (SALTA_B_TEXTOS, 0x6E98). Si el parche metiera o quitara una cadena,
+        todas las de detras se correrian de indice: el juego diria 'Orcs' donde
+        pone 'Enanos'. Cada cadena tiene que seguir en su sitio."""
+        for p in parchea.PARCHES:
+            if p["grupo"] != "textos":
+                continue
+            orig = bytes.fromhex(p["orig"])
+            nuevo = bytes.fromhex(p["nuevo"])
+            self.assertEqual(sum(1 for b in orig if b & 0x80),
+                             sum(1 for b in nuevo if b & 0x80),
+                             "0x%04X cambia el numero de cadenas de la lista" % p["dir"])
+
+    def test_los_textos_son_imprimibles(self):
+        """La fuente de 0xC800 solo trae dibujo de 0x21 a 0x7F (el 0x20 esta a
+        cero y es el espacio); cualquier otro codigo saldria como un borron."""
+        for p in parchea.PARCHES:
+            if p["grupo"] != "textos":
+                continue
+            for b in bytes.fromhex(p["nuevo"]):
+                self.assertTrue(0x20 <= (b & 0x7F) < 0x80,
+                                "0x%04X escribe el codigo 0x%02X" % (p["dir"], b))
+
+    def test_ninguna_base_absoluta_queda_dentro_de_un_parche_de_texto(self):
+        """El codigo entra en las listas por direcciones fijas. Un parche puede
+        reordenar los bytes DE DENTRO de una lista, pero no puede empezar ni
+        acabar a mitad: ninguna de estas bases puede caer dentro de un rango."""
+        bases = (0x7A5E,  # la tabla de sitios
+                 0x7D06,  # razas en plural
+                 0x7D39,  # razas en singular
+                 0x7D6A,  # los cuatro carteles de bando
+                 0x7D84,  # "Formacion de"
+                 0x7D90,  # ":caracter:"
+                 0x7D9A,  # los siete adverbios
+                 0x7DD3, 0x7DDC, 0x7DE6, 0x7DEF, 0x7DF7, 0x7DFC,  # los seis adjetivos
+                 0x6B46)  # los 24 nombres
+        for p in parchea.PARCHES:
+            if p["grupo"] != "textos":
+                continue
+            a = p["dir"]
+            b = a + len(bytes.fromhex(p["nuevo"]))
+            for base in bases:
+                self.assertFalse(a < base < b,
+                                 "el parche de 0x%04X se traga la base 0x%04X" % (a, base))
+
     def test_la_rutina_de_la_ficha_es_la_del_asm(self):
         """La rutina hardcodeada en la tabla es EXACTAMENTE lo que sale de
         ensamblar src/parche/ficha_valores.asm. Si el .asm cambia, esto avisa."""
@@ -161,6 +207,109 @@ class TestAplicacion(unittest.TestCase):
             nuevo = bytes.fromhex(p["nuevo"])
             self.assertEqual(bytes(cuerpos[p["bloque"]][off:off + len(nuevo)]), nuevo,
                              "0x%04X no quedo con los bytes nuevos" % p["dir"])
+
+    # ---- los textos, leidos como los lee el propio Z80 --------------------
+    @staticmethod
+    def _lista(cuerpo, base, cuantas):
+        """SALTA_B_TEXTOS (0x6E98) + COPIA_TEXTO (0x6E78): las cadenas van
+        pegadas y acaban en la letra que lleva el bit 7."""
+        i = base - 0x5E00 + 1
+        salida = []
+        for _ in range(cuantas):
+            s = ""
+            while True:
+                b = cuerpo[i]
+                i += 1
+                s += chr(b & 0x7F)
+                if b & 0x80:
+                    break
+            salida.append(s)
+        return salida
+
+    @staticmethod
+    def _sitios(cuerpo):
+        """BUSCA_EL_SITIO (0x6E50): [x][y][salto][ancho<<4|filas][texto], hasta
+        que el byte de salto es cero."""
+        i = 0x7A5E - 0x5E00
+        salida = []
+        while cuerpo[i + 2]:
+            salto, forma = cuerpo[i + 2], cuerpo[i + 3]
+            texto = cuerpo[i + 4:i + 2 + salto].decode("latin-1")
+            salida.append((cuerpo[i], cuerpo[i + 1], forma >> 4, forma & 0x0F, texto))
+            i += 2 + salto
+        return salida
+
+    def test_los_carteles_del_mapa_siguen_cuadrando(self):
+        """El cartel de un sitio mide ancho x filas y el texto lo rellena
+        entero: si un toponimo nuevo midiera otra cosa, el cartel saldria con
+        basura o se comeria el registro siguiente."""
+        cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        antes = self._sitios(cuerpos["medio"])
+        parchea.aplica(cuerpos)
+        despues = self._sitios(cuerpos["medio"])
+        self.assertEqual(len(antes), len(despues), "cambio el numero de sitios")
+        for (xa, ya, wa, ra, _), (xd, yd, wd, rd, td) in zip(antes, despues):
+            self.assertEqual((xa, ya, wa, ra), (xd, yd, wd, rd))
+            self.assertEqual(len(td), wd * rd, "el cartel de %r no mide %dx%d"
+                             % (td, wd, rd))
+        nombres = [t for _, _, _, _, t in despues]
+        for esperado in ("Puerta N", "Rivendel ", "Ga. Hierro", "Vale", "LosGamos",
+                         "Delagua", "Cavada Grande ", "Quebradas", "AbismHelm ",
+                         "Ptos  Grises"):
+            self.assertIn(esperado, nombres)
+        for ingles in ("Morannon", "Rivendell", "Isenmouthe", "Dale", "Buckland",
+                       "Bywater", "Michel Delving", "Far Downs", "HelmsDeep ",
+                       "Grey  Havens"):
+            self.assertNotIn(ingles, nombres)
+
+    def test_las_dos_listas_de_razas_quedan_en_su_sitio(self):
+        """Las nueve razas en plural y las diez en singular, leidas contando
+        bits 7 desde 0x7D06 y 0x7D39. Que la ultima de cada lista siga siendo la
+        que era prueba que ninguna cadena se ha corrido de indice."""
+        cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        parchea.aplica(cuerpos)
+        medio = cuerpos["medio"]
+        self.assertEqual(
+            self._lista(medio, 0x7D06, 9),
+            ["Magos", "Nazgul", "Hombres", "Elfos", "Enanos ", "Orcs", "Hobbits",
+             "Mago", "Gollum"])
+        self.assertEqual(
+            self._lista(medio, 0x7D39, 10),
+            ["Mago", "Nazgul", "Hombre", "Elfo", "Enano", "Orc", "Hobbit", "Mago",
+             "Gollum", "Mujer"])
+        # y las dos listas de detras, que el parche no toca, tienen que seguir
+        # leyendose bien: es la prueba de que nada se ha desplazado
+        self.assertEqual(self._lista(medio, 0x7D6A, 4),
+                         [" Sociedad  ", "-", " union ", " union"])
+        self.assertEqual(self._lista(medio, 0x7D9A, 7),
+                         ["Realmente ", " Muy ", " Es muy", " ", " Es algo ",
+                          " No muy  ", " No "])
+
+    def test_los_seis_adjetivos_de_la_ficha(self):
+        """Los seis apartados los apunta el codigo uno a uno (0x7DD3, 0x7DDC,
+        0x7DE6, 0x7DEF, 0x7DF7, 0x7DFC): 'Valioso' pasa a 'Integro' y los otros
+        cinco se quedan como estaban, cada uno en su direccion."""
+        cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        parchea.aplica(cuerpos)
+        medio = cuerpos["medio"]
+        for base, esperado in ((0x7DD3 - 1, " Energico"), (0x7DDC - 1, " Decidido "),
+                               (0x7DE6 - 1, " Habil   "), (0x7DEF - 1, " Integro"),
+                               (0x7DF7 - 1, " Duro"), (0x7DFC - 1, " Bravo")):
+            self.assertEqual(self._lista(medio, base, 1), [esperado])
+
+    def test_los_24_nombres_siguen_siendo_24(self):
+        """La lista de 0x6B46 va separada por 0xB7; 'Brand III' y 'Bardo III'
+        miden lo mismo, asi que ni el numero de nombres ni sus posiciones
+        cambian."""
+        cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        antes = bytes(cuerpos["medio"])
+        parchea.aplica(cuerpos)
+        despues = bytes(cuerpos["medio"])
+        i, j = 0x6B46 - 0x5E00, 0x6BF3 - 0x5E00
+        self.assertEqual(antes[i:j].count(0xB7), despues[i:j].count(0xB7))
+        nombres = despues[i:j].decode("latin-1").split("\xb7")
+        self.assertIn("Bardo III", nombres)
+        self.assertNotIn("Brand III", nombres)
 
     def test_la_cinta_parcheada_se_reconstruye_con_xor_valido(self):
         if not os.path.exists(os.path.join(EXT, "manifest.json")):

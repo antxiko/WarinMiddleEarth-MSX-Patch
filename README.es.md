@@ -12,7 +12,8 @@ Un parche de bytes para la cinta MSX de **War in Middle Earth** (Melbourne House
 Hace las tres cosas que **Araubi** pidio en el foro: hacer visibles las unidades
 enemigas, ensenar el valor numerico de cada apartado de una unidad, y sacar a la
 luz cuanto le queda al portador del Anillo. Y una cuarta: las enemigas llevan
-ahora icono propio, para poder distinguir los dos bandos.
+ahora icono propio, para poder distinguir los dos bandos. Y una quinta: **los
+nombres del mapa y los de las razas terminan de traducirse al castellano**.
 
 [README in English](README.md) · Investigacion completa: [INVESTIGACION.md](INVESTIGACION.md)
 
@@ -32,9 +33,10 @@ para un MSX1 real (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.
 ## Que cambia
 
 Todo cae en el bloque medio del juego (el que corre desde `0x5E00`) mas cuatro
-tiles del bloque alto: **197 bytes en siete cambios**. Cada uno comprueba antes
-de escribir que los bytes originales son los que espera; nada se desplaza, y
-`make parche` avisa si cambia un solo byte fuera de la tabla (`tools/parchea.py`).
+tiles del bloque alto: **393 bytes en 22 entradas de la tabla** (197 de codigo y
+dibujo, 196 de texto). Cada una comprueba antes de escribir que los bytes
+originales son los que espera; nada se desplaza, y `make parche` avisa si cambia
+un solo byte fuera de la tabla (`tools/parchea.py`).
 
 **1 · Las unidades enemigas se ven.** El mapa guarda un bit de "aqui hay
 alguien" por casilla, y `RECENTRA_EL_MAPA` (0x7FAC) lo vuelve a sembrar unidad a
@@ -76,6 +78,35 @@ nuevos al final de la tabla de 0x9E00 (los 111 a 114, que estaban a cero).
 | las enemigas con tu casco | las enemigas con el Ojo |
 |---|---|
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
+
+**5 · El texto termina de traducirse.** La conversion de Animagic dejo los
+toponimos del mapa en ingles y tres nombres de raza truncados. Cambian quince
+cadenas: diez sitios del mapa (`Bywater` -> `Delagua`, `Michel Delving` ->
+`Cavada Grande`, `Dale` -> `Vale`...), un nombre de unidad (`Brand III` ->
+`Bardo III`), uno de los adjetivos de la ficha (`Valioso` -> `Integro`) y las
+tres razas (`Brujo` -> `Mago`, `Elf` -> `Elfo`, `Hum` -> `Hombre`).
+
+Y no se mueve un byte. El registro de un sitio lleva **el tamano de su cartel**
+(`ancho<<4 | filas`) y el texto lo rellena entero, asi que el nombre nuevo tiene
+que medir lo mismo: `Cavada ` + `Grande ` llena el cartel de 7x2 donde iba
+`Michel `/`Delving`. Los nombres de raza viven en dos listas que se recorren
+contando bits de fin, asi que **dentro** de una lista una cadena si puede cambiar
+de largo: eso es lo que paga las palabras mas largas. `Brujo ` -> `Mago` libera
+dos bytes, y sale dos veces en cada lista: los cuatro justos que necesitan
+`Elf` -> `Elfo` y `Hum` -> `Hombre`.
+
+La misma casilla y la misma unidad, con la cinta original y con la parcheada:
+
+| sin parche | con parche |
+|---|---|
+| ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
+
+Cambian 45 celdas de caracter y **cero atributos de color**. El cartel de dos
+filas, que era el que podia romperse, cambia 13 celdas, todas dentro del cartel:
+
+| sin parche | con parche |
+|---|---|
+| ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
 
 Ninguna de estas imagenes es una captura de pantalla: el juego resube la
 pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres

@@ -8,8 +8,9 @@ aplica sobre su copia.
 
 ## La vía rápida: el IPS
 
-En el repositorio hay un **`war_parche.ips`** de 249 bytes. Lleva sólo los bytes
-que cambian —código nuestro y el dibujo del Ojo de Sauron— y se aplica sobre tu
+En el repositorio hay un **`war_parche.ips`** de 487 bytes. Lleva sólo los bytes
+que cambian —código nuestro, el dibujo del Ojo de Sauron y el texto nuevo— y se
+aplica sobre tu
 propia cinta con cualquier herramienta de IPS, o con la que viene aquí:
 
     python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx
@@ -25,7 +26,7 @@ Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make ips         # y war_parche.ips, el parche a secas
-    make test        # las 23 comprobaciones
+    make test        # las 30 comprobaciones
 
 `make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
 originales son los que espera**, y si al terminar hay un solo byte distinto

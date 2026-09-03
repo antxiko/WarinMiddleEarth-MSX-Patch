@@ -55,6 +55,20 @@ It has not been done because the ZX's colour is per 8×8 cell and it would need
 looking at on screen: whether red over the map's dithering reads well or just
 muddies it. That is a test, not a problem.
 
+## The text, on every screen
+
+The fifteen strings have been read out of the emulator's RAM and seen on screen
+on the map sign, on a named unit's sheet and on a nameless formation's. What is
+**not** checked:
+
+- the ten place names that were left alone are still in English or in Tolkien's
+  own spelling (`Orthanc`, `Barad-Dur`, `Minas Tirith`...), which was the ask;
+- `Ga. Hierro` and `Puerta N` are abbreviations forced by the signpost's width
+  (10x1 and 8x1). Nothing longer fits without redrawing the sign;
+- and the races are seen for `Mago`, `Hombre` and `Hombres`. `Elfo`, `Elfos` and
+  the two `Mago` slots read correctly out of RAM but have not each been caught
+  on screen.
+
 ## What this patch does not touch
 
 - **Battle.** The board is built on top of the menu's code and has its own

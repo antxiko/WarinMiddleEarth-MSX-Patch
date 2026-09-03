@@ -3,7 +3,7 @@
 
 Esta web es la del PARCHE, no la del desensamblado: son dos repositorios
 distintos y dos webs distintas, como el par del Mahjong Dojo. El desensamblado
-explica el juego; esto explica los 197 bytes que se le cambian y por que.
+explica el juego; esto explica los 393 bytes que se le cambian y por que.
 
 El diseno es el compartido por la serie (tools/estilo_web.py) y la pagina sale
 autocontenida, con las imagenes embebidas como data URI.
@@ -24,16 +24,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from estilo_web import ESTILO                                   # noqa: E402
 
 # Las cifras salen de las herramientas, no de escribirlas aqui a ojo:
-#   `make parche` -> 197 bytes cambiados en 7 entradas, 0 fuera de la tabla
-#   `make ips`    -> war_parche.ips, 249 bytes en 8 registros
-#   `make test`   -> 23 comprobaciones
+#   `make parche` -> 393 bytes cambiados en 22 entradas, 0 fuera de la tabla
+#   `make ips`    -> war_parche.ips, 487 bytes en 18 registros
+#   `make test`   -> 30 comprobaciones
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
-BYTES = 197
-CAMBIOS = 7
-IPS_BYTES = 249
-IPS_REGISTROS = 8
-TESTS = 23
+BYTES = 393
+CAMBIOS = 22
+IPS_BYTES = 487
+IPS_REGISTROS = 18
+TESTS = 30
 CODIGO_NUEVO = 137
+TEXTO = 196
+CADENAS = 15
 CASILLAS_MAPA = 13260
 
 REPO = "https://github.com/antxiko/WarinMiddleEarth-MSX-Patch"
@@ -56,12 +58,14 @@ TXT = {
               "con la tabla de color del propio cartucho. El control: dos "
               "pasadas del mismo estado dan una imagen idéntica al píxel, así "
               "que lo que cambia entre «sin» y «con» lo cambia el parche.",
-        claim="Araubi pidió tres cosas en el foro y salieron cuatro. "
-              "<b>197 bytes en siete sitios</b>, cada uno comprobado contra los "
-              "bytes que espera antes de escribir: nada se desplaza, y el "
-              "montaje falla si cambia un solo byte fuera de la tabla. El "
-              "código nuevo vive dentro del <b>motor de altavoz del ZX que esta "
-              "conversión trajo entero y no llama nadie</b>.",
+        claim="Araubi pidió tres cosas en el foro y salieron cinco. "
+              f"<b>{BYTES} bytes en {CAMBIOS} sitios</b>, cada uno comprobado "
+              "contra los bytes que espera antes de escribir: nada se "
+              "desplaza, y el montaje falla si cambia un solo byte fuera de la "
+              "tabla. El código nuevo vive dentro del <b>motor de altavoz del "
+              "ZX que esta conversión trajo entero y no llama nadie</b>, y las "
+              f"<b>{CADENAS} cadenas</b> que terminan de traducir el juego "
+              "caben sin mover una sola letra de sitio.",
         ficha=["Melbourne House / Dro Soft · <b>1989</b>",
                "Cinta MSX1 · <b>62.261 bytes</b>",
                f"<b>{BYTES} bytes</b> cambiados, <b>0</b> desplazados",
@@ -75,16 +79,16 @@ TXT = {
                 ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")],
         otro=("../", "In English"),
         h_num="El parche en cifras",
-        h_find="Las cuatro cosas que hace",
+        h_find="Las cinco cosas que hace",
         h_scr="La misma casilla, sin el parche y con él",
         cifras=[(str(BYTES), "bytes cambiados"),
                 (str(CAMBIOS), "sitios tocados"),
                 ("0", "bytes desplazados"),
                 ("0", "bytes fuera de la tabla"),
                 (str(CODIGO_NUEVO), "bytes de código nuevo"),
+                (str(TEXTO), "bytes de texto nuevo"),
                 (mil(IPS_BYTES, "es"), "bytes de parche IPS"),
-                (str(TESTS), "comprobaciones en verde"),
-                ("4", "peticiones cubiertas")],
+                (str(TESTS), "comprobaciones en verde")],
         nota_scr="Cada pareja es la misma partida, la misma casilla y el mismo "
                  "instante, cargando la cinta original y cargando la parcheada.",
         pie_leg="Esto es un parche de jugabilidad, extraoficial y sin ánimo de "
@@ -105,12 +109,14 @@ TXT = {
               "colour table. The control: two runs of the same state give a "
               "pixel-identical image, so whatever changes between «without» and "
               "«with» is the patch and nothing else.",
-        claim="Araubi asked for three things on the forum and four came out. "
-              "<b>197 bytes across seven places</b>, each one checked against "
-              "the bytes it expects before writing: nothing shifts, and the "
-              "build fails if a single byte changes outside the table. The new "
-              "code lives inside the <b>ZX beeper engine this port brought "
-              "across whole and never calls</b>.",
+        claim="Araubi asked for three things on the forum and five came out. "
+              f"<b>{BYTES} bytes across {CAMBIOS} places</b>, each one checked "
+              "against the bytes it expects before writing: nothing shifts, and "
+              "the build fails if a single byte changes outside the table. The "
+              "new code lives inside the <b>ZX beeper engine this port brought "
+              "across whole and never calls</b>, and the "
+              f"<b>{CADENAS} strings</b> that finish translating the game fit "
+              "without moving a single letter.",
         ficha=["Melbourne House / Dro Soft · <b>1989</b>",
                "MSX1 cassette · <b>62,261 bytes</b>",
                f"<b>{BYTES} bytes</b> changed, <b>0</b> shifted",
@@ -125,16 +131,16 @@ TXT = {
                 ("OPEN-QUESTIONS.html", "Open questions")],
         otro=("es/", "En castellano"),
         h_num="The patch in numbers",
-        h_find="The four things it does",
+        h_find="The five things it does",
         h_scr="The same cell, without the patch and with it",
         cifras=[(str(BYTES), "bytes changed"),
                 (str(CAMBIOS), "places touched"),
                 ("0", "bytes shifted"),
                 ("0", "bytes outside the table"),
                 (str(CODIGO_NUEVO), "bytes of new code"),
+                (str(TEXTO), "bytes of new text"),
                 (mil(IPS_BYTES, "en"), "bytes of IPS patch"),
-                (str(TESTS), "checks passing"),
-                ("4", "requests covered")],
+                (str(TESTS), "checks passing")],
         nota_scr="Each pair is the same game, the same cell and the same "
                  "instant, loading the original cassette and the patched one.",
         pie_leg="This is an unofficial, non-commercial gameplay patch. The game "
@@ -190,6 +196,22 @@ HALLAZGOS = {
          "bando. El icono son <b>cuatro tiles nuevos</b> al final de la tabla "
          "de <code>0x9E00</code>, en los índices 111 a 114, que estaban a "
          "cero.</p>"),
+        ("5 · El texto termina de traducirse",
+         "<p>La conversión de Animagic dejó <b>los topónimos del mapa en "
+         "inglés</b> y tres nombres de raza truncados: «Brujo», «Elf» y «Hum». "
+         f"Cambian <b>{CADENAS} cadenas</b> —diez sitios del mapa, un nombre de "
+         "unidad, un adjetivo de la ficha y las tres razas— y no se mueve un "
+         "byte.</p>"
+         "<p>El registro de un sitio lleva <b>el tamaño de su cartel</b> "
+         "(<code>ancho&lt;&lt;4 | filas</code>) y el texto lo rellena entero, "
+         "así que el nombre nuevo tiene que medir lo mismo: "
+         "<code>Cavada </code> + <code>Grande </code> llena el cartel de 7×2 "
+         "donde iba <code>Michel </code>/<code>Delving</code>. Los nombres de "
+         "raza viven en dos listas que se recorren <b>contando bits de fin</b>, "
+         "así que dentro de una lista una cadena sí puede cambiar de largo: "
+         "«Brujo » → «Mago» libera dos bytes y sale <b>dos veces en cada "
+         "lista</b>, los cuatro justos que necesitan «Elf» → «Elfo» y "
+         "«Hum» → «Hombre».</p>"),
         ("Y una trampa que costó una pasada entera",
          "<p>La tabla de cuadros de dos por dos de <code>0x77B5</code> tiene "
          "seis entradas a cero y parecen sitio de sobra. <b>No lo son:</b> "
@@ -242,6 +264,21 @@ HALLAZGOS = {
          "marker. The icon is <b>four new tiles</b> at the tail of the "
          "<code>0x9E00</code> table, indices 111 to 114, which were all "
          "zeros.</p>"),
+        ("5 · The text finishes its translation",
+         "<p>Animagic's conversion left <b>the map's place names in English</b> "
+         "and three race names truncated: “Brujo”, “Elf” and “Hum”. "
+         f"<b>{CADENAS} strings</b> change — ten place names, one unit name, one "
+         "of the sheet's adjectives and the three races — and not a byte "
+         "moves.</p>"
+         "<p>A place record carries <b>the size of its signpost</b> "
+         "(<code>width&lt;&lt;4 | rows</code>) and the text fills it whole, so "
+         "the new name has to measure the same: <code>Cavada </code> + "
+         "<code>Grande </code> fills the 7×2 sign that held "
+         "<code>Michel </code>/<code>Delving</code>. The race names live in two "
+         "lists walked by <b>counting terminator bits</b>, so inside a list a "
+         "string <i>may</i> change length: “Brujo ” → “Mago” frees two bytes and "
+         "appears <b>twice in each list</b> — exactly the four that "
+         "“Elf” → “Elfo” and “Hum” → “Hombre” need.</p>"),
         ("And one trap that cost a whole run",
          "<p>The two-by-two artwork table at <code>0x77B5</code> has six "
          "all-zero entries and they look like plenty of room. <b>They are "
@@ -308,6 +345,29 @@ GALERIA = [
      "THE EYE, read off the ALREADY PATCHED tape: tiles 111 to 114, which were "
      "all zeros. Same attribute as the friendly one, so it covers the ground "
      "the same way"),
+    ("textos_sin_parche.png",
+     "SIN PARCHE — el cartel dice \"Dale\" y la ficha \"Formacion de 005 Hum\", "
+     "\"Hum:caracter:\" y \"No Valioso\". La conversion se quedo a medias",
+     "WITHOUT THE PATCH — the sign says \"Dale\" and the sheet \"Formacion de "
+     "005 Hum\", \"Hum:caracter:\" and \"No Valioso\". The conversion stopped "
+     "half way"),
+    ("textos_con_parche.png",
+     "CON PARCHE, la misma casilla y la misma unidad — \"Vale\", \"Formacion de "
+     "005 Hombres\", \"Hombre:caracter:\" y \"No Integro\". 45 celdas de "
+     "caracter cambian, y ni un atributo de color",
+     "WITH THE PATCH, same cell, same unit — \"Vale\", \"Formacion de 005 "
+     "Hombres\", \"Hombre:caracter:\" and \"No Integro\". 45 character cells "
+     "change, and not one colour attribute"),
+    ("cartel_sin_parche.png",
+     "SIN PARCHE — el cartel de dos filas: \"Michel\" arriba, \"Delving\" "
+     "abajo, siete columnas por dos filas",
+     "WITHOUT THE PATCH — the two-row signpost: \"Michel\" on top, \"Delving\" "
+     "below, seven columns by two rows"),
+    ("cartel_con_parche.png",
+     "CON PARCHE — \"Cavada\" y \"Grande\" en el mismo cartel de 7x2, que es "
+     "lo que obliga a rellenar con espacios. 13 celdas cambian, todas dentro",
+     "WITH THE PATCH — \"Cavada\" and \"Grande\" in the same 7x2 sign, which is "
+     "what forces the padding with spaces. 13 cells change, all inside it"),
 ]
 
 

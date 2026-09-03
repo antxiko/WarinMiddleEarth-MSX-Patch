@@ -87,7 +87,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <p>This is a <b>gameplay patch</b> for the MSX cassette of <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). It is not the game: it is what gets changed in it.</p>
 <p><b>No cassette image is distributed here.</b> The patch is what gets shared, and you apply it to your own copy.</p>
 <h2 id="the-quick-way-the-ips">The quick way: the IPS</h2>
-<p>The repository carries a <b><code>war_parche.ips</code></b> of 249 bytes. It holds only the bytes that change — our own code and the drawing of the Eye of Sauron — and it applies to your own tape with any IPS tool, or with the one included here:</p>
+<p>The repository carries a <b><code>war_parche.ips</code></b> of 487 bytes. It holds only the bytes that change — our own code, the drawing of the Eye of Sauron and the new text — and it applies to your own tape with any IPS tool, or with the one included here:</p>
 <pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
 <p>Your tape has to be the one it was made from. Its fingerprint is <code>sha256 13c63632…b1d81208</code>; if yours differs the patch will still apply, but nobody can vouch for the result.</p>
 <h2 id="the-long-way-build-it-yourself">The long way: build it yourself</h2>
@@ -95,7 +95,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # pulls the block bodies out of your tape into work/
 make parche      # applies the table and writes war_parche.tsx
 make ips         # and war_parche.ips, the patch on its own
-make test        # the 23 checks</code></pre>
+make test        # the 30 checks</code></pre>
 <p><code>make parche</code> does not write blind: <b>each change first checks that the original bytes are the ones it expects</b>, and if a single byte outside the table differs when it finishes, it aborts. That is why it is safe to let it run on your copy.</p>
 <h2 id="playing-it">Playing it</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>

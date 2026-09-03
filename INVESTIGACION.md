@@ -332,6 +332,153 @@ pidio quien lo dibujo.
 
 ---
 
+## 5) Los textos en espanol — HECHO y VERIFICADO
+
+La conversion de Animagic tradujo el juego a medias: los **toponimos del mapa**
+se quedaron en ingles y **tres nombres de raza** salen truncados. Aqui van los
+quince cambios que pidio el usuario, con los nombres de la traduccion de Tolkien
+al castellano.
+
+### Los tres formatos de texto del juego
+
+Esto es lo que decide que se puede cambiar y que no. Ninguna cadena puede
+cambiar el numero de bytes que ocupa (el parche no desplaza nada), pero cada
+formato aprieta de una manera distinta:
+
+**a) La tabla de SITIOS, 0x7A5E.** La recorre `BUSCA_EL_SITIO` (0x6E50). Cada
+registro es
+
+```
+[x][y][2 + ancho*filas][ancho<<4 | filas][texto]
+```
+
+sin terminador: el largo sale del tercer byte, que ademas es lo que hay que
+sumar para llegar al registro siguiente. El cuarto byte es el **tamano del
+cartel** que dibuja `VENTANA_DEL_SITIO` (0x6E2D), y el texto lo rellena entero,
+fila a fila. Por eso "Minas Tirith" son doce letras en 6x2 y "Monte   Gundabad"
+dieciseis en 8x2, con los espacios puestos a mano. Un toponimo nuevo tiene que
+medir **exactamente ancho x filas**.
+
+**b) Las LISTAS de cadenas pegadas**, con el **bit 7 en la ultima letra**. Se
+llega a la cadena numero N contando terminadores desde la base
+(`SALTA_B_TEXTOS`, 0x6E98). Hay cuatro: razas en plural (0x7D06), razas en
+singular (0x7D39), carteles de bando (0x7D6A) y adverbios (0x7D9A). Dentro de
+una lista **las cadenas si pueden cambiar de largo**, mientras el total no
+cambie: es lo que permite pagar "Hombre" con lo que sobra de "Brujo". El total
+es intocable porque la base de la lista siguiente es una direccion fija del
+codigo.
+
+**c) La lista de los 24 NOMBRES propios, 0x6B46**, separados por `0xB7` y
+copiados hasta ese separador (0x6E23 y 0x6F38).
+
+### Los quince cambios
+
+| # | direccion | como estaba | como queda | cabe porque |
+|---|-----------|-------------|------------|-------------|
+| 1 | `0x7B34` | Bywater | **Delagua** | 7x1, siete letras justas |
+| 2 | `0x7B28` | Buckland | **LosGamos** | 8x1, ocho justas |
+| 3 | `0x7B5D` | Far Downs | **Quebradas** | 9x1, nueve justas |
+| 4 | `0x7B4B` | Michel Delving | **Cavada Grande** | 7x2: `Cavada ` + `Grande ` |
+| 5 | `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6x2: `Ptos  ` + `Grises` |
+| 6 | `0x7AA5` | Rivendell | **Rivendel** | 9x1: ocho letras y un espacio |
+| 7 | `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10x1, diez justas |
+| 8 | `0x7A79` | Morannon | **Puerta N** | 8x1, ocho justas |
+| 9 | `0x7B0D` | Dale | **Vale** | 4x1, cuatro justas |
+| 10 | `0x7B7F` | HelmsDeep | **AbismHelm** | 5x2: `Abism` + `Helm ` |
+| 11 | `0x6BA5` | Brand III | **Bardo III** | nueve letras entre dos `0xB7` |
+| 12 | `0x7DF0` | Valioso | **Integro** | siete letras y el bit 7 al final |
+| 13 | `0x7D3A`, `0x7D07` | Brujo / Brujos | **Mago / Magos** | ver abajo |
+| 14 | `0x7D3A` | Elf | **Elfo** | ver abajo |
+| 15 | `0x7D3A`, `0x7D07` | Hum | **Hombre / Hombres** | ver abajo |
+
+Los diez primeros son la tabla de sitios; el 11 es la lista de los 24 nombres
+propios (es el numero 13, entre `Thranduil` y `Theodred`); el 12 es el cuarto
+adjetivo de la ficha, al que apunta 0x6FEF.
+
+### Las dos tablas de razas: la cuenta que las hace caber
+
+"Hum" -> "Hombre" son **tres bytes mas** y "Elf" -> "Elfo" **uno mas**. No hay
+sitio detras: en 0x7D6A empieza la lista de carteles de bando y el codigo entra
+ahi por direccion fija. Pero **"Brujo " -> "Mago" son dos bytes menos, y "Brujo"
+sale dos veces en cada lista** (las razas 0 y 7 son dos clases de mago). La
+cuenta sale exacta, sin tocar un solo byte fuera:
+
+```
+singular (0x7D3A, 44 bytes, razas 0..8)
+  Brujo·6 Nazgul·6 Hum·3 Elf·3 Enano·5 Orc·3 Hobbit·6 Brujo·6 Gollum·6  = 44
+  Mago·4  Nazgul·6 Hombre·6 Elfo·4 Enano·5 Orc·3 Hobbit·6 Mago·4 Gollum·6 = 44
+
+plural (0x7D07, 45 bytes, razas 0..7)
+  Brujos·7 Nazgul·6 Hum·3 Elfos·5 Enanos·7 Orcs·4 Hobbits·7 Brujo·6 = 45
+  Magos·5  Nazgul·6 Hombres·7 Elfos·5 Enanos·7 Orcs·4 Hobbits·7 Mago·4 = 45
+```
+
+`Gollum` cierra las dos listas y no se toca, porque su ultimo byte **es** la base
+de la lista siguiente.
+
+> **Lo que va mas alla de la lista literal.** Los tres cambios de raza se pidieron
+> en singular ("Brujo -> Mago", "Elf -> Elfo", "Hum -> Hombre"), pero `Brujo` y
+> `Hum` estan **en las dos tablas**: dejar solo la de singular hubiera dejado el
+> juego diciendo "Formacion de 005 Hum". Se ha cambiado tambien la de plural,
+> **con la forma plural** (`Magos`, `Hombres`), que es lo que ese sitio pide:
+> sus vecinas son `Enanos`, `Orcs` y `Hobbits`. `Elfos` ya estaba bien y no se
+> toca. La raza 7 de la tabla de plurales la escribio el juego en singular
+> (`Brujo `), y se respeta: queda `Mago`.
+
+### Que no se ha tocado
+
+- **`Orthanc`, `Orodruin`, `Barad-Dur`, `Umbar`, `Edoras`, `Linhir`,
+  `Pelargir`, `Minas Tirith`, `Minas Morgul`, `Dol Guldur`, `Dol Amroth`,
+  `Cirith Ungol`, `Durthang`, `Monte Gundabad`, `Harlond`, `Bree`, `Fornost`,
+  `Hobbiton`, `Tharbad`**: no estaban en la lista, y ademas se escriben igual (o
+  casi) en castellano.
+- **Los otros cinco adjetivos** de la ficha (Energico, Decidido, Habil, Duro,
+  Bravo) y los siete adverbios.
+- **`Nazgul`**, que ya estaba bien (sin el circunflejo, que la fuente no tiene).
+
+### Verificado (openMSX)
+
+La cinta parcheada se carga entera en una Philips VG-8020
+(`tools/omsx_arranque.tcl`) y se leen las tablas **de la RAM de la maquina**,
+recorriendolas como las recorre el Z80. Los **29 registros de sitio siguen
+midiendo ancho x filas**, y las listas de detras de las tocadas se siguen
+leyendo enteras, que es la prueba de que nada se ha desplazado:
+
+```
+RAZAS EN PLURAL   (0x7D06): Magos, Nazgul, Hombres, Elfos, Enanos, Orcs, Hobbits, Mago, Gollum
+RAZAS EN SINGULAR (0x7D39): Mago, Nazgul, Hombre, Elfo, Enano, Orc, Hobbit, Mago, Gollum, Mujer
+CARTELES DE BANDO (0x7D6A):  Sociedad  , -,  union ,  union
+ADVERBIOS         (0x7D9A): Realmente ,  Muy ,  Es muy,  ,  Es algo ,  No muy  ,  No
+ADJETIVOS: Energico, Decidido, Habil, Integro, Duro, Bravo
+NOMBRES (0x6B46): ... Thranduil, Bardo III, Theodred ...
+```
+
+Y en pantalla, la **misma casilla y la misma unidad** con la cinta original y con
+la parcheada -la formacion 0x39, cinco Hombres en Valle-:
+
+| sin parche | con parche |
+|---|---|
+| ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
+
+De un tiron: el cartel `Dale` -> `Vale`, `Formacion de 005 Hum` -> `005 Hombres`,
+`Hum:caracter:` -> `Hombre:caracter:`, `Destino: Dale` -> `Destino: Vale` y
+`No Valioso` -> `No Integro`. Cambian **45 celdas de caracter y cero atributos
+de color**.
+
+Y el cartel de dos filas, que era el que podia romperse:
+
+| sin parche | con parche |
+|---|---|
+| ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
+
+`Michel`/`Delving` pasa a `Cavada`/`Grande` en el mismo cartel de 7x2: **13
+celdas de caracter cambian, todas dentro del cartel**, y ningun atributo.
+
+Las imagenes son las de siempre: el bufer de pantalla del ZX volcado de la RAM
+en un instante fijo y dibujado con `tools/render_zx.py`, no capturas.
+
+---
+
 ## Estado
 
 | peticion | estado | evidencia |
@@ -340,15 +487,17 @@ pidio quien lo dibujo.
 | 2 · valores de la unidad | hecho, verificado | los seis numeros coinciden con la RAM |
 | 3 · plazo del Anillo | hecho, verificado | el 0x8333 -255 meses- escrito al lado del anillo |
 | 4 · el Ojo de Sauron | hecho, verificado | 9 casillas marcadas, 12 celdas cambian, 0 atributos tocados |
+| 5 · los textos en espanol | hecho, verificado | leidos de la RAM del emulador: 29 carteles cuadran, las cuatro listas se siguen leyendo |
 
-**197 bytes en siete cambios, ninguno fuera de la tabla y ninguno desplazado.**
-`make test` = 21 en verde.
+**393 bytes en 22 entradas de la tabla, ninguna fuera de ella y ninguna
+desplazada** (197 de codigo y tiles, 196 de texto). `make test` = 30 en verde.
 
 ## Como se reparte
 
-`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -194
-en ocho registros- y se aplica sobre tu propia cinta. Comprobado: aplicado sobre
-`war.tsx` da un fichero identico byte a byte al que saca `make parche`.
+`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -389
+en dieciocho registros, 487 bytes de fichero- y se aplica sobre tu propia cinta.
+Comprobado: aplicado sobre `war.tsx` da un fichero identico byte a byte al que
+saca `make parche`.
 
 ## Lo que queda abierto
 

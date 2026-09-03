@@ -12,7 +12,8 @@ Dro Soft, 1989), built on top of the
 It does the three things **Araubi** asked for on the forum: make enemy units
 visible, show the numeric value of each of a unit's attributes, and surface how
 long the Ring-bearer has left. Plus a fourth: the enemy now has an icon of its
-own, so you can tell the two sides apart.
+own, so you can tell the two sides apart. And a fifth: the **map names and the
+race names finish their translation into Spanish**.
 
 [README en español](README.es.md) · Full write-up: [INVESTIGACION.md](INVESTIGACION.md)
 
@@ -38,9 +39,10 @@ for a real MSX1 (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.ts
 ## What it changes
 
 Everything is in the game's middle block (which runs at `0x5E00`) plus four
-tiles in the high block, **197 bytes across seven edits**. Each one is checked
-against the bytes it expects before writing — nothing shifts, and `make parche`
-fails if a single byte changes outside the table (`tools/parchea.py`).
+tiles in the high block, **393 bytes across 22 table entries** (197 of code and
+artwork, 196 of text). Each one is checked against the bytes it expects before
+writing — nothing shifts, and `make parche` fails if a single byte changes
+outside the table (`tools/parchea.py`).
 
 **1 · Enemy units become visible.** The map keeps a "someone is here" bit for
 each cell, and `RECENTRA_EL_MAPA` (0x7FAC) re-plants it unit by unit — but its
@@ -81,6 +83,34 @@ that byte was free** (measured: zero uses across all 13,260 cells). It now marks
 | enemies with your helmet | enemies with the Eye |
 |---|---|
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
+
+**5 · The text finishes its translation.** Animagic's conversion left the map's
+place names in English and truncated three race names. Fifteen strings change:
+ten place names (`Bywater` → `Delagua`, `Michel Delving` → `Cavada Grande`,
+`Dale` → `Vale`…), one unit name (`Brand III` → `Bardo III`), one of the sheet's
+adjectives (`Valioso` → `Integro`) and the three races (`Brujo` → `Mago`,
+`Elf` → `Elfo`, `Hum` → `Hombre`).
+
+Not one byte moves. A place-name record carries the **size of its signpost**
+(`ancho<<4 | filas`) and the text fills it exactly, so a new name has to measure
+the same: `Cavada ` + `Grande ` fills the 7×2 sign that held `Michel `/`Delving`.
+The race names live in two lists walked by counting terminator bits, so inside a
+list a string *may* change length — and that is what pays for the longer words:
+`Brujo ` → `Mago` frees two bytes twice per list, which is exactly the four that
+`Elf` → `Elfo` and `Hum` → `Hombre` need.
+
+Same cell, same unit, original tape and patched one:
+
+| without the patch | with it |
+|---|---|
+| ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
+
+45 character cells change and **zero colour attributes**. The two-row signpost,
+the one that could have broken, changes 13 cells, all inside the sign:
+
+| without the patch | with it |
+|---|---|
+| ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
 
 None of the images above are screen captures: the game re-uploads the screen to
 the VDP constantly, so two photographs of the *same* state, three seconds apart,

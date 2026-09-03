@@ -1,8 +1,8 @@
 # El parche
 
-Siete cambios, **197 bytes**, ninguno fuera de la tabla y ninguno desplazado:
-cada parche mide exactamente lo mismo que lo que sustituye, así que ninguna
-dirección del juego se mueve.
+Veintidós entradas, **393 bytes**, ninguna fuera de la tabla y ninguna
+desplazada: cada parche mide exactamente lo mismo que lo que sustituye, así que
+ninguna dirección del juego se mueve.
 
 ## La tabla
 
@@ -16,9 +16,35 @@ dirección del juego se mueve.
 | `0x770A` | medio | 10 | gancho del dibujo |
 | `0x6F77` | medio | 5 | gancho del anillo |
 | `0xA1E7` | alto | 36 | los cuatro tiles del Ojo de Sauron |
+| `0x7A79`…`0x7BC7` | medio | 91 | los diez toponimos del mapa |
+| `0x6BA5` | medio | 9 | `Brand III` → `Bardo III` |
+| `0x7DF0` | medio | 7 | `Valioso` → `Integro` |
+| `0x7D07` | medio | 45 | las razas en plural |
+| `0x7D3A` | medio | 44 | las razas en singular |
 
 Las direcciones son de **ejecución**. El bloque «medio» corre desde `0x5E00` y
-el «alto» desde `0x9E00`.
+el «alto» desde `0x9E00`. Los diez toponimos son diez entradas sueltas: `0x7A79`,
+`0x7AA5`, `0x7AB2`, `0x7B0D`, `0x7B28`, `0x7B34`, `0x7B4B`, `0x7B5D`, `0x7B7F` y
+`0x7BC7`.
+
+## Los tres formatos de texto
+
+Nada se desplaza, así que el sitio de cada cadena manda. Y aprieta distinto
+según dónde viva:
+
+- **La tabla de sitios (`0x7A5E`).** Cada registro es
+  `[x][y][2+ancho*filas][ancho<<4|filas][texto]`, sin terminador. El cuarto byte
+  es el **tamaño del cartel** que se dibuja, y el texto lo rellena entero, fila a
+  fila: un nombre nuevo tiene que medir **exactamente ancho × filas**. Por eso
+  `Cavada ` + `Grande ` llena el cartel de 7×2 donde iba `Michel `/`Delving`.
+- **Las cuatro listas de cadenas pegadas**, con el **bit 7 en la última letra**
+  (razas en plural `0x7D06`, en singular `0x7D39`, carteles de bando `0x7D6A` y
+  adverbios `0x7D9A`). Se llega a la cadena N contando terminadores, así que
+  **dentro** de una lista una cadena sí puede cambiar de largo mientras el total
+  no cambie. Eso es lo que paga las palabras largas: `Brujo ` → `Mago` libera dos
+  bytes y sale dos veces en cada lista, los cuatro justos que necesitan
+  `Elf` → `Elfo` y `Hum` → `Hombre`.
+- **La lista de los 24 nombres propios (`0x6B46`)**, separados por `0xB7`.
 
 ## Cómo se aplica
 
@@ -45,18 +71,18 @@ joystick. Este juego es mudo, y su silencio nos deja 276 bytes de sitio.
 
 ## El IPS
 
-`make ips` saca **`war_parche.ips`**: 249 bytes en ocho registros, con sólo lo
-que cambia. Comprobado en el sitio —y en las pruebas— que **aplicado sobre
+`make ips` saca **`war_parche.ips`**: 487 bytes en dieciocho registros, con sólo
+lo que cambia. Comprobado en el sitio —y en las pruebas— que **aplicado sobre
 `war.tsx` devuelve la cinta parcheada byte a byte**.
 
 Se reparte eso, no el juego.
 
 ## Las comprobaciones
 
-`make test` son 23, y no son de adorno. Entre ellas:
+`make test` son 30, y no son de adorno. Entre ellas:
 
-- que **`orig` y `nuevo` miden igual** en las siete entradas, o sea que nada se
-  desplaza;
+- que **`orig` y `nuevo` miden igual** en las veintidós entradas, o sea que nada
+  se desplaza;
 - que cada entrada **cae dentro de su bloque**;
 - que los bytes de la tabla son **exactamente** lo que sale de ensamblar
   `src/parche/ficha_valores.asm` y `src/parche/icono_enemigo.asm` con pasmo;
@@ -66,4 +92,12 @@ Se reparte eso, no el juego.
   trampa que se cuenta en [Hallazgos](HALLAZGOS.md);
 - que los cuatro tiles del Ojo van al hueco que estaba a cero y **con el mismo
   atributo de color que el icono aliado**;
+- que los parches de texto **no cambian el número de cadenas** de una lista (si
+  metieran o quitaran una, todas las de detrás se correrían de índice y el juego
+  diría «Orcs» donde pone «Enanos»);
+- que **ninguna base absoluta** —las catorce que el código usa para entrar en los
+  textos— cae dentro de un parche;
+- que, aplicada la tabla, **los 29 carteles del mapa siguen midiendo ancho ×
+  filas** y las cuatro listas de cadenas se siguen leyendo enteras, incluidas las
+  que el parche no toca;
 - y que el IPS del repositorio **reconstruye la cinta parcheada**.

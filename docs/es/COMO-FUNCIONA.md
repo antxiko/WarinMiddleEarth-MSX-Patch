@@ -1,6 +1,6 @@
 # Cómo funciona
 
-Las cuatro cosas, una a una, con la dirección de cada afirmación.
+Las cinco cosas, una a una, con la dirección de cada afirmación.
 
 ## El mapa de una unidad
 
@@ -133,5 +133,82 @@ que el Ojo tapa el fondo igual que el casco.
 
 **El color del ZX va por celda de 8×8, no por píxel.** Darle tinta roja al Ojo
 sería un byte por cuadrante; se ha dejado en negro sobre blanco, como se dibujó.
+
+## 5 · El texto termina de traducirse
+
+La conversión de Animagic tradujo el juego a medias: los topónimos del mapa se
+quedaron en inglés y tres nombres de raza salen truncados. Cambian quince
+cadenas, y **no se mueve un byte**. Lo que lo hace posible es que el juego
+guarda su texto de tres maneras distintas, y cada una permite una cosa.
+
+**La tabla de sitios, `0x7A5E`.** La recorre `BUSCA_EL_SITIO` (`0x6E50`). Cada
+registro es
+
+```
+[x][y][2 + ancho*filas][ancho<<4 | filas][texto]
+```
+
+sin terminador: el largo sale del tercer byte, que además es lo que hay que
+sumar para llegar al registro siguiente. El cuarto byte es el **tamaño del
+cartel** que dibuja `VENTANA_DEL_SITIO` (`0x6E2D`), y el texto lo rellena
+entero, fila a fila —por eso «Minas Tirith» son doce letras en 6×2 y
+«Monte   Gundabad» dieciséis en 8×2, con los espacios puestos a mano—. Un
+nombre nuevo tiene que medir **exactamente ancho × filas**:
+
+| dirección | estaba | queda | cabe porque |
+|---|---|---|---|
+| `0x7B34` | Bywater | **Delagua** | 7×1, siete letras justas |
+| `0x7B28` | Buckland | **LosGamos** | 8×1 |
+| `0x7B5D` | Far Downs | **Quebradas** | 9×1 |
+| `0x7B4B` | Michel Delving | **Cavada Grande** | 7×2: `Cavada ` + `Grande ` |
+| `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6×2: `Ptos  ` + `Grises` |
+| `0x7AA5` | Rivendell | **Rivendel** | 9×1: ocho letras y un espacio |
+| `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10×1 |
+| `0x7A79` | Morannon | **Puerta N** | 8×1 |
+| `0x7B0D` | Dale | **Vale** | 4×1 |
+| `0x7B7F` | HelmsDeep | **AbismHelm** | 5×2: `Abism` + `Helm ` |
+
+**Las listas de cadenas pegadas**, cada una con el **bit 7 en su última
+letra**. Se llega a la cadena N contando terminadores desde una base
+(`SALTA_B_TEXTOS`, `0x6E98`). Hay cuatro: razas en plural (`0x7D06`), en
+singular (`0x7D39`), carteles de bando (`0x7D6A`) y adverbios (`0x7D9A`).
+**Dentro** de una lista una cadena sí puede cambiar de largo mientras el total
+no cambie, y eso es lo que paga las palabras largas. «Hum» → «Hombre» son tres
+bytes más y «Elf» → «Elfo» uno más; detrás no hay sitio, porque `0x7D6A` es
+una dirección fija del código. Pero «Brujo » → «Mago» son dos bytes menos, y
+«Brujo» sale **dos veces en cada lista** (las razas 0 y 7 son dos clases de
+mago):
+
+```
+singular (0x7D3A, 44 bytes, razas 0..8)
+  Brujo 6  Nazgul 6  Hum 3     Elf 3   Enano 5  Orc 3  Hobbit 6  Brujo 6  Gollum 6  = 44
+  Mago 4   Nazgul 6  Hombre 6  Elfo 4  Enano 5  Orc 3  Hobbit 6  Mago 4   Gollum 6  = 44
+
+plural (0x7D07, 45 bytes, razas 0..7)
+  Brujos 7  Nazgul 6  Hum 3      Elfos 5  Enanos 7  Orcs 4  Hobbits 7  Brujo 6  = 45
+  Magos 5   Nazgul 6  Hombres 7  Elfos 5  Enanos 7  Orcs 4  Hobbits 7  Mago 4   = 45
+```
+
+«Gollum» cierra las dos listas y no se toca: su último byte **es** la base de la
+lista siguiente.
+
+Los tres cambios de raza se pidieron en singular, pero «Brujo» y «Hum» están en
+**las dos** tablas: dejar la de plural hubiera dejado el juego diciendo
+«Formacion de 005 Hum». Se ha cambiado también, **con la forma plural**
+(«Magos», «Hombres»), que es lo que ese sitio pide: sus vecinas son «Enanos»,
+«Orcs» y «Hobbits». «Elfos» ya estaba bien. La raza 7 de la tabla de plurales
+la escribió el juego en singular («Brujo »), y se respeta: queda «Mago».
+
+**La lista de los 24 nombres propios, `0x6B46`**, separados por `0xB7` y
+copiados hasta ese separador (`0x6E23`, `0x6F38`). `Brand III` → **`Bardo III`**,
+nueve letras por nueve.
+
+Y una cadena suelta: el cuarto adjetivo de la ficha, en `0x7DF0`, al que apunta
+`0x6FEF`. `Valioso` → **`Integro`**, siete letras y el bit 7 al final.
+
+La fuente decide qué letras hay: `0xC800` lleva 128 caracteres de ocho bytes, y
+del `0x21` al `0x7F` están todos dibujados (sólo el `0x20`, el espacio, está en
+blanco). Los códigos con el bit 7 puesto no son letras —son dibujos de la tabla
+de `0x9E00`—, así que **no hay acentos**, y «Nazgul» sigue sin su circunflejo.
 
 Lo que **no** se pudo hacer, y por qué, está en [Hallazgos](HALLAZGOS.md).

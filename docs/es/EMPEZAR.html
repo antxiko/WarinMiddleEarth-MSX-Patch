@@ -87,7 +87,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <p>Esto es un <b>parche de jugabilidad</b> para la cinta MSX de <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). No es el juego: es lo que se le cambia.</p>
 <p><b>Aquí no hay ninguna imagen de cinta.</b> Se reparte el parche y cada cual lo aplica sobre su copia.</p>
 <h2 id="la-via-rapida-el-ips">La vía rápida: el IPS</h2>
-<p>En el repositorio hay un <b><code>war_parche.ips</code></b> de 249 bytes. Lleva sólo los bytes que cambian —código nuestro y el dibujo del Ojo de Sauron— y se aplica sobre tu propia cinta con cualquier herramienta de IPS, o con la que viene aquí:</p>
+<p>En el repositorio hay un <b><code>war_parche.ips</code></b> de 487 bytes. Lleva sólo los bytes que cambian —código nuestro, el dibujo del Ojo de Sauron y el texto nuevo— y se aplica sobre tu propia cinta con cualquier herramienta de IPS, o con la que viene aquí:</p>
 <pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
 <p>Tu cinta tiene que ser la misma que se usó para sacarlo. Su huella es <code>sha256 13c63632…b1d81208</code>; si la tuya es otra, el parche se aplicará igual pero nadie garantiza el resultado.</p>
 <h2 id="la-via-larga-montarlo-tu">La vía larga: montarlo tú</h2>
@@ -95,7 +95,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # saca los cuerpos de los bloques de tu cinta a work/
 make parche      # aplica la tabla y escribe war_parche.tsx
 make ips         # y war_parche.ips, el parche a secas
-make test        # las 23 comprobaciones</code></pre>
+make test        # las 30 comprobaciones</code></pre>
 <p><code>make parche</code> no escribe a ciegas: <b>cada cambio comprueba antes que los bytes originales son los que espera</b>, y si al terminar hay un solo byte distinto fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.</p>
 <h2 id="jugarlo">Jugarlo</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>
