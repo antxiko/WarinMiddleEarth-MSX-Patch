@@ -1,65 +1,65 @@
 # Getting started
 
-[The game](THE-GAME.html) · [The tape](THE-TAPE.html) · [The code](THE-CODE.html) · [Findings](FINDINGS.html) · [Open questions](OPEN-QUESTIONS.html)
+This is a **gameplay patch** for the MSX cassette of *War in Middle Earth*
+(Melbourne House / Dro Soft, 1989). It is not the game: it is what gets changed
+in it.
 
-This repository holds a **commented disassembly** of War in Middle Earth for
-the MSX (Melbourne House / Dro Soft, 1989). Everything here comes out of the
-binary and can be generated from it again.
+**No cassette image is distributed here.** The patch is what gets shared, and
+you apply it to your own copy.
 
-## What you need
+## The quick way: the IPS
 
-- **Python 3** (no third-party packages)
-- **pasmo**, to reassemble
-- **z80dasm**, used only for the mnemonics
-- the tape, which this repository **does not distribute**
+The repository carries a **`war_parche.ips`** of 249 bytes. It holds only the
+bytes that change — our own code and the drawing of the Eye of Sauron — and it
+applies to your own tape with any IPS tool, or with the one included here:
 
-The tape goes in the root, named `war.tsx`, and the `Makefile` asks for it by
-sha256:
+    python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx
 
-    13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208
+Your tape has to be the one it was made from. Its fingerprint is
+`sha256 13c63632…b1d81208`; if yours differs the patch will still apply, but
+nobody can vouch for the result.
 
-It is a **TSX**, not a `.cas`: the blocks are not MSX blocks but ZX Spectrum
-ones, because the conversion brought the whole tape system across. That is in
-[The tape](THE-TAPE.html).
+## The long way: build it yourself
 
-## The test that matters
+You need Python 3 and `make`. Put your `war.tsx` in the root and:
 
-    make verify
+    make extract     # pulls the block bodies out of your tape into work/
+    make parche      # applies the table and writes war_parche.tsx
+    make ips         # and war_parche.ips, the patch on its own
+    make test        # the 23 checks
 
-This reassembles the five listings with pasmo and compares each one, byte for
-byte, against the piece of tape it belongs to. If all five say `OK: reproducible
-byte a byte`, the disassembly has invented nothing.
+`make parche` does not write blind: **each change first checks that the original
+bytes are the ones it expects**, and if a single byte outside the table differs
+when it finishes, it aborts. That is why it is safe to let it run on your copy.
 
-## Everything else you can run
+## Playing it
 
-    make            # the whole cycle: extract, trace, list, verify
-    make listados   # regenerates the five src/war_*.asm
-    make sanity     # the checks reassembly does NOT cover
-    make test       # the tests
-    make imagenes   # redraws the PNGs in docs/imagenes from the tape
-    make web        # regenerates this site
+    openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx
 
-`make sanity` is the one that watches for what a correct reassembly can hide:
-data being read as code, and tape bytes left unexplained. Today it says
-**62,261 out of 62,261, 100%**.
+then, on the MSX, `RUN"CAS:"`. The whole load is about six and a half minutes of
+emulated time; with the emulator's throttle off, far less.
 
-## The five listings
+## What you will see differently
 
-The game runs with **all four pages in RAM and no BIOS**, and the three big
-blocks are not run where they land: the boot code relocates them. That is why
-there are five listings and not three.
+- **Enemy units are drawn on the map**, wearing the Eye of Sauron so you do not
+  mistake them for your own.
+- **Each unit's sheet shows the number** for its six attributes, not just "very
+  skilled".
+- **In the Ring-bearer's sheet**, to the left of the ring, the **months left**
+  before he succumbs.
 
-| listing | org | what it is |
-|---|---|---|
-| `war_loader.asm` | `0xD6D8` | the loader: sets up RAM and reads the four blocks |
-| `war_pantalla.asm` | `0x88B8` | the loading screen (almost all data) |
-| `war_bajo.asm` | `0x0190` | the MSX layer: VRAM, keyboard, joystick, colour, tape |
-| `war_medio.asm` | `0x5E00` | **the game** |
-| `war_alto.asm` | `0x9E00` | graphics, map and tables (all data) |
+To reach Frodo's sheet: put the cursor on the Fellowship's cell, fire, and use
+up and down to step through the units until you get to him. The ring number only
+shows in the bearer's sheet, which is where the game draws the ring.
 
-## And a word about the pictures
+## Before you judge it
 
-None of the ones in `docs/imagenes/` is a screenshot. `tools/render_carga.py`
-and `tools/render_graficos.py` draw them by reading the tape's bytes in the
-ranges the listing delimits. If a range were mislabelled, it would come out as
-noise.
+**Nobody has played a full game with the patch on.** What is known to be missing
+is in [Open questions](OPEN-QUESTIONS.md), and playing it and reporting back is
+the most useful thing you can do.
+
+## Where it comes from
+
+From a [commented disassembly](https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly)
+of the whole tape, which is a **separate repository and a separate site**. Every
+address quoted here comes out of that listing, not out of trial and error.

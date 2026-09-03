@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Empezar — War in Middle Earth (MSX)</title>
+<title>The patch — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,29 +82,22 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html" style=color:var(--tinta)>Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../GETTING-STARTED.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
-<h1 id="empezar">Empezar</h1>
-<p>Esto es un <b>parche de jugabilidad</b> para la cinta MSX de <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). No es el juego: es lo que se le cambia.</p>
-<p><b>Aquí no hay ninguna imagen de cinta.</b> Se reparte el parche y cada cual lo aplica sobre su copia.</p>
-<h2 id="la-via-rapida-el-ips">La vía rápida: el IPS</h2>
-<p>En el repositorio hay un <b><code>war_parche.ips</code></b> de 249 bytes. Lleva sólo los bytes que cambian —código nuestro y el dibujo del Ojo de Sauron— y se aplica sobre tu propia cinta con cualquier herramienta de IPS, o con la que viene aquí:</p>
-<pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
-<p>Tu cinta tiene que ser la misma que se usó para sacarlo. Su huella es <code>sha256 13c63632…b1d81208</code>; si la tuya es otra, el parche se aplicará igual pero nadie garantiza el resultado.</p>
-<h2 id="la-via-larga-montarlo-tu">La vía larga: montarlo tú</h2>
-<p>Necesitas Python 3 y <code>make</code>. Pon tu <code>war.tsx</code> en la raíz y:</p>
-<pre><code>make extract     # saca los cuerpos de los bloques de tu cinta a work/
-make parche      # aplica la tabla y escribe war_parche.tsx
-make ips         # y war_parche.ips, el parche a secas
-make test        # las 23 comprobaciones</code></pre>
-<p><code>make parche</code> no escribe a ciegas: <b>cada cambio comprueba antes que los bytes originales son los que espera</b>, y si al terminar hay un solo byte distinto fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.</p>
-<h2 id="jugarlo">Jugarlo</h2>
-<pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>
-<p>y en el MSX, <code>RUN&quot;CAS:&quot;</code>. La carga entera son unos seis minutos y medio de tiempo emulado; con el acelerador del emulador, mucho menos.</p>
-<h2 id="que-vas-a-ver-distinto">Qué vas a ver distinto</h2>
-<ul><li><b>Las unidades enemigas se dibujan en el mapa</b>, con el Ojo de Sauron, para no confundirlas con las tuyas.</li><li><b>La ficha de cada unidad enseña el número</b> de sus seis apartados, no sólo «es muy hábil».</li><li><b>En la ficha del portador del Anillo</b>, a la izquierda del anillo, salen los <b>meses que quedan</b> antes de sucumbir.</li></ul>
-<p>Para llegar a la ficha de Frodo: pon el cursor sobre la casilla de la Comunidad, dispara, y con arriba y abajo vas pasando de una unidad a otra hasta llegar a él. El número del anillo sólo sale en la ficha del portador, que es donde el juego dibuja el anillo.</p>
-<h2 id="antes-de-juzgarlo">Antes de juzgarlo</h2>
-<p><b>Nadie ha jugado una partida entera con el parche puesto.</b> Lo que se sabe que falta está en <a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a>, y se agradece que lo juegues y lo cuentes.</p>
-<h2 id="de-donde-sale">De dónde sale</h2>
-<p>De un <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly">desensamblado comentado</a> de la cinta entera, que es <b>otro repositorio y otra web</b>. Todas las direcciones que se citan aquí salen de aquel listado, no de probar a ver qué pasa.</p>
-<footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html" style=color:var(--tinta)>The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EL-PARCHE.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="the-patch">The patch</h1>
+<p>Seven changes, <b>197 bytes</b>, none outside the table and none shifted: every patch is exactly as long as what it replaces, so no address in the game moves.</p>
+<h2 id="the-table">The table</h2>
+<table><tr><th>address</th><th>block</th><th>bytes</th><th>what</th></tr><tr><td><code>0x7FD1</code></td><td>middle</td><td>1</td><td>the planting loop&#x27;s limit, <code>0x78</code> → <code>0x00</code></td></tr><tr><td><code>0x708A</code></td><td>middle</td><td>3</td><td>trampoline to the attribute routine</td></tr><tr><td><code>0x6600</code></td><td>middle</td><td>76</td><td><code>MUESTRA_LOS_VALORES</code></td></tr><tr><td><code>0x664C</code></td><td>middle</td><td>61</td><td>planting by side, drawing by side, and the deadline</td></tr><tr><td><code>0x7FC9</code></td><td>middle</td><td>5</td><td>planting hook</td></tr><tr><td><code>0x770A</code></td><td>middle</td><td>10</td><td>drawing hook</td></tr><tr><td><code>0x6F77</code></td><td>middle</td><td>5</td><td>ring hook</td></tr><tr><td><code>0xA1E7</code></td><td>high</td><td>36</td><td>the four tiles of the Eye of Sauron</td></tr></table>
+<p>The addresses are <b>execution</b> addresses. The &quot;middle&quot; block runs from <code>0x5E00</code> and the &quot;high&quot; one from <code>0x9E00</code>.</p>
+<h2 id="how-it-is-applied">How it is applied</h2>
+<p>The disassembly is never touched. It starts from the <b>block bodies</b> that <code>make extract</code> pulls out of your tape (<code>work/*.raw</code>, the same bytes without the Spectrum format&#x27;s wrapper), applies the table in <code>tools/parchea.py</code>, and rebuilds the cassette by re-wrapping each block with its flag in front and its XOR behind.</p>
+<p>Every entry in the table carries <b>the bytes it expects to find</b>. If they are not there, <code>make parche</code> aborts: wrong tape. And when it finishes it checks that, outside the table&#x27;s ranges, the body is identical to the original.</p>
+<h2 id="where-the-new-code-lives">Where the new code lives</h2>
+<p>The 137 bytes of new code — 76 for the attribute routine and 61 for the second round — are written <b>over the ZX Spectrum&#x27;s beeper engine</b>, at <code>0x6600</code>-<code>0x6688</code>.</p>
+<p>The conversion brought that engine across whole and <b>nothing ever calls it</b>: not one instruction in the five listings points at <code>0x6600</code>, and the four places that ask for a sound effect call <code>0x65FF</code>, which is a bare <code>ret</code>. Of the MSX&#x27;s PSG only two registers are ever written, 7 and 14, and both are for reading the joystick. This game is silent, and its silence gives us 276 bytes of room.</p>
+<h2 id="the-ips">The IPS</h2>
+<p><code>make ips</code> produces <b><code>war_parche.ips</code></b>: 249 bytes in eight records, holding only what changes. Verified on the spot — and in the tests — that <b>applied to <code>war.tsx</code> it gives back the patched cassette byte for byte</b>.</p>
+<p>That is what gets shared. Not the game.</p>
+<h2 id="the-checks">The checks</h2>
+<p><code>make test</code> is 23 of them, and they are not decoration. Among others:</p>
+<ul><li>that <b><code>orig</code> and <code>nuevo</code> are the same length</b> in all seven entries, i.e. nothing shifts;</li><li>that every entry <b>falls inside its block</b>;</li><li>that the table&#x27;s bytes are <b>exactly</b> what comes out of assembling <code>src/parche/ficha_valores.asm</code> and <code>src/parche/icono_enemigo.asm</code> with pasmo;</li><li>that the second round&#x27;s three hooks <b>point where they should</b> inside the new routine;</li><li>that the patch <b>never writes into the artwork table at <code>0x77B5</code></b>, which is the trap described in <a href="FINDINGS.html">Findings</a>;</li><li>that the four tiles of the Eye go into the slot that was all zeros and <b>with the same colour attribute as the friendly icon</b>;</li><li>and that the repository&#x27;s IPS <b>rebuilds the patched cassette</b>.</li></ul>
+<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

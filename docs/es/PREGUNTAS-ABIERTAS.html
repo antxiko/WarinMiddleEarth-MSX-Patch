@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Preguntas abiertas — War in Middle Earth (1989)</title>
+<title>Preguntas abiertas — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,30 +82,24 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-JUEGO.html">El juego</a><a href="LA-CINTA.html">La cinta</a><a href="EL-CODIGO.html">El código</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html" style=color:var(--tinta)>Preguntas abiertas</a><a href="../OPEN-QUESTIONS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html" style=color:var(--tinta)>Preguntas abiertas</a><a href="../OPEN-QUESTIONS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
 <h1 id="preguntas-abiertas">Preguntas abiertas</h1>
-<p><a href="EMPEZAR.html">Empezar</a> · <a href="EL-JUEGO.html">El juego</a> · <a href="LA-CINTA.html">La cinta</a> · <a href="EL-CODIGO.html">El codigo</a> · <a href="HALLAZGOS.html">Hallazgos</a></p>
-<p>Lo que queda abierto, separando lo MEDIDO de lo SUPUESTO. Lo medido lleva al lado la medida; lo supuesto va marcado como tal y <b>no se ha escrito en el listado como si fuera un hecho</b>.</p>
-<hr>
-<h2 id="medido-y-cerrado">MEDIDO, y cerrado</h2>
-<ul><li>La cinta entera: <b>62.261 bytes, 62.261 explicados, cero sin explicar</b>.</li><li>Los cinco listados <b>reensamblan byte a byte</b> con pasmo.</li><li><b>52 zonas de datos</b> declaradas, todas cruzadas contra el trazado.</li><li>Comentado al <b>29,7 %</b>, sin una sola rutina por debajo del 10 % de 767.</li><li>El presupuesto se cerró con la <b>partida completa de Araubi</b>: los 13,8 KB que quedaban sin ver eran las dos pantallas finales.</li></ul>
-<hr>
-<h2 id="supuesto-marcado-como-tal">SUPUESTO (marcado como tal)</h2>
-<ul><li><b>Que el bit 4 de <code>0xBD00+n</code> sea «lleva el Anillo».</b> Lo medido es que <code>0x733E</code> busca la primera unidad con ese bit, que el bucle de partida mira si esa unidad está en <code>(0x68, 0x3F)</code>, y que decide la victoria (<code>0x7F7D</code>) y la derrota (<code>0x9218</code>). Todo apunta al mismo sitio, pero el binario no lo dice con esas palabras.</li><li><b>Que las unidades <code>0x16</code> y <code>0x17</code> sean Sauron y Saruman.</b> La cadena es larga: <code>0x72FD</code> guarda el portador y hace <code>inc a</code> para marcar el renglón, y <code>0x7314</code> hace <code>dec a</code> al volver; luego renglón = unidad + 1 y el renglón 0 es «Vuelve», así que unidad <em>n</em> es el nombre <em>n+1</em> de la lista de <code>0x6B46</code>. Contando salen Gollum, Sauron y Saruman. Encaja con que <code>0x6AE3</code> se salte justo esas dos al pintar ejércitos y con que <code>0x7514</code> (elegir enemigo) acepte exactamente <code>{0x16, 0x17, &gt;= 0x78}</code>. Es una deducción, no una lectura directa.</li><li><b>Que las figuras se apilen de dos en dos.</b> Medido: cada sprite son 32 bytes de 16×8. Que las entradas consecutivas encajen en figuras de 16×16 es lo que se ve al dibujarlas, pero <b>no se ha encontrado la rutina que las apile</b>.</li></ul>
-<hr>
-<h2 id="abierto-lo-que-no-se-ha-podido-cerrar">ABIERTO: lo que no se ha podido cerrar</h2>
-<h3 id="1-el-interior-de-las-tablas-de-estado">1. El interior de las tablas de estado</h3>
-<p><code>0xB8E8</code>-<code>0xC600</code> y <code>0xE400</code>-<code>0xE678</code> están acotadas y se sabe quién las lee (<code>0x6AC2</code>, <code>0x6EAC</code>, <code>0x8F7A</code>, <code>0x92E4</code>, <code>0x81A9</code>, <code>0x8189</code>, <code>0x7FF0</code>), pero <b>no se han desmenuzado campo a campo</b>. Se llama X a <code>0xB900</code> y Y a <code>0xBA00</code> porque <code>0x8108</code> multiplica la primera por 102, que es el paso de columna, y <code>0x8166</code> recorre columnas en el bucle exterior; es consistente, no demostrado.</p>
-<h3 id="2-que-anade-la-segunda-pasada-del-mapa">2. Qué añade la segunda pasada del mapa</h3>
-<p>El dibujo del mapa hace tres pasadas. La segunda (<code>0x7714</code>) indexa <code>0x77B5</code> con <b>el mismo nibble bajo</b> que ya usó la pasada de terreno (<code>0x7687</code>), y no se ha podido decir qué aporta.</p>
-<h3 id="3-quien-pone-el-bit-7-de-un-byte-del-mapa">3. Quién pone el bit 7 de un byte del mapa</h3>
-<p>La tercera pasada de <code>0x7708</code> sólo pinta si ese bit está puesto. Se pone desde <code>0x8F70</code>, <code>0x8044</code> y <code>0x80BD</code>, pero no se ha cerrado con qué criterio.</p>
-<h3 id="4-el-trasiego-de-nibbles-con-la-cuenta-atras">4. El trasiego de nibbles con la cuenta atrás</h3>
-<p><code>0x6A76</code>-<code>0x6A94</code> coge el operando de <code>0x8333</code> —que es la cuenta atrás de meses, puesta a 255 en <code>0x7F4F</code>—, lo guarda <b>multiplicado por 16</b> y mete su nibble alto menos uno en el nibble bajo de <code>0xC000+portador</code>. Con 255 dentro, eso deja la cuenta atrás en 240 a la primera y en 0 a la segunda. O es un castigo intencionado, o ese byte tiene un segundo uso que no se ha sabido ver. Está comentado describiendo <b>lo que hace</b>, sin interpretarlo.</p>
-<h3 id="5-0x9144-lee-lo-que-0x904d-acaba-de-borrar">5. <code>0x9144</code> lee lo que <code>0x904D</code> acaba de borrar</h3>
-<p>En la misma rutina, a unas pocas instrucciones: <code>0x904D</code> pone a cero <code>0x5E00</code>+<code>0x4FF</code> —<code>0x6010</code> incluido— y <code>0x9144</code> hace luego <code>ld hl,0x6010 / ld a,(hl) / ld (0x8B19),a</code>. O está pensado para leer el tablero de batalla, o es un resto del Spectrum donde ese byte estaba en otro sitio. Se ha comentado el mecanismo, no la intención.</p>
-<h3 id="6-filas-de-tiles-que-se-calculan-y-no-se-dibujan">6. Filas de tiles que se calculan y no se dibujan</h3>
-<p><code>0x86AF</code> calcula <b>19 filas</b> de tiles (<code>ld c,0x13</code> en <code>0x86CC</code>) pero el bucle que dibuja hace 16×16. Tres filas que se preparan y no se ven.</p>
-<h3 id="7-dos-rangos-que-habria-que-separar">7. Dos rangos que habría que separar</h3>
-<p>Hoy están dentro de <code>textos_de_los_paneles</code> y merecen nombre propio: <code>0x83F8</code>-<code>0x83FB</code>, que son los cuatro rellenos de dos bits (<code>00</code>, <code>FF</code>, <code>AA</code>, <code>55</code>), y <code>0x846F</code>-<code>0x8496</code>, que son las cinco texturas de terreno que escoge <code>0x80BD</code>.</p>
-<footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación.</p></footer></div>
+<p>Lo que no está hecho, lo que no se sabe, y lo que hace falta para cerrarlo.</p>
+<h2 id="nadie-ha-jugado-una-partida-entera">Nadie ha jugado una partida entera</h2>
+<p>Es lo más importante de esta página. El parche está medido instante a instante en el emulador, pero <b>nadie se ha sentado a jugar una partida completa con él puesto</b>. Todo lo que sigue son cosas que sólo se ven jugando.</p>
+<p>Si lo juegas, lo que interesa saber:</p>
+<ul><li>si el número de la ficha <b>se come alguna letra</b> en algún tipo de unidad;</li><li>si el plazo del Anillo <b>baja como debe</b> al pasar los meses;</li><li>si en alguna pantalla aparece un Ojo <b>donde no hay nadie</b>;</li><li>y si el juego se comporta raro en la batalla, que es la parte que este parche no toca pero comparte memoria con lo que sí.</li></ul>
+<h2 id="la-ficha-en-todos-los-tipos-de-unidad">La ficha, en todos los tipos de unidad</h2>
+<p>Se ha visto en <b>Gandalf</b> (Brujo) y en <b>Frodo</b> (Hobbit), y en las dos cabe. Pero las etiquetas de la ficha son de longitud variable —«Es muy Decidido ,» es larga— y los números van en la columna 20. Falta comprobar los demás tipos.</p>
+<h2 id="dos-unidades-enemigas-siguen-invisibles">Dos unidades enemigas siguen invisibles</h2>
+<p>El bucle de siembra se salta a propósito las ranuras <code>0x16</code> y <code>0x17</code>, y las dos son enemigas. De las diez casillas con enemigos dentro se siembran nueve.</p>
+<p><b>Lo que no se sabe: por qué.</b> El juego las trata distinto en más sitios —el bucle que colorea las casillas de unidad (<code>0x6AE3</code>) también las salta, y hay una rutina, <code>PON_EL_EJERCITO_16_EN_SU_SITIO</code> (<code>0x922C</code>), dedicada a recolocar la <code>0x16</code>—, así que parece que son algo especial y no un descuido. Hacerlas visibles sin saber qué son es pedir un problema.</p>
+<h2 id="el-plazo-solo-se-ve-abriendo-la-ficha-del-portador">El plazo sólo se ve abriendo la ficha del portador</h2>
+<p>Hoy el número sale en la ficha, que es donde el juego dibuja el anillo. Un contador <b>siempre en pantalla</b> pediría enganchar el bucle de partida (<code>0x7F57</code>) y escribir en la pantalla ZX cada cuadro: es código nuevo, con más riesgo, y sin forma de comprobarlo sin jugar un rato.</p>
+<p>El gancho está localizado: <code>0x733E</code> da el portador, <code>0x8333</code> el valor y <code>0x7113</code> sabe pintar el número.</p>
+<h2 id="el-ojo-en-rojo">El Ojo, en rojo</h2>
+<p>El atributo de los cuatro tiles es <code>0x38</code> —tinta negra sobre papel blanco—, el mismo que el del icono aliado. Ponerlo en <b>tinta roja</b> sería un byte por cuadrante, cuatro en total.</p>
+<p>No se ha hecho porque el color del ZX va por celda de 8×8 y habría que ver en pantalla si el rojo sobre el tramado del mapa se lee bien o ensucia. Es una prueba, no un problema.</p>
+<h2 id="lo-que-este-parche-no-toca">Lo que este parche no toca</h2>
+<ul><li><b>La batalla.</b> El tablero se monta encima del código del menú y tiene sus propias rutinas de bando; nada de lo de aquí entra ahí.</li><li><b>El equilibrio del juego.</b> No se ha cambiado ni un valor de unidad, ni el plazo, ni la corrupción. Sólo se enseña lo que ya había.</li><li><b>El sonido.</b> Sigue mudo. El motor del altavoz que la conversión trajo está, ahora, medio ocupado por este parche.</li></ul>
+<footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>

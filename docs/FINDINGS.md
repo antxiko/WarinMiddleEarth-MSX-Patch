@@ -1,166 +1,91 @@
 # Findings
 
-[Getting started](GETTING-STARTED.html) · [The game](THE-GAME.html) · [The tape](THE-TAPE.html) · [The code](THE-CODE.html) · [Open questions](OPEN-QUESTIONS.html)
+What turned up while making the patch, including what went wrong.
 
-Almost everything on this page came out of reading the listing instruction by
-instruction in order to comment it. Each item carries its address, which is what
-lets anyone check it.
+## Bit 5 of the map byte was free
 
----
+Each map cell is one byte: the low nibble is the terrain, **bit 7** is "someone
+is here" and **bit 6** is "cell with an order under way". Nothing was known
+about bit 5, so it was counted across the **13,260 cells** of a freshly started
+game:
 
-## 1. The game is silent, and you can point at where the sound stopped
+    bit 0: 1340   bit 4:   10
+    bit 1: 6683   bit 5:    0   <- free
+    bit 2: 1957   bit 6:    0
+    bit 3: 2148   bit 7:   28
 
-The conversion brought the Spectrum's **whole** sound engine across: it sits at
-`0x6600`, drives the notes through `out (0xFE)` with bit 4 — the ZX beeper —
-and behind it are five twenty-one-byte effects at `0x636F`-`0x63D7`.
+Zero uses. The side marker fits there without taking anything away from the game.
+Bit 6 also reads zero at that instant, but **that one has an owner**:
+`PINTA_LA_UNIDAD` uses it for the "order under way" artwork.
 
-**Nothing ever calls it.** Not one instruction in the five listings points at
-`0x6600`.
+## Zeroed slots in a table are not free slots
 
-And the four places that ask for an effect — `0x5F90`, `0x647A`, `0x6AA1` and
-`0x833D` — call `0x65FF`, which is **a bare `ret`**.
+The two-by-two artwork table at `0x77B5` has six entirely zeroed entries —
+`0x00`, `0x01`, `0x03`, `0x04`, `0x05` and `0x06` — and they looked like plenty
+of room for the new icon.
 
-What about the MSX's PSG? Exactly **two registers are ever written, 7 and 14**,
-and both in the joystick routine at `0x046E`: 7 to set the ports as input, 14 to
-read them. Not one tone or volume register in the whole tape. The one routine
-that would know how to write a note to the PSG, `0x04F2`, is never called
-either, and was already annotated as dead code.
+**They were not.** `PINTA_LO_DE_ENCIMA` (`0x7714`) picks its entry with an
+`and 00fh` over the terrain's low nibble, so indices `0x00`-`0x0F` already have
+an owner even when empty: a zero in that table does not mean "free", it means
+**"this cell draws nothing on top"**.
 
-There is no third path. **This game makes no sound.**
+Putting the Eye in slot `0x03` gave it to all **447 cells of terrain type 3** on
+the map. It showed up on the first run and was thrown away.
 
----
+The way out was not to use an index at all: point HL at our own list of four
+codes and enter `ESTAMPA_DOS_POR_DOS` **past its arithmetic**, at `0x7720`,
+which is exactly where that routine does its first `ld a,(hl)`. The stamping is
+still the game's; only the list is ours.
 
-## 2. `0x62FF` is not the cursor's artwork: it is what the cursor covers up
+## Two enemy units cannot be made visible
 
-Those 24 bytes were documented, in this very project, as "the cursor mark's
-drawing". **That is false**, and the listing leaves no room for doubt.
-
-`0x6580` loads `0x62FF` into the alternate HL, and the loop at
-`0x65B4`-`0x65D5`, for each of the column's three bytes, does this:
-
-```
-65B4  ld a,(iy+000h)   ; READS the screen
-65B7  exx
-65B8  ld (hl),a        ; and saves it at 0x62FF++
-65B9  inc hl
-65BA  exx
-65BB  and e            ; and ONLY THEN composites the cursor
-65BC  or b
-65BD  ld (iy+000h),a
-```
-
-And `0x64DC` walks it back (`ld a,(de) / ld (hl),a`) to erase.
-
-The real artwork is at `0x6345`, with its mask behind it (`ld ix,0x6345` at
-`0x657B`).
-
-The lovely part is what that makes of the bytes the tape carries: the `0xAD`
-bytes sitting at `0x62FF` are not a drawing, they are **whatever was underneath
-the cursor the day the tape was recorded**.
-
----
-
-## 3. The map tiles are nine bytes long
-
-An MSX tile takes eight bytes. This game's map tiles take **nine**: the eight
-lines of the drawing and, glued behind them, **a ZX Spectrum attribute** — ink
-in bits 0-2, paper in 3-5, bright in 6.
-
-`0x75C7`-`0x75EB` read them when the grid code has bit 7 set. The conversion did
-not redraw the artwork: it brought the Spectrum's across with its colour already
-attached and translates it on the fly, with the routine at `0x049F`, which turns
-a Spectrum attribute into a SCREEN 2 colour byte.
-
-It is the cleanest fingerprint of the conversion anywhere on the tape, and it is
-why the tiles in the gallery come out in their real colours: the attribute they
-carry inside is read.
-
----
-
-## 4. The battle board is built on top of the menu, and it is a draughtboard
-
-Battle uses `0x5E00`-`0x62FF`, which is **where the menu's code lives**.
-`0x8E08` says so with its `ld b,0x5E`, and the `ldir` at `0x904D` wipes 0x500
-bytes there before every battle. Once a game has started, the menu and its text
-are scrap paper.
-
-And the board is a **draughtboard**: the four movement routines (`0x893E`,
-`0x894D`, `0x895C`, `0x896B`) always change both coordinates at once — the first
-one, for instance, does `inc b / dec c` — so the parity of x+y never changes.
-The figures **only move diagonally**. Deployment (`0x8D6E`) rejects any pair
-whose parities differ, and the obstacles (`0x9079`) go on exactly the squares of
-the other colour.
-
----
-
-## 5. The friend-or-foe filter is an opcode switch
-
-To walk the other side's units the game uses neither a flag nor a branch: **it
-rewrites the instruction**.
+The planting loop skips slots `0x16` and `0x17` **on purpose**:
 
 ```
-8980  ld a,0d0h        ; 0xD0 = ret nc
-8982  ld (08af3h),a
-...
-8991  ld a,0d8h        ; 0xD8 = ret c
-8993  ld (08af3h),a
+7FB2  ld a,c
+7FB3  cp 016h      ; 0x16 is not marked
+7FB5  jr z,L_7FCE
+7FB7  cp 017h      ; nor is 0x17
+7FB9  jr z,L_7FCE
 ```
 
-The same routine, with the same threshold, hands back one side's units or the
-other's depending on which **opcode** was written over it a moment earlier.
+And both belong to the enemy side. At the start of a game there are **ten cells**
+with enemies in them and the patch plants **nine**: (111,64), where only `0x16`
+sits, still goes undrawn. `0x17` does appear, but only because it shares a cell
+— (65,54) — with thirty-six others.
 
----
+Why the game holds them apart is an [open question](OPEN-QUESTIONS.md).
 
-## 6. The map travels compressed, and gets recompressed before every battle
+## The Ring request had been misread
 
-`0x9366` moves the map's `0x16ED` compressed bytes out to `0x4000` with an
-`ldir` and then expands them into the `0x33CD` at `0xCC00`, reading count/value
-pairs. `0x5E28` calls it at boot: the map **arrives from tape already
-compressed**.
+The first version of this work took it as read that "the corruption **is** the
+bearer's `0xC300` counter". That counter does go up one every month —
+`SUMA_UN_MES_A_LOS_CONTADORES` (`0x834A`) raises all 256 at once — but **it is
+not what kills you**: nobody else reads it against a threshold.
 
-And `0x9394` does the reverse before every battle, packing it back down to
-`0x16EC` bytes. That is not to save tape — the tape is already recorded — it is
-to **make room in RAM**: what it frees, `0xE2EC`-`0xFFFF`, is exactly where the
-battle buffers live.
+What kills you is the **countdown of months** in the operand at `0x8333`, which
+starts at 255, drops by one each month and jumps to `DERROTA` at zero. And the
+message the game prints that same month is *"El Anillo corrompe al que lo usa."*,
+so it is the game itself that ties the two together.
 
----
+Finding who *writes* a variable is not enough: you have to find **who decides
+with it**.
 
-## 7. The battle sprites are not laid out the way they look
+## The game is silent, and its silence is where the patch lives
 
-176 sprites of 16×8 with a mask, 32 bytes each, at `0xA2E8` + `(type-4)*32`. But
-those 32 bytes are **not "16 of drawing and 16 of mask"**: they go in **pairs**,
-mask first and drawing behind, because the routine that paints them does
-`and (hl) / inc hl / or (hl) / inc hl` for every screen byte.
+The conversion brought the Spectrum's whole beeper engine across, at `0x6600`,
+with five twenty-one-byte effects behind it. **Nothing ever calls it**: not one
+instruction in the five listings points there, and the four places that ask for
+an effect call `0x65FF`, a bare `ret`. Of the MSX's PSG only registers 7 and 14
+are ever written, both to read the joystick.
 
-And they do not run top to bottom but in **zig-zag**: `0x887B` writes the left,
-`inc e` to the right, `inc d` to drop a line and `dec e` to come back left,
-saving itself the trouble of reloading DE. Drawing them assuming the obvious
-order gives convincing noise, which is the worst kind of error.
+This patch's 137 bytes of new code live inside that.
 
----
+## Writing into the sheet means saving the registers
 
-## 8. Spectrum leftovers that mean nothing on an MSX
+`ANILLO_CON_PLAZO` calls `ESCRIBE_A_EN_TRES_CIFRAS`, which leaves HL three bytes
+further on. What follows in the sheet, `DESCRIBE_EL_DESTINO` (`0x6F7C`), **relies
+on the HL it was handed**. Without saving it the sheet gets written somewhere
+else: with half the Fellowship's names on top of it.
 
-- The menu's **control mode 2** — the Spectrum's Interface Two — does not exist
-  here: its pointer, at `0x06D7`, is `0x0000`, which is why the menu jumps from
-  1 to 3.
-- The ZX keyboard block at `0x5F75`-`0x5FB7`, which reads port `0xFE`, is dead
-  code.
-- And in the **save-game** routine the break-key check was never converted:
-  `0x0930` does `in a,(0xFE)`, which on an MSX is not the keyboard.
-
----
-
-## 9. Things that never get to run
-
-- **`0x68C8`: the `ld a,0x3C` is good for nothing.** `L_67C5` is only entered
-  from `L_67B0` (`0x67B4` and `0x67BE` are the only two references), and there C
-  is 0, 2 or 3. With C=0 execution never reaches it, so at `0x68CA` bit 1 of C
-  is always set, the `inc a` always runs and A always comes out `0x3D`.
-  Consequence: a unit records in bit 7 of its coordinates which way it was going
-  round an obstacle, but on resuming it **always turns the same way**.
-- **`ld hl,(0x6543)` at `0x6578` is a dead load**: `0x658F` overwrites it before
-  it is used, and the only exit in between (`jr nc,L_65F9`) does not touch HL
-  either.
-- **The font at `0xC800` starts empty**: codes `0x00`-`0x20` are **33 characters
-  of zeros**, counted byte by byte. The first one with any drawing is `0x21`.
+That is not a guess: it was tried without saving, and the sheet came out broken.

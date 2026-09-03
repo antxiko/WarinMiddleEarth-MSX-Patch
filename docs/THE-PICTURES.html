@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Findings — War in Middle Earth (MSX)</title>
+<title>The pictures — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,38 +82,28 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html" style=color:var(--tinta)>Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/HALLAZGOS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
-<h1 id="findings">Findings</h1>
-<p>What turned up while making the patch, including what went wrong.</p>
-<h2 id="bit-5-of-the-map-byte-was-free">Bit 5 of the map byte was free</h2>
-<p>Each map cell is one byte: the low nibble is the terrain, <b>bit 7</b> is &quot;someone is here&quot; and <b>bit 6</b> is &quot;cell with an order under way&quot;. Nothing was known about bit 5, so it was counted across the <b>13,260 cells</b> of a freshly started game:</p>
-<pre><code>bit 0: 1340   bit 4:   10
-bit 1: 6683   bit 5:    0   &lt;- free
-bit 2: 1957   bit 6:    0
-bit 3: 2148   bit 7:   28</code></pre>
-<p>Zero uses. The side marker fits there without taking anything away from the game. Bit 6 also reads zero at that instant, but <b>that one has an owner</b>: <code>PINTA_LA_UNIDAD</code> uses it for the &quot;order under way&quot; artwork.</p>
-<h2 id="zeroed-slots-in-a-table-are-not-free-slots">Zeroed slots in a table are not free slots</h2>
-<p>The two-by-two artwork table at <code>0x77B5</code> has six entirely zeroed entries — <code>0x00</code>, <code>0x01</code>, <code>0x03</code>, <code>0x04</code>, <code>0x05</code> and <code>0x06</code> — and they looked like plenty of room for the new icon.</p>
-<p><b>They were not.</b> <code>PINTA_LO_DE_ENCIMA</code> (<code>0x7714</code>) picks its entry with an <code>and 00fh</code> over the terrain&#x27;s low nibble, so indices <code>0x00</code>-<code>0x0F</code> already have an owner even when empty: a zero in that table does not mean &quot;free&quot;, it means <b>&quot;this cell draws nothing on top&quot;</b>.</p>
-<p>Putting the Eye in slot <code>0x03</code> gave it to all <b>447 cells of terrain type 3</b> on the map. It showed up on the first run and was thrown away.</p>
-<p>The way out was not to use an index at all: point HL at our own list of four codes and enter <code>ESTAMPA_DOS_POR_DOS</code> <b>past its arithmetic</b>, at <code>0x7720</code>, which is exactly where that routine does its first <code>ld a,(hl)</code>. The stamping is still the game&#x27;s; only the list is ours.</p>
-<h2 id="two-enemy-units-cannot-be-made-visible">Two enemy units cannot be made visible</h2>
-<p>The planting loop skips slots <code>0x16</code> and <code>0x17</code> <b>on purpose</b>:</p>
-<pre><code>7FB2  ld a,c
-7FB3  cp 016h      ; 0x16 is not marked
-7FB5  jr z,L_7FCE
-7FB7  cp 017h      ; nor is 0x17
-7FB9  jr z,L_7FCE</code></pre>
-<p>And both belong to the enemy side. At the start of a game there are <b>ten cells</b> with enemies in them and the patch plants <b>nine</b>: (111,64), where only <code>0x16</code> sits, still goes undrawn. <code>0x17</code> does appear, but only because it shares a cell — (65,54) — with thirty-six others.</p>
-<p>Why the game holds them apart is an <a href="OPEN-QUESTIONS.html">open question</a>.</p>
-<h2 id="the-ring-request-had-been-misread">The Ring request had been misread</h2>
-<p>The first version of this work took it as read that &quot;the corruption <b>is</b> the bearer&#x27;s <code>0xC300</code> counter&quot;. That counter does go up one every month — <code>SUMA_UN_MES_A_LOS_CONTADORES</code> (<code>0x834A</code>) raises all 256 at once — but <b>it is not what kills you</b>: nobody else reads it against a threshold.</p>
-<p>What kills you is the <b>countdown of months</b> in the operand at <code>0x8333</code>, which starts at 255, drops by one each month and jumps to <code>DERROTA</code> at zero. And the message the game prints that same month is <em>&quot;El Anillo corrompe al que lo usa.&quot;</em>, so it is the game itself that ties the two together.</p>
-<p>Finding who <em>writes</em> a variable is not enough: you have to find <b>who decides with it</b>.</p>
-<h2 id="the-game-is-silent-and-its-silence-is-where-the-patch-lives">The game is silent, and its silence is where the patch lives</h2>
-<p>The conversion brought the Spectrum&#x27;s whole beeper engine across, at <code>0x6600</code>, with five twenty-one-byte effects behind it. <b>Nothing ever calls it</b>: not one instruction in the five listings points there, and the four places that ask for an effect call <code>0x65FF</code>, a bare <code>ret</code>. Of the MSX&#x27;s PSG only registers 7 and 14 are ever written, both to read the joystick.</p>
-<p>This patch&#x27;s 137 bytes of new code live inside that.</p>
-<h2 id="writing-into-the-sheet-means-saving-the-registers">Writing into the sheet means saving the registers</h2>
-<p><code>ANILLO_CON_PLAZO</code> calls <code>ESCRIBE_A_EN_TRES_CIFRAS</code>, which leaves HL three bytes further on. What follows in the sheet, <code>DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), <b>relies on the HL it was handed</b>. Without saving it the sheet gets written somewhere else: with half the Fellowship&#x27;s names on top of it.</p>
-<p>That is not a guess: it was tried without saving, and the sheet came out broken.</p>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html" style=color:var(--tinta)>The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/LAS-IMAGENES.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="the-pictures">The pictures</h1>
+<p>Not one picture on this site is a screenshot, and <b>it cannot be</b>. This page explains why and what is done instead, because the method works for any game that behaves the same way.</p>
+<h2 id="the-problem-the-screen-is-never-still">The problem: the screen is never still</h2>
+<p>The first &quot;without / with&quot; pair came out with <b>33 % of its pixels different</b>, and that for a change which only adds three silhouettes. Before trusting that number it needed a control, and the control demolished it:</p>
+<table><tr><th>measurement</th><th>pixels differing</th></tr><tr><td>two runs of the <b>same</b> state, photo against photo</td><td><b>0.0 %</b></td></tr><tr><td>two photos of the same state <b>3 s</b> apart</td><td><b>37 %</b></td></tr><tr><td>without the patch against with it</td><td>33 %</td></tr></table>
+<p>So: the emulation is deterministic — two identical runs give the same picture to the pixel — but <b>the game re-uploads the screen to the VDP constantly</b> and the capture catches the upload half done. Comparing photographs, here, proves nothing.</p>
+<h2 id="the-way-out-the-spectrum-s-buffer">The way out: the Spectrum&#x27;s buffer</h2>
+<p>This conversion does not draw into the MSX&#x27;s VRAM: it draws into <b>a ZX Spectrum screen assembled in RAM</b>, at the same addresses a Spectrum would use, and uploads the lot every so often.</p>
+<ul><li><code>0x4000</code>-<code>0x57FF</code>: the 6,144 bytes of bitmap, with the Spectrum&#x27;s tangle (third, pixel line, character row).</li><li><code>0x5800</code>-<code>0x5AFF</code>: the 768 attributes, one per 8×8 cell.</li><li><code>PANTALLA_A_VRAM</code> (<code>0x05BD</code>) uploads them untangling the order, and <code>ATRIBUTOS_A_VRAM</code> (<code>0x0604</code>) translates each ZX attribute into the MSX&#x27;s colour byte using <b>the table at <code>0x0200</code></b>, which the game itself fills in at boot.</li></ul>
+<p>So what gets dumped is that buffer, at a fixed instant, and <code>tools/render_zx.py</code> draws it <b>with the cartridge&#x27;s own colour table</b>, not with an invented palette.</p>
+<h2 id="that-the-buffer-is-still-measured">That the buffer <em>is</em> still, measured</h2>
+<p>Two dumps of the same state <b>fifteen emulated seconds</b> apart:</p>
+<pre><code>32 bytes differing out of 6,912</code></pre>
+<p>and all 32 are columns 14 and 15, pixel rows 81 to 88: <b>the cursor blinking</b>. Everything else identical.</p>
+<h2 id="how-a-pair-is-made">How a pair is made</h2>
+<p><code>tools/omsx_zx.tcl</code> starts from a saved state at the menu, writes the cursor position, forces a fire — which is what triggers <code>RECENTRA_EL_MAPA</code> — and dumps the buffer. It is run twice, once with the original cassette and once with the patched one, <b>with the same parameters</b>, and both dumps are drawn.</p>
+<p>With that, whatever differs between the two pictures is the patch.</p>
+<h2 id="three-emulator-traps-that-turned-up-on-the-way">Three emulator traps that turned up on the way</h2>
+<p><b>A <code>return</code> inside an openMSX breakpoint body kills it</b>, silently: it stops firing and nothing complains. And <b>two breakpoints at the same address</b> are no good either: the second is never registered, the first keeps working, and it looks as if that code never runs.</p>
+<p><b>You cannot write a game variable &quot;just to look&quot;.</b> To see another unit&#x27;s sheet we tried writing the <code>0x6EAD</code> selector from the debugger, three different ways, and all three ended with the game acting on that unit and building another screen on top of the patched code. You can tell because the patch&#x27;s bytes stop being where they were put — which is why the dump re-reads them and logs them.</p>
+<p>What does work is <b>handing the game the input a player would give it</b>: a breakpoint where it reads the controls, and forcing the key&#x27;s bit there. The path is in the listing itself: fire over the cell (<code>0x7229</code>) to enter <code>ELIGE_ENTRE_LAS_DE_LA_CASILLA</code>, then &quot;next&quot; (<code>0x775B</code>) until you reach the unit you want to see.</p>
+<h2 id="the-tools">The tools</h2>
+<table><tr><th>tool</th><th>what it does</th></tr><tr><td><code>tools/omsx_zx.tcl</code></td><td>dumps the ZX buffer, the colour table and the map</td></tr><tr><td><code>tools/render_zx.py</code></td><td>draws it to PNG with the cartridge&#x27;s colours</td></tr><tr><td><code>tools/omsx_mapa.tcl</code></td><td>dumps just the <code>0xCC00</code> map, for counting cells</td></tr><tr><td><code>tools/omsx_censo.tcl</code></td><td>dumps all 256 unit slots at the start of a game</td></tr><tr><td><code>tools/render_icono.py</code></td><td>draws one 2×2 entry of the <code>0x77B5</code> table</td></tr><tr><td><code>tools/icono_a_tiles.py</code></td><td>turns a 16×16 PNG into the four nine-byte tiles</td></tr></table>
 <footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

@@ -21,21 +21,21 @@ from estilo_web import ESTILO  # noqa: E402
 # Un menu por idioma. La web se publica en ingles en la raiz de docs/ y en
 # castellano bajo docs/es/.
 NAV_EN = [("index.html", "Home"), ("GETTING-STARTED.html", "Start"),
-          ("THE-GAME.html", "The game"), ("THE-TAPE.html", "The tape"),
-          ("THE-CODE.html", "The code"), ("FINDINGS.html", "Findings"),
+          ("THE-PATCH.html", "The patch"), ("HOW-IT-WORKS.html", "How it works"),
+          ("THE-PICTURES.html", "The pictures"), ("FINDINGS.html", "Findings"),
           ("OPEN-QUESTIONS.html", "Open questions")]
 NAV_ES = [("index.html", "Portada"), ("EMPEZAR.html", "Empezar"),
-          ("EL-JUEGO.html", "El juego"), ("LA-CINTA.html", "La cinta"),
-          ("EL-CODIGO.html", "El código"), ("HALLAZGOS.html", "Hallazgos"),
+          ("EL-PARCHE.html", "El parche"), ("COMO-FUNCIONA.html", "Cómo funciona"),
+          ("LAS-IMAGENES.html", "Las imágenes"), ("HALLAZGOS.html", "Hallazgos"),
           ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")]
 
 # Cada documento se llama distinto en cada idioma, asi que el selector de idioma
 # necesita saber cual es la pareja de cada pagina. Sin esto, cambiar de idioma te
 # devuelve a la portada y pierdes por donde ibas.
 _PAREJAS = [("GETTING-STARTED.html", "EMPEZAR.html"),
-            ("THE-GAME.html", "EL-JUEGO.html"),
-            ("THE-TAPE.html", "LA-CINTA.html"),
-            ("THE-CODE.html", "EL-CODIGO.html"),
+            ("THE-PATCH.html", "EL-PARCHE.html"),
+            ("HOW-IT-WORKS.html", "COMO-FUNCIONA.html"),
+            ("THE-PICTURES.html", "LAS-IMAGENES.html"),
             ("FINDINGS.html", "HALLAZGOS.html"),
             ("OPEN-QUESTIONS.html", "PREGUNTAS-ABIERTAS.html")]
 PAREJA = {}
@@ -54,13 +54,15 @@ PIE = {
           "PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el "
           "menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego "
           "siguen siendo de sus titulares. Este trabajo es de preservación, estudio y "
-          "documentación.",
+          "documentación. El parche es <b>extraoficial</b> y no lo respalda "
+          "ninguno de los anteriores.",
     "en": "<em>War in Middle Earth</em> was published by Melbourne House and "
           "distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM "
           "GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by "
           "ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in "
           "the game remain with their holders. This is preservation, study and "
-          "documentation work.",
+          "documentation work. The patch is <b>unofficial</b> and none of the "
+          "above endorse it.",
 }
 
 
@@ -90,8 +92,9 @@ def enlinea(t):
 
 # La web se sirve desde docs/, asi que lo que este fuera de esa carpeta no
 # existe para el navegador: esos enlaces se mandan al repositorio.
+# Este es el repositorio del PARCHE, que va por separado del desensamblado.
 REPO = os.environ.get("WARMIDDLEEARTH_REPO",
-                      "https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly")
+                      "https://github.com/antxiko/WarinMiddleEarth-MSX-Patch")
 
 
 def ruta(href):
@@ -230,7 +233,7 @@ def main(docdir, idioma="en"):
         dst = os.path.join(docdir, fn[:-3] + ".html")
         texto = open(src, encoding="utf-8").read()
         m = re.search(r"^#\s+(.*)$", texto, re.M)
-        titulo = (m.group(1) if m else fn[:-3]) + " — War in Middle Earth (1989)"
+        titulo = (m.group(1) if m else fn[:-3]) + " — War in Middle Earth (MSX)"
         open(dst, "w", encoding="utf-8").write(
             convierte(texto, titulo, fn[:-3] + ".html", idioma))
         print(f"  {fn} -> {os.path.basename(dst)}")

@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hallazgos — War in Middle Earth (MSX)</title>
+<title>El parche — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,38 +82,22 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html" style=color:var(--tinta)>Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../FINDINGS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
-<h1 id="hallazgos">Hallazgos</h1>
-<p>Lo que apareció al hacer el parche, incluido lo que salió mal.</p>
-<h2 id="el-bit-5-del-byte-de-mapa-estaba-libre">El bit 5 del byte de mapa estaba libre</h2>
-<p>Cada casilla del mapa es un byte: el nibble bajo es el terreno, el <b>bit 7</b> es «aquí hay alguien» y el <b>bit 6</b> es «casilla con una orden en marcha». Del bit 5 no se sabía nada, así que se contó sobre las <b>13.260 casillas</b> de una partida recién empezada:</p>
-<pre><code>bit 0: 1340   bit 4:   10
-bit 1: 6683   bit 5:    0   &lt;- libre
-bit 2: 1957   bit 6:    0
-bit 3: 2148   bit 7:   28</code></pre>
-<p>Cero usos. Ahí cabe la marca de bando sin quitarle nada al juego. El bit 6 también sale a cero en ese instante, pero <b>ese tiene dueño</b>: lo usa <code>PINTA_LA_UNIDAD</code> para el dibujo de «orden en marcha».</p>
-<h2 id="los-huecos-a-cero-de-una-tabla-no-son-huecos-libres">Los huecos a cero de una tabla no son huecos libres</h2>
-<p>La tabla de cuadros de dos por dos de <code>0x77B5</code> tiene seis entradas enteramente a cero —<code>0x00</code>, <code>0x01</code>, <code>0x03</code>, <code>0x04</code>, <code>0x05</code> y <code>0x06</code>— y parecían sitio de sobra para el icono nuevo.</p>
-<p><b>No lo eran.</b> <code>PINTA_LO_DE_ENCIMA</code> (<code>0x7714</code>) elige entrada con un <code>and 00fh</code> sobre el nibble bajo del terreno, así que los índices <code>0x00</code>-<code>0x0F</code> ya tienen dueño aunque estén vacíos: un cero en esa tabla no significa «libre», significa <b>«esta casilla no dibuja nada encima»</b>.</p>
-<p>Poner el Ojo en el hueco <code>0x03</code> se lo puso a las <b>447 casillas de terreno de tipo 3</b> del mapa. Se vio a la primera pasada y se tiró.</p>
-<p>La salida fue no usar índice: apuntar HL a una lista propia de cuatro códigos y entrar en <code>ESTAMPA_DOS_POR_DOS</code> <b>pasada su aritmética</b>, en <code>0x7720</code>, que es justo donde esa rutina hace su primer <code>ld a,(hl)</code>. El estampado sigue siendo el del juego; sólo la lista es nuestra.</p>
-<h2 id="dos-unidades-enemigas-no-se-pueden-hacer-visibles">Dos unidades enemigas no se pueden hacer visibles</h2>
-<p>El bucle de siembra se salta <b>a propósito</b> las ranuras <code>0x16</code> y <code>0x17</code>:</p>
-<pre><code>7FB2  ld a,c
-7FB3  cp 016h      ; la 0x16 no se marca
-7FB5  jr z,L_7FCE
-7FB7  cp 017h      ; la 0x17 tampoco
-7FB9  jr z,L_7FCE</code></pre>
-<p>Y las dos son del bando enemigo. Al empezar la partida hay <b>diez casillas</b> con enemigos dentro y el parche siembra <b>nueve</b>: la (111,64), donde sólo está la <code>0x16</code>, sigue sin dibujarse. La <code>0x17</code> sí sale, pero porque comparte casilla —la (65,54)— con otras treinta y seis.</p>
-<p>Por qué el juego las aparta es una <a href="PREGUNTAS-ABIERTAS.html">pregunta abierta</a>.</p>
-<h2 id="la-peticion-del-anillo-estaba-mal-leida">La petición del Anillo estaba mal leída</h2>
-<p>La primera versión de este trabajo dio por bueno que «la corrupción <b>es</b> el contador <code>0xC300</code> del portador». Es verdad que ese contador sube un punto al mes —lo hace <code>SUMA_UN_MES_A_LOS_CONTADORES</code> (<code>0x834A</code>), a los 256 a la vez—, pero <b>no es lo que mata</b>: nadie más lo lee con un umbral.</p>
-<p>Lo que mata es la <b>cuenta atrás de meses</b> del operando de <code>0x8333</code>, que empieza en 255, baja uno cada mes y a cero salta a <code>DERROTA</code>. Y el mensaje que el juego saca ese mismo mes es <em>«El Anillo corrompe al que lo usa.»</em>, así que es él quien ata las dos cosas.</p>
-<p>Buscar quién <em>escribe</em> una variable no basta: hay que ver <b>quién decide con ella</b>.</p>
-<h2 id="el-juego-es-mudo-y-su-silencio-es-el-sitio-del-parche">El juego es mudo, y su silencio es el sitio del parche</h2>
-<p>La conversión trajo el motor del altavoz del Spectrum entero, en <code>0x6600</code>, con cinco efectos de veintiún bytes detrás. <b>No lo llama nadie</b>: ni una instrucción de los cinco listados apunta ahí, y los cuatro sitios que piden un efecto llaman a <code>0x65FF</code>, que es un <code>ret</code> pelado. Del PSG del MSX sólo se escriben los registros 7 y 14, los dos para leer el joystick.</p>
-<p>Los 137 bytes de código nuevo de este parche viven ahí dentro.</p>
-<h2 id="al-escribir-en-la-ficha-hay-que-guardar-los-registros">Al escribir en la ficha hay que guardar los registros</h2>
-<p><code>ANILLO_CON_PLAZO</code> llama a <code>ESCRIBE_A_EN_TRES_CIFRAS</code>, que deja HL tres bytes más allá. Lo que va detrás en la ficha, <code>DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), <b>se aprovecha del HL que traía de antes</b>. Sin guardarlo, la ficha sale escrita en otro sitio: con los nombres de media Comunidad encima.</p>
-<p>No es una suposición: se probó sin guardar y la ficha salió rota.</p>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html" style=color:var(--tinta)>El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../THE-PATCH.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<h1 id="el-parche">El parche</h1>
+<p>Siete cambios, <b>197 bytes</b>, ninguno fuera de la tabla y ninguno desplazado: cada parche mide exactamente lo mismo que lo que sustituye, así que ninguna dirección del juego se mueve.</p>
+<h2 id="la-tabla">La tabla</h2>
+<table><tr><th>dirección</th><th>bloque</th><th>bytes</th><th>qué</th></tr><tr><td><code>0x7FD1</code></td><td>medio</td><td>1</td><td>el tope del bucle de siembra, <code>0x78</code> → <code>0x00</code></td></tr><tr><td><code>0x708A</code></td><td>medio</td><td>3</td><td>trampolín a la rutina de los valores</td></tr><tr><td><code>0x6600</code></td><td>medio</td><td>76</td><td><code>MUESTRA_LOS_VALORES</code></td></tr><tr><td><code>0x664C</code></td><td>medio</td><td>61</td><td>la siembra por bando, el dibujo por bando y el plazo</td></tr><tr><td><code>0x7FC9</code></td><td>medio</td><td>5</td><td>gancho de la siembra</td></tr><tr><td><code>0x770A</code></td><td>medio</td><td>10</td><td>gancho del dibujo</td></tr><tr><td><code>0x6F77</code></td><td>medio</td><td>5</td><td>gancho del anillo</td></tr><tr><td><code>0xA1E7</code></td><td>alto</td><td>36</td><td>los cuatro tiles del Ojo de Sauron</td></tr></table>
+<p>Las direcciones son de <b>ejecución</b>. El bloque «medio» corre desde <code>0x5E00</code> y el «alto» desde <code>0x9E00</code>.</p>
+<h2 id="como-se-aplica">Cómo se aplica</h2>
+<p>El desensamblado no se toca. Se parte de los <b>cuerpos</b> que <code>make extract</code> saca de tu cinta (<code>work/*.raw</code>, los mismos bytes sin la envoltura del formato Spectrum), se les aplica la tabla de <code>tools/parchea.py</code> y se vuelve a montar la cinta reenvolviendo cada bloque con su bandera delante y su XOR detrás.</p>
+<p>Cada entrada de la tabla lleva <b>los bytes que espera encontrar</b>. Si no están, <code>make parche</code> aborta: no es esa cinta. Y al terminar se comprueba que, fuera de los rangos de la tabla, el cuerpo es idéntico al original.</p>
+<h2 id="donde-vive-el-codigo-nuevo">Dónde vive el código nuevo</h2>
+<p>Los 137 bytes de código nuevo —76 de la rutina de los valores y 61 de la segunda tanda— están escritos <b>encima del motor del altavoz del ZX Spectrum</b>, en <code>0x6600</code>-<code>0x6688</code>.</p>
+<p>Ese motor lo trajo la conversión entero y <b>no lo llama nadie</b>: ni una instrucción de los cinco listados apunta a <code>0x6600</code>, y los cuatro sitios que piden un efecto de sonido llaman a <code>0x65FF</code>, que es un <code>ret</code> pelado. Del PSG del MSX sólo se escriben dos registros, el 7 y el 14, y los dos son para leer el joystick. Este juego es mudo, y su silencio nos deja 276 bytes de sitio.</p>
+<h2 id="el-ips">El IPS</h2>
+<p><code>make ips</code> saca <b><code>war_parche.ips</code></b>: 249 bytes en ocho registros, con sólo lo que cambia. Comprobado en el sitio —y en las pruebas— que <b>aplicado sobre <code>war.tsx</code> devuelve la cinta parcheada byte a byte</b>.</p>
+<p>Se reparte eso, no el juego.</p>
+<h2 id="las-comprobaciones">Las comprobaciones</h2>
+<p><code>make test</code> son 23, y no son de adorno. Entre ellas:</p>
+<ul><li>que <b><code>orig</code> y <code>nuevo</code> miden igual</b> en las siete entradas, o sea que nada se desplaza;</li><li>que cada entrada <b>cae dentro de su bloque</b>;</li><li>que los bytes de la tabla son <b>exactamente</b> lo que sale de ensamblar <code>src/parche/ficha_valores.asm</code> y <code>src/parche/icono_enemigo.asm</code> con pasmo;</li><li>que los tres ganchos de la segunda tanda <b>apuntan donde toca</b> dentro de la rutina nueva;</li><li>que el parche <b>no escribe en la tabla de cuadros de <code>0x77B5</code></b>, que es la trampa que se cuenta en <a href="HALLAZGOS.html">Hallazgos</a>;</li><li>que los cuatro tiles del Ojo van al hueco que estaba a cero y <b>con el mismo atributo de color que el icono aliado</b>;</li><li>y que el IPS del repositorio <b>reconstruye la cinta parcheada</b>.</li></ul>
 <footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>

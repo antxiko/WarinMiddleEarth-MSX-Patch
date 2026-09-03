@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Genera la portada de la web, en los dos idiomas.
+"""Genera la portada de la web del PARCHE, en los dos idiomas.
+
+Esta web es la del PARCHE, no la del desensamblado: son dos repositorios
+distintos y dos webs distintas, como el par del Mahjong Dojo. El desensamblado
+explica el juego; esto explica los 197 bytes que se le cambian y por que.
 
 El diseno es el compartido por la serie (tools/estilo_web.py) y la pagina sale
 autocontenida, con las imagenes embebidas como data URI.
 
-NINGUNA IMAGEN ES UNA CAPTURA. Todas las dibujan tools/render_carga.py y
-tools/render_graficos.py con los bytes de la cinta, en los rangos que el
-listado tiene acotados y revelandolos como los revela el juego. Si un rango
-estuviera mal etiquetado, saldria ruido; que salga un dibujo es la
-comprobacion.
-
-El rotulo de la cabecera es un recorte de la propia pantalla de carga, y por
-eso trae el titulo tal como lo escribio Maelstrom Games.
+LAS IMAGENES NO SON CAPTURAS DE PANTALLA, y no pueden serlo: el juego resube la
+pantalla al VDP sin parar, asi que dos fotos del MISMO estado separadas tres
+segundos ya salen con el 37 % de los pixels distintos. Se vuelca el bufer de
+pantalla del ZX que el juego lleva en RAM (0x4000 y 0x5800) en un instante fijo
+y lo dibuja tools/render_zx.py con la tabla de color del propio cartucho.
 
 Uso: make_web.py <docs/imagenes> <salida.html> <idioma>
 """
@@ -23,17 +24,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from estilo_web import ESTILO                                   # noqa: E402
 
 # Las cifras salen de las herramientas, no de escribirlas aqui a ojo:
-# tools/presupuesto.py (make sanity) da el reparto de la cinta y
-# tools/densidad.py (make densidad) las rutinas y la densidad.
-CINTA = 62261
-CODIGO = 11814
-DATOS = 50191
-LISTADOS = 5
-RUTINAS = 767
-INSTRUCCIONES = 6844
-COMENTARIOS = 2031
-DENSIDAD_ES = "29,7 %"
-DENSIDAD_EN = "29.7%"
+#   `make parche` -> 197 bytes cambiados en 7 entradas, 0 fuera de la tabla
+#   `make ips`    -> war_parche.ips, 249 bytes en 8 registros
+#   `make test`   -> 23 comprobaciones
+#   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
+BYTES = 197
+CAMBIOS = 7
+IPS_BYTES = 249
+IPS_REGISTROS = 8
+TESTS = 23
+CODIGO_NUEVO = 137
+CASILLAS_MAPA = 13260
+
+REPO = "https://github.com/antxiko/WarinMiddleEarth-MSX-Patch"
+REPO_DIS = "https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly"
 
 
 def mil(n, idioma):
@@ -42,336 +46,274 @@ def mil(n, idioma):
 
 TXT = {
     "es": dict(
-        titulo="War in Middle Earth — desensamblado comentado",
-        aviso="<b>Aquí no hay ni una captura de pantalla.</b> Todas las "
-              "imágenes están <b>dibujadas desde la cinta</b>: se leen los "
-              "bytes en los rangos que el listado tiene acotados y se revelan "
-              "como los revela el juego, con sus máscaras y con el atributo de "
-              "color que cada dibujo lleva pegado. Que salgan dibujos y no "
-              "ruido es la prueba de que los rangos están bien leídos. El "
-              "listado y las cifras salen del binario y se reproducen con "
-              "<code>make</code>.",
-        claim="Una conversión del ZX Spectrum que se trajo el sistema de cinta "
-              "entero, los atributos de color pegados a cada dibujo y hasta el "
-              "motor de sonido del altavoz… que aquí <b>no lo llama nadie</b>. "
-              "Los cuatro sitios que piden un efecto acaban en un "
-              "<code>ret</code> pelado, y del PSG del MSX sólo se tocan los dos "
-              "registros del joystick: <b>este juego es mudo</b>.",
+        titulo="War in Middle Earth — el parche de Araubi",
+        aviso="<b>Aquí no hay ni una captura de pantalla.</b> No pueden "
+              "haberla: el juego resube la pantalla al VDP sin parar, y dos "
+              "fotos del <b>mismo</b> estado separadas tres segundos ya salen "
+              "con el <b>37 % de los píxeles distintos</b>. Lo que se ve está "
+              "dibujado desde el <b>búfer de pantalla del ZX Spectrum que el "
+              "juego lleva en RAM</b>, volcado en un instante fijo y pintado "
+              "con la tabla de color del propio cartucho. El control: dos "
+              "pasadas del mismo estado dan una imagen idéntica al píxel, así "
+              "que lo que cambia entre «sin» y «con» lo cambia el parche.",
+        claim="Araubi pidió tres cosas en el foro y salieron cuatro. "
+              "<b>197 bytes en siete sitios</b>, cada uno comprobado contra los "
+              "bytes que espera antes de escribir: nada se desplaza, y el "
+              "montaje falla si cambia un solo byte fuera de la tabla. El "
+              "código nuevo vive dentro del <b>motor de altavoz del ZX que esta "
+              "conversión trajo entero y no llama nadie</b>.",
         ficha=["Melbourne House / Dro Soft · <b>1989</b>",
-               "Cinta, <b>62.261 bytes</b>",
-               "MSX1 · <b>64 KB, sin BIOS</b>",
-               "Conversión de <b>Animagic S.A.</b>"],
-        nav=[("#numbers", "Las cifras"), ("#findings", "Hallazgos"),
-             ("#screens", "Lo que dibuja")],
-        docnav=[("EMPEZAR.html", "Empezar"), ("EL-JUEGO.html", "El juego"),
-                ("LA-CINTA.html", "La cinta"),
-                ("EL-CODIGO.html", "El código"),
+               "Cinta MSX1 · <b>62.261 bytes</b>",
+               f"<b>{BYTES} bytes</b> cambiados, <b>0</b> desplazados",
+               "Parche <b>IPS</b>, extraoficial"],
+        nav=[("#numbers", "Las cifras"), ("#findings", "Lo que cambia"),
+             ("#screens", "Antes y después")],
+        docnav=[("EMPEZAR.html", "Empezar"), ("EL-PARCHE.html", "El parche"),
+                ("COMO-FUNCIONA.html", "Cómo funciona"),
+                ("LAS-IMAGENES.html", "Las imágenes"),
                 ("HALLAZGOS.html", "Hallazgos"),
                 ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")],
         otro=("../", "In English"),
-        h_num="La cinta en cifras", h_find="Lo que apareció al desmontarla",
-        h_scr="Lo que la cinta dibuja",
-        cifras=[("100 %", "de la cinta explicada"),
-                (str(LISTADOS), "listados"),
-                (mil(RUTINAS, "es"), "rutinas identificadas"),
-                (mil(CODIGO, "es"), "bytes de código"),
-                (mil(DATOS, "es"), "bytes de datos"),
-                ("0", "bytes sin identificar"),
-                (DENSIDAD_ES, "de densidad de comentarios"),
-                ("0", "rutinas por debajo del 10 %")],
-        nota_scr="Debajo de cada pie está la dirección de donde sale. Todas se "
-                 "rehacen con <code>make imagenes</code> y no hace falta "
-                 "emulador.",
-        pie_leg="Esto es trabajo de documentación y preservación: el código y "
-                "los gráficos siguen siendo de sus autores, y la cinta no se "
-                "distribuye.",
+        h_num="El parche en cifras",
+        h_find="Las cuatro cosas que hace",
+        h_scr="La misma casilla, sin el parche y con él",
+        cifras=[(str(BYTES), "bytes cambiados"),
+                (str(CAMBIOS), "sitios tocados"),
+                ("0", "bytes desplazados"),
+                ("0", "bytes fuera de la tabla"),
+                (str(CODIGO_NUEVO), "bytes de código nuevo"),
+                (mil(IPS_BYTES, "es"), "bytes de parche IPS"),
+                (str(TESTS), "comprobaciones en verde"),
+                ("4", "peticiones cubiertas")],
+        nota_scr="Cada pareja es la misma partida, la misma casilla y el mismo "
+                 "instante, cargando la cinta original y cargando la parcheada.",
+        pie_leg="Esto es un parche de jugabilidad, extraoficial y sin ánimo de "
+                "lucro. El juego sigue siendo de sus autores y aquí "
+                "<b>no se distribuye ninguna imagen de cinta</b>: se reparte el "
+                "parche, y cada cual lo aplica sobre su copia. Sale del "
+                f'<a href="{REPO_DIS}">desensamblado comentado</a>, que es otro '
+                "repositorio y otra web.",
     ),
     "en": dict(
-        titulo="War in Middle Earth — a commented disassembly",
-        aviso="<b>There is not a single screenshot here.</b> Every picture is "
-              "<b>drawn from the tape</b>: the bytes are read in the ranges the "
-              "listing delimits and developed the way the game develops them, "
-              "with their masks and with the colour attribute each drawing "
-              "carries glued to it. That drawings come out instead of noise is "
-              "the proof the ranges have been read correctly. The listing and "
-              "the numbers come from the binary and are reproduced with "
-              "<code>make</code>.",
-        claim="A ZX Spectrum conversion that brought across the whole tape "
-              "system, the colour attributes glued to every tile, and even the "
-              "beeper sound engine… which here <b>nothing ever calls</b>. The "
-              "four places that ask for a sound effect all land on a bare "
-              "<code>ret</code>, and of the MSX's PSG only the two joystick "
-              "registers are ever touched: <b>this game is silent</b>.",
+        titulo="War in Middle Earth — Araubi's patch",
+        aviso="<b>There is not a single screenshot here.</b> There cannot be: "
+              "the game re-uploads the screen to the VDP constantly, and two "
+              "photographs of the <b>same</b> state three seconds apart already "
+              "differ in <b>37 % of their pixels</b>. What you see is drawn "
+              "from the <b>ZX Spectrum screen buffer the game keeps in RAM</b>, "
+              "dumped at a fixed instant and painted with the cartridge's own "
+              "colour table. The control: two runs of the same state give a "
+              "pixel-identical image, so whatever changes between «without» and "
+              "«with» is the patch and nothing else.",
+        claim="Araubi asked for three things on the forum and four came out. "
+              "<b>197 bytes across seven places</b>, each one checked against "
+              "the bytes it expects before writing: nothing shifts, and the "
+              "build fails if a single byte changes outside the table. The new "
+              "code lives inside the <b>ZX beeper engine this port brought "
+              "across whole and never calls</b>.",
         ficha=["Melbourne House / Dro Soft · <b>1989</b>",
-               "Tape, <b>62,261 bytes</b>",
-               "MSX1 · <b>64 KB, no BIOS</b>",
-               "Converted by <b>Animagic S.A.</b>"],
-        nav=[("#numbers", "The numbers"), ("#findings", "What turned up"),
-             ("#screens", "What it draws")],
+               "MSX1 cassette · <b>62,261 bytes</b>",
+               f"<b>{BYTES} bytes</b> changed, <b>0</b> shifted",
+               "<b>IPS</b> patch, unofficial"],
+        nav=[("#numbers", "The numbers"), ("#findings", "What it changes"),
+             ("#screens", "Before and after")],
         docnav=[("GETTING-STARTED.html", "Getting started"),
-                ("THE-GAME.html", "The game"),
-                ("THE-TAPE.html", "The tape"),
-                ("THE-CODE.html", "The code"),
+                ("THE-PATCH.html", "The patch"),
+                ("HOW-IT-WORKS.html", "How it works"),
+                ("THE-PICTURES.html", "The pictures"),
                 ("FINDINGS.html", "Findings"),
                 ("OPEN-QUESTIONS.html", "Open questions")],
         otro=("es/", "En castellano"),
-        h_num="The tape in numbers",
-        h_find="What turned up when we took it apart",
-        h_scr="What the tape draws",
-        cifras=[("100%", "of the tape explained"),
-                (str(LISTADOS), "listings"),
-                (mil(RUTINAS, "en"), "routines identified"),
-                (mil(CODIGO, "en"), "bytes of code"),
-                (mil(DATOS, "en"), "bytes of data"),
-                ("0", "bytes unidentified"),
-                (DENSIDAD_EN, "comment density"),
-                ("0", "routines below 10%")],
-        nota_scr="Under each caption is the address it comes from. They are "
-                 "all rebuilt by <code>make imagenes</code> and no emulator is "
-                 "needed.",
-        pie_leg="This is documentation and preservation work: the code and "
-                "artwork still belong to their authors, and the tape is not "
-                "distributed.",
+        h_num="The patch in numbers",
+        h_find="The four things it does",
+        h_scr="The same cell, without the patch and with it",
+        cifras=[(str(BYTES), "bytes changed"),
+                (str(CAMBIOS), "places touched"),
+                ("0", "bytes shifted"),
+                ("0", "bytes outside the table"),
+                (str(CODIGO_NUEVO), "bytes of new code"),
+                (mil(IPS_BYTES, "en"), "bytes of IPS patch"),
+                (str(TESTS), "checks passing"),
+                ("4", "requests covered")],
+        nota_scr="Each pair is the same game, the same cell and the same "
+                 "instant, loading the original cassette and the patched one.",
+        pie_leg="This is an unofficial, non-commercial gameplay patch. The game "
+                "still belongs to its authors and <b>no cassette image is "
+                "distributed here</b>: the patch is what gets shared, and you "
+                "apply it to your own copy. It comes out of the "
+                f'<a href="{REPO_DIS}">commented disassembly</a>, which is a '
+                "separate repository and a separate site.",
     ),
 }
 
 HALLAZGOS = {
     "es": [
-        ("Este juego es mudo, y se puede señalar dónde se quedó el sonido",
-         "<p>La conversión se trajo del Spectrum su motor de sonido entero: "
-         "está en <code>0x6600</code>, saca las notas por el "
-         "<code>out (0xFE)</code> con el bit 4, y detrás lleva cinco efectos de "
-         "veintiún bytes en <code>0x636F</code>-<code>0x63D7</code>.</p>"
-         "<p><b>No lo llama nadie.</b> Ni una sola instrucción de los cinco "
-         "listados apunta a <code>0x6600</code>. Y los cuatro sitios que piden "
-         "un efecto —<code>0x5F90</code>, <code>0x647A</code>, "
-         "<code>0x6AA1</code> y <code>0x833D</code>— llaman a "
-         "<code>0x65FF</code>, que es <b>un <code>ret</code> pelado</b>.</p>"
-         "<p>Del PSG del MSX sólo se escriben dos registros, el 7 y el 14, y "
-         "los dos son para leer el joystick (<code>0x046E</code>). La única "
-         "rutina que sabría escribir una nota en el PSG, <code>0x04F2</code>, "
-         "no la llama nadie tampoco. No hay un tercer camino: <b>el juego no "
-         "suena</b>.</p>"),
-        ("La pantalla de carga, entera, sacada de la cinta",
-         "<p>Los 12.388 bytes del bloque [08] son una pantalla de SCREEN 2 "
-         "completa: 6.144 de patrones y 6.144 de colores, y las cuentas cierran "
-         "solas (<code>0x88B8</code> + 100 + 6.144 + 6.144 = <code>0xB91C</code>, "
-         "el final exacto del bloque).</p>"
-         "<p>Dibujada, se lee lo que el juego dice de sí mismo: <b>MAELSTROM "
-         "GAMES LTD. PRESENTS</b>, <b>War in Middle Earth</b>, <b>Mike "
-         "Singleton</b> y, abajo a la derecha, <b>CONVERSION by ANIMAGIC "
-         "sa</b>. Y el menú añade el resto: «Programado por C.J.Pink».</p>"),
-        ("Los tiles del mapa van a nueve bytes, y ése es el sello de la conversión",
-         "<p>Un tile de MSX ocupa ocho bytes. Los del mapa de este juego ocupan "
-         "<b>nueve</b>: las ocho líneas del dibujo y, pegado detrás, <b>un "
-         "atributo del ZX Spectrum</b> —tinta en los bits 0-2, papel en los "
-         "3-5, brillo en el 6—.</p>"
-         "<p>Los lee <code>0x75C7</code>-<code>0x75EB</code> cuando el código "
-         "de la rejilla lleva puesto el bit 7. La conversión no rehizo los "
-         "gráficos: se trajo los del Spectrum con su color puesto y los "
-         "traduce al vuelo, en <code>0x049F</code>.</p>"),
-        ("En 0x62FF no está el dibujo del cursor: está lo que el cursor tapa",
-         "<p>Esos 24 bytes estaban documentados como el dibujo de la marca del "
-         "cursor. <b>No lo son.</b> <code>0x6580</code> mete "
-         "<code>0x62FF</code> en el HL alternativo y el bucle de "
-         "<code>0x65B4</code>, por cada uno de los tres bytes de la columna, "
-         "primero <b>lee la pantalla</b> (<code>ld a,(iy+n)</code>), la copia "
-         "ahí, y sólo después compone el cursor encima.</p>"
-         "<p><code>0x64DC</code> hace el camino de vuelta para borrarlo. El "
-         "dibujo de verdad está en <code>0x6345</code>, con su máscara detrás "
-         "(<code>ld ix,0x6345</code> en <code>0x657B</code>). Y los "
-         "<code>0xAD</code> que trae la cinta ahí no son un dibujo: son <b>lo "
-         "que había bajo el cursor el día que se grabó</b>.</p>"),
-        ("El tablero de batalla se monta encima del menú, y es un damero",
-         "<p>La batalla usa <code>0x5E00</code>-<code>0x62FF</code>, que es "
-         "<b>donde vive el código del menú</b>: una vez empezada la partida, el "
-         "menú y sus textos son papel de borrador. Lo dice "
-         "<code>0x8E08</code> con su <code>ld b,0x5E</code>, y el "
-         "<code>ldir</code> de <code>0x904D</code> lo borra entero antes de "
-         "cada batalla.</p>"
-         "<p>Y el tablero es un <b>damero</b>: las cuatro rutinas de "
-         "movimiento (<code>0x893E</code> y compañía) cambian siempre las dos "
-         "coordenadas a la vez, así que la paridad de x+y no cambia nunca. El "
-         "despliegue rechaza los pares de paridad distinta y los obstáculos van "
-         "justo en las casillas del otro color.</p>"),
-        ("El filtro de amigo o enemigo es un interruptor por opcode",
-         "<p>Para recorrer las unidades del bando contrario, el juego no usa "
-         "una bandera: <b>se reescribe la instrucción</b>. "
-         "<code>0x8980</code>-<code>0x8982</code> mete un <code>0xD0</code> en "
-         "<code>0x8AF3</code>, y <code>0x8991</code>-<code>0x8993</code> mete "
-         "un <code>0xD8</code>.</p>"
-         "<p><code>0xD0</code> es <code>ret nc</code> y <code>0xD8</code> es "
-         "<code>ret c</code>. La misma rutina, con el mismo umbral, devuelve "
-         "las de un bando o las del otro según qué opcode se le haya escrito "
-         "encima un momento antes.</p>"),
-        ("El mapa viaja comprimido, y se vuelve a comprimir antes de cada batalla",
-         "<p><code>0x9366</code> aparta los <code>0x16ED</code> bytes "
-         "comprimidos del mapa a <code>0x4000</code> con un <code>ldir</code> y "
-         "los expande a los <code>0x33CD</code> de <code>0xCC00</code> leyendo "
-         "parejas de cuenta y valor. Lo llama <code>0x5E28</code>, en el "
-         "arranque: el mapa <b>llega de la cinta ya comprimido</b>.</p>"
-         "<p>Y <code>0x9394</code> hace lo contrario antes de cada batalla, "
-         "volviéndolo a dejar en <code>0x16EC</code> bytes. No es por ahorrar "
-         "cinta: es por <b>hacer sitio</b>. Lo que se libera, "
-         "<code>0xE2EC</code>-<code>0xFFFF</code>, es exactamente donde viven "
-         "los búferes de la batalla.</p>"),
-        ("Y restos del Spectrum que en un MSX no significan nada",
-         "<p>El <b>modo de control 2</b> del menú —el Interface Two del "
-         "Spectrum— no existe aquí: su puntero, en <code>0x06D7</code>, es "
-         "<code>0x0000</code>, así que el menú salta del 1 al 3.</p>"
-         "<p>El bloque de teclado del ZX de <code>0x5F75</code>-"
-         "<code>0x5FB7</code>, que lee el puerto <code>0xFE</code>, es código "
-         "muerto. Y en la rutina de <b>grabar la partida</b> quedó sin "
-         "convertir la comprobación de la tecla de parada: <code>0x0930</code> "
-         "hace <code>in a,(0xFE)</code>, que en un MSX no es el teclado.</p>"),
+        ("1 · Las unidades enemigas se ven",
+         "<p>El mapa guarda un bit de «aquí hay alguien» por casilla, y "
+         "<code>RECENTRA_EL_MAPA</code> (<code>0x7FAC</code>) lo vuelve a "
+         "sembrar unidad a unidad. Pero su bucle <b>para en la unidad "
+         "0x78</b>, que es justo donde empieza el bando enemigo: las enemigas "
+         "no se siembran, y por eso no se dibujan. Esa era la niebla de guerra "
+         "del juego, y era un descuido con forma de <code>cp 078h</code>.</p>"
+         "<p><b>Un byte, en <code>0x7FD1</code>:</b> el tope pasa a "
+         "<code>0x00</code> y el bucle recorre las 256 ranuras. Medido: "
+         "<b>136 unidades enemigas</b> se siembran donde antes se sembraban "
+         "cero.</p>"),
+        ("2 · Cada apartado enseña su número",
+         "<p>La ficha lista seis cualidades —Valioso, Hábil, Duro, Bravo, "
+         "Enérgico y Decidido— como adverbio más adjetivo («es muy bravo»), "
+         "nunca como cifra, y con eso no se pueden comparar dos unidades.</p>"
+         "<p>Una rutina nueva de 76 bytes lee los seis valores de "
+         "<code>0xC000</code>-<code>0xC300</code> y los escribe en la columna "
+         "20 de cada línea. La engancha un trampolín de tres bytes en "
+         "<code>0x708A</code>, donde la ficha hacía <code>ld hl,0x5FBD</code> "
+         "justo antes de pintarse. Comprobado contra la RAM: <b>coinciden los "
+         "seis</b>.</p>"),
+        ("3 · El plazo del Anillo, al lado del anillo",
+         "<p>Esta petición estaba mal leída la primera vez. No es el contador "
+         "<code>0xC300</code> del portador: <b>es una cuenta atrás de "
+         "meses</b>. El reloj del juego baja uno el operando de "
+         "<code>0x8333</code> —que <code>0x7F4F</code> deja en <b>255</b> al "
+         "empezar—, saca el mensaje «El Anillo corrompe al que lo usa.» y "
+         "hace <code>jp z,DERROTA</code>.</p>"
+         "<p>Ese número es, literalmente, lo que te queda, y el juego no lo "
+         "enseña en ningún sitio. El anillo de la ficha es el carácter "
+         "<code>0x5F</code> en <code>0x7C46</code>; las tres columnas de su "
+         "izquierda estaban libres, y ahí va ahora.</p>"),
+        ("4 · Las enemigas llevan el Ojo de Sauron",
+         "<p>Con el cambio 1 las enemigas salían… <b>con tu casco</b>, que es "
+         "media solución: las ves, pero no sabes cuáles son. Y la rutina que "
+         "dibuja sólo mira el byte del mapa, así que no puede saber de qué "
+         "bando es una unidad.</p>"
+         "<p>El <b>bit 5</b> de ese byte estaba libre —medido: cero usos en las "
+         f"{mil(CASILLAS_MAPA, 'es')} casillas—, y ahí va ahora la marca de "
+         "bando. El icono son <b>cuatro tiles nuevos</b> al final de la tabla "
+         "de <code>0x9E00</code>, en los índices 111 a 114, que estaban a "
+         "cero.</p>"),
+        ("Y una trampa que costó una pasada entera",
+         "<p>La tabla de cuadros de dos por dos de <code>0x77B5</code> tiene "
+         "seis entradas a cero y parecen sitio de sobra. <b>No lo son:</b> "
+         "<code>PINTA_LO_DE_ENCIMA</code> elige entrada con un "
+         "<code>and 00fh</code> sobre el nibble bajo del terreno, así que los "
+         "índices 0x00-0x0F ya tienen dueño.</p>"
+         "<p>Poner el Ojo en el hueco 0x03 se lo puso a las <b>447 casillas de "
+         "terreno de tipo 3</b>. La salida fue no usar índice: apuntar HL a una "
+         "lista propia de cuatro códigos y entrar en el estampador ya pasada su "
+         "aritmética, en <code>0x7720</code>.</p>"),
     ],
     "en": [
-        ("This game is silent, and you can point at where the sound stopped",
-         "<p>The conversion brought the Spectrum's whole sound engine across: "
-         "it sits at <code>0x6600</code>, drives the notes through "
-         "<code>out (0xFE)</code> with bit 4, and behind it are five "
-         "twenty-one-byte effects at <code>0x636F</code>-<code>0x63D7</code>.</p>"
-         "<p><b>Nothing ever calls it.</b> Not one instruction in the five "
-         "listings points at <code>0x6600</code>. And the four places that ask "
-         "for an effect — <code>0x5F90</code>, <code>0x647A</code>, "
-         "<code>0x6AA1</code> and <code>0x833D</code> — call "
-         "<code>0x65FF</code>, which is <b>a bare <code>ret</code></b>.</p>"
-         "<p>Of the MSX's PSG only two registers are ever written, 7 and 14, "
-         "and both are for reading the joystick (<code>0x046E</code>). The one "
-         "routine that would know how to write a note to the PSG, "
-         "<code>0x04F2</code>, is never called either. There is no third path: "
-         "<b>the game makes no sound</b>.</p>"),
-        ("The loading screen, whole, pulled out of the tape",
-         "<p>The 12,388 bytes of block [08] are a complete SCREEN 2 picture: "
-         "6,144 of patterns and 6,144 of colours, and the sums close on their "
-         "own (<code>0x88B8</code> + 100 + 6,144 + 6,144 = <code>0xB91C</code>, "
-         "the exact end of the block).</p>"
-         "<p>Drawn, it says what the game says about itself: <b>MAELSTROM GAMES "
-         "LTD. PRESENTS</b>, <b>War in Middle Earth</b>, <b>Mike Singleton</b> "
-         "and, bottom right, <b>CONVERSION by ANIMAGIC sa</b>. The menu adds "
-         "the rest: “Programado por C.J.Pink”.</p>"),
-        ("The map tiles are nine bytes long, and that is the conversion's fingerprint",
-         "<p>An MSX tile takes eight bytes. This game's map tiles take "
-         "<b>nine</b>: the eight lines of the drawing and, glued behind them, "
-         "<b>a ZX Spectrum attribute</b> — ink in bits 0-2, paper in 3-5, "
-         "bright in 6.</p>"
-         "<p><code>0x75C7</code>-<code>0x75EB</code> read them when the grid "
-         "code has bit 7 set. The conversion did not redraw the artwork: it "
-         "brought the Spectrum's across with its colour already attached and "
-         "translates it on the fly, at <code>0x049F</code>.</p>"),
-        ("0x62FF is not the cursor's artwork: it is what the cursor covers up",
-         "<p>Those 24 bytes were documented as the cursor mark's drawing. "
-         "<b>They are not.</b> <code>0x6580</code> loads <code>0x62FF</code> "
-         "into the alternate HL and the loop at <code>0x65B4</code>, for each "
-         "of the column's three bytes, first <b>reads the screen</b> "
-         "(<code>ld a,(iy+n)</code>), copies it there, and only then composites "
-         "the cursor on top.</p>"
-         "<p><code>0x64DC</code> walks it back to erase. The real artwork is at "
-         "<code>0x6345</code>, with its mask behind it "
-         "(<code>ld ix,0x6345</code> at <code>0x657B</code>). And the "
-         "<code>0xAD</code> bytes the tape carries there are not a drawing: "
-         "they are <b>whatever was under the cursor the day it was saved</b>.</p>"),
-        ("The battle board is built on top of the menu, and it is a draughtboard",
-         "<p>Battle uses <code>0x5E00</code>-<code>0x62FF</code>, which is "
-         "<b>where the menu's code lives</b>: once a game has started, the menu "
-         "and its text are scrap paper. <code>0x8E08</code> says so with its "
-         "<code>ld b,0x5E</code>, and the <code>ldir</code> at "
-         "<code>0x904D</code> wipes the lot before every battle.</p>"
-         "<p>And the board is a <b>draughtboard</b>: the four movement routines "
-         "(<code>0x893E</code> and friends) always change both coordinates at "
-         "once, so the parity of x+y never changes. Deployment rejects any pair "
-         "whose parities differ, and the obstacles go on exactly the squares of "
-         "the other colour.</p>"),
-        ("The friend-or-foe filter is an opcode switch",
-         "<p>To walk the other side's units the game does not use a flag: "
-         "<b>it rewrites the instruction</b>. "
-         "<code>0x8980</code>-<code>0x8982</code> writes a <code>0xD0</code> "
-         "into <code>0x8AF3</code>, and <code>0x8991</code>-<code>0x8993</code> "
-         "writes a <code>0xD8</code>.</p>"
-         "<p><code>0xD0</code> is <code>ret nc</code> and <code>0xD8</code> is "
-         "<code>ret c</code>. The same routine, with the same threshold, hands "
-         "back one side's units or the other's depending on which opcode was "
-         "written over it a moment earlier.</p>"),
-        ("The map travels compressed, and gets recompressed before every battle",
-         "<p><code>0x9366</code> moves the map's <code>0x16ED</code> compressed "
-         "bytes out to <code>0x4000</code> with an <code>ldir</code> and "
-         "expands them into the <code>0x33CD</code> at <code>0xCC00</code>, "
-         "reading count/value pairs. <code>0x5E28</code> calls it at boot: the "
-         "map <b>arrives from tape already compressed</b>.</p>"
-         "<p>And <code>0x9394</code> does the reverse before every battle, "
-         "packing it back down to <code>0x16EC</code> bytes. That is not to "
-         "save tape: it is to <b>make room</b>. What it frees, "
-         "<code>0xE2EC</code>-<code>0xFFFF</code>, is exactly where the battle "
-         "buffers live.</p>"),
-        ("And Spectrum leftovers that mean nothing on an MSX",
-         "<p>The menu's <b>control mode 2</b> — the Spectrum's Interface Two — "
-         "does not exist here: its pointer, at <code>0x06D7</code>, is "
-         "<code>0x0000</code>, so the menu jumps from 1 to 3.</p>"
-         "<p>The ZX keyboard block at <code>0x5F75</code>-<code>0x5FB7</code>, "
-         "which reads port <code>0xFE</code>, is dead code. And in the "
-         "<b>save-game</b> routine the break-key check was never converted: "
-         "<code>0x0930</code> does <code>in a,(0xFE)</code>, which on an MSX is "
-         "not the keyboard.</p>"),
+        ("1 · Enemy units become visible",
+         "<p>The map keeps a “someone is here” bit per cell, and "
+         "<code>RECENTRA_EL_MAPA</code> (<code>0x7FAC</code>) re-plants it unit "
+         "by unit. But its loop <b>stops at unit 0x78</b>, exactly where the "
+         "enemy side begins: the enemy never gets planted, and so never gets "
+         "drawn. That was the game's fog of war, and it was an oversight shaped "
+         "like a <code>cp 078h</code>.</p>"
+         "<p><b>One byte, at <code>0x7FD1</code>:</b> the limit becomes "
+         "<code>0x00</code> and the loop walks all 256 slots. Measured: "
+         "<b>136 enemy units</b> get planted where zero did before.</p>"),
+        ("2 · Every attribute shows its number",
+         "<p>A unit's sheet lists six qualities — Valioso, Hábil, Duro, Bravo, "
+         "Enérgico, Decidido — as adverb plus adjective (“very brave”), never "
+         "as a number, and you cannot compare two units with that.</p>"
+         "<p>A new 76-byte routine reads the six values from "
+         "<code>0xC000</code>-<code>0xC300</code> and writes them at column 20 "
+         "of each line. A three-byte trampoline at <code>0x708A</code> hooks "
+         "it, where the sheet used to do <code>ld hl,0x5FBD</code> right before "
+         "painting itself. Checked against RAM: <b>all six match</b>.</p>"),
+        ("3 · The Ring's deadline, next to the ring",
+         "<p>This request was misread the first time. It is not the bearer's "
+         "<code>0xC300</code> counter: <b>it is a countdown of months</b>. The "
+         "game's clock decrements the operand at <code>0x8333</code> — which "
+         "<code>0x7F4F</code> sets to <b>255</b> at the start — prints “El "
+         "Anillo corrompe al que lo usa.” and does "
+         "<code>jp z,DERROTA</code>.</p>"
+         "<p>That number is literally how long you have left, and the game "
+         "shows it nowhere. The ring in the sheet is character "
+         "<code>0x5F</code> at <code>0x7C46</code>; the three columns to its "
+         "left were free, and that is where it goes now.</p>"),
+        ("4 · The enemy gets the Eye of Sauron",
+         "<p>With change 1 the enemy showed up… <b>wearing your helmet</b>, "
+         "which is half a fix: you see them, but you cannot tell which is "
+         "which. And the drawing routine only ever looks at the map byte, so it "
+         "cannot know which side a unit belongs to.</p>"
+         "<p><b>Bit 5</b> of that byte was free — measured: zero uses across "
+         f"all {mil(CASILLAS_MAPA, 'en')} cells — and that is now the side "
+         "marker. The icon is <b>four new tiles</b> at the tail of the "
+         "<code>0x9E00</code> table, indices 111 to 114, which were all "
+         "zeros.</p>"),
+        ("And one trap that cost a whole run",
+         "<p>The two-by-two artwork table at <code>0x77B5</code> has six "
+         "all-zero entries and they look like plenty of room. <b>They are "
+         "not:</b> <code>PINTA_LO_DE_ENCIMA</code> picks its entry with an "
+         "<code>and 00fh</code> over the terrain's low nibble, so indices "
+         "0x00-0x0F already have an owner.</p>"
+         "<p>Putting the Eye in slot 0x03 gave it to all <b>447 cells of "
+         "terrain type 3</b>. The way out was not to use an index at all: point "
+         "HL at our own list of four codes and enter the stamper past its "
+         "arithmetic, at <code>0x7720</code>.</p>"),
     ],
 }
 
+# Las parejas de la galeria: fichero, pie en castellano, pie en ingles.
 GALERIA = [
-    ("carga.png",
-     "DIBUJADA de 0x891C y 0xA11C — la pantalla de carga entera: 6.144 bytes de "
-     "patrones y 6.144 de color, tal como los sube el cargador. Aqui esta el "
-     "juego diciendo quien lo hizo",
-     "DRAWN from 0x891C and 0xA11C — the whole loading screen: 6,144 bytes of "
-     "patterns and 6,144 of colour, exactly as the loader uploads them. This is "
-     "the game saying who made it"),
-    ("tiles-del-mapa.png",
-     "DIBUJADOS de 0x9E00 — los 128 tiles del mapa, con el color que dice su "
-     "atributo del Spectrum. Van a NUEVE bytes: ocho de dibujo y el atributo "
-     "pegado detras",
-     "DRAWN from 0x9E00 — the 128 map tiles, in the colour their Spectrum "
-     "attribute names. They are NINE bytes each: eight of drawing and the "
-     "attribute glued behind"),
-    ("sprites-de-dos-en-dos.png",
-     "DIBUJADOS de 0xA2E8 — los sprites de batalla apilados de dos en dos. "
-     "Medido: cada uno son 32 bytes de 16x8 en parejas mascara/dibujo. Que las "
-     "entradas consecutivas encajen en figuras de 16x16 es una lectura de la "
-     "imagen, no una rutina que se haya encontrado",
-     "DRAWN from 0xA2E8 — the battle sprites stacked in pairs. Measured: each "
-     "one is 32 bytes of 16x8 in mask/drawing pairs. That consecutive entries "
-     "fit together into 16x16 figures is a reading of the picture, not a "
-     "routine anyone has found"),
-    ("sprites-de-batalla.png",
-     "DIBUJADOS de 0xA2E8 — los mismos 176 sprites, uno a uno. El orden de sus "
-     "bytes no es obvio: van en parejas mascara/dibujo y en zigzag, porque la "
-     "rutina de 0x887B escribe izquierda, derecha, baja una linea y vuelve",
-     "DRAWN from 0xA2E8 — the same 176 sprites, one by one. The byte order is "
-     "not obvious: they go in mask/drawing pairs and in zig-zag, because the "
-     "routine at 0x887B writes left, right, down a line and back"),
-    ("fuente.png",
-     "DIBUJADA de 0xC800 — los 128 caracteres de ocho bytes. Los 33 primeros "
-     "estan a cero: el primero con dibujo es el 0x21, y de ahi salen marcos, "
-     "flechas, digitos, mayusculas y minusculas",
-     "DRAWN from 0xC800 — the 128 eight-byte characters. The first 33 are all "
-     "zero: the first with any drawing is 0x21, and from there come frames, "
-     "arrows, digits, upper and lower case"),
+    ("mapa_sin_parche.png",
+     "SIN PARCHE, casilla 036N/096E — tres huestes de Sauron estan ahi mismo y "
+     "no se dibuja ninguna. Esa era la niebla de guerra",
+     "WITHOUT THE PATCH, cell 036N/096E — three of Sauron's hosts are right "
+     "there and not one is drawn. That was the fog of war"),
+    ("mapa_con_parche.png",
+     "CON PARCHE, la misma casilla y el mismo instante — aparecen las tres "
+     "siluetas: 34 unidades enemigas. Doce celdas de caracter cambian, y ni un "
+     "atributo de color",
+     "WITH THE PATCH, same cell, same instant — the three silhouettes appear: "
+     "34 enemy units. Twelve character cells change, and not one colour "
+     "attribute"),
+    ("ficha_sin_valores.png",
+     "SIN PARCHE — la ficha de Gandalf: \"Es muy Habil\". Muy... cuanto",
+     "WITHOUT THE PATCH — Gandalf's sheet: \"Es muy Habil\". Very... how much"),
+    ("ficha_con_valores.png",
+     "CON PARCHE — el mismo texto y el numero al lado: Habil 010, Duro 010, "
+     "Bravo 006, Energico 158, Decidido 192",
+     "WITH THE PATCH — the same text with the number beside it: Habil 010, "
+     "Duro 010, Bravo 006, Energico 158, Decidido 192"),
+    ("ficha_frodo_sin_parche.png",
+     "SIN PARCHE — la ficha de Frodo, el portador. El anillo dice quien lo "
+     "lleva, y nada mas",
+     "WITHOUT THE PATCH — Frodo's sheet, the Ring-bearer. The ring says who "
+     "carries it, and nothing else"),
+    ("plazo_del_anillo.png",
+     "CON PARCHE — 255, pegado al anillo: los meses que quedan antes de "
+     "sucumbir. Cada mes baja uno; a cero, la pantalla de Sauron",
+     "WITH THE PATCH — 255, right beside the ring: the months left before you "
+     "succumb. One less every month; at zero, Sauron's screen"),
+    ("enemigas_con_casco.png",
+     "EL PRIMER PARCHE — las enemigas ya salian, pero con el casco de las "
+     "tuyas. Se ven y no se distinguen",
+     "THE FIRST PATCH — the enemy did show up, but wearing your own helmet. "
+     "You see them and cannot tell them apart"),
+    ("ojo_de_sauron.png",
+     "AHORA — las tres huestes llevan el Ojo de Sauron, y los dos aliados de "
+     "la esquina siguen con su casco",
+     "NOW — the three hosts wear the Eye of Sauron, and the two friendly units "
+     "in the corner keep their helmet"),
+    ("icono_aliado.png",
+     "EL ICONO ALIADO, ampliado y leido de la cinta: los tiles 81 a 84 de la "
+     "tabla de 0x9E00",
+     "THE FRIENDLY ICON, enlarged and read off the tape: tiles 81 to 84 of the "
+     "0x9E00 table"),
+    ("icono_ojo_de_sauron.png",
+     "EL OJO, leido de la cinta YA PARCHEADA: los tiles 111 a 114, que estaban "
+     "a cero. Mismo atributo que el aliado, asi que tapa el fondo igual",
+     "THE EYE, read off the ALREADY PATCHED tape: tiles 111 to 114, which were "
+     "all zeros. Same attribute as the friendly one, so it covers the ground "
+     "the same way"),
 ]
 
 
 def img64(ruta):
     with open(ruta, "rb") as f:
         return "data:image/png;base64," + base64.b64encode(f.read()).decode()
-
-
-def rotulo(imgdir, salida):
-    """Recorta el titulo de la pantalla de carga para la cabecera.
-
-    No es un montaje ni una fuente de fuera: son las filas 24 a 68 de la propia
-    pantalla que el juego ensena mientras carga, que es donde esta escrito
-    "War in Middle Earth".
-    """
-    fuente = os.path.join(imgdir, "carga.png")
-    if not os.path.exists(fuente):
-        return None
-    return fuente
 
 
 def main(argv):
@@ -381,9 +323,9 @@ def main(argv):
     imgdir, salida, idioma = argv[1:4]
     t = TXT[idioma]
 
-    ruta_logo = rotulo(imgdir, salida)
-    cabecera = ("<h1>War in Middle Earth</h1>" if not ruta_logo
-                else f'<img src="{img64(ruta_logo)}" alt="War in Middle Earth">')
+    logo = os.path.join(imgdir, "carga.png")
+    cabecera = (f'<img src="{img64(logo)}" alt="War in Middle Earth">'
+                if os.path.exists(logo) else "<h1>War in Middle Earth</h1>")
 
     nav = "".join(f'<a href="{h}">{x}</a>' for h, x in t["nav"])
     nav += "".join(f'<a href="{h}">{x}</a>' for h, x in t["docnav"])

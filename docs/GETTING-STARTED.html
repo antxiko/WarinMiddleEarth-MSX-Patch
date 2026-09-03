@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Getting started — War in Middle Earth (1989)</title>
+<title>Getting started — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,29 +82,29 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html" style=color:var(--tinta)>Start</a><a href="THE-GAME.html">The game</a><a href="THE-TAPE.html">The tape</a><a href="THE-CODE.html">The code</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EMPEZAR.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html" style=color:var(--tinta)>Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EMPEZAR.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
 <h1 id="getting-started">Getting started</h1>
-<p><a href="THE-GAME.html">The game</a> · <a href="THE-TAPE.html">The tape</a> · <a href="THE-CODE.html">The code</a> · <a href="FINDINGS.html">Findings</a> · <a href="OPEN-QUESTIONS.html">Open questions</a></p>
-<p>This repository holds a <b>commented disassembly</b> of War in Middle Earth for the MSX (Melbourne House / Dro Soft, 1989). Everything here comes out of the binary and can be generated from it again.</p>
-<h2 id="what-you-need">What you need</h2>
-<ul><li><b>Python 3</b> (no third-party packages)</li><li><b>pasmo</b>, to reassemble</li><li><b>z80dasm</b>, used only for the mnemonics</li><li>the tape, which this repository <b>does not distribute</b></li></ul>
-<p>The tape goes in the root, named <code>war.tsx</code>, and the <code>Makefile</code> asks for it by sha256:</p>
-<pre><code>13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208</code></pre>
-<p>It is a <b>TSX</b>, not a <code>.cas</code>: the blocks are not MSX blocks but ZX Spectrum ones, because the conversion brought the whole tape system across. That is in <a href="THE-TAPE.html">The tape</a>.</p>
-<h2 id="the-test-that-matters">The test that matters</h2>
-<pre><code>make verify</code></pre>
-<p>This reassembles the five listings with pasmo and compares each one, byte for byte, against the piece of tape it belongs to. If all five say <code>OK: reproducible byte a byte</code>, the disassembly has invented nothing.</p>
-<h2 id="everything-else-you-can-run">Everything else you can run</h2>
-<pre><code>make            # the whole cycle: extract, trace, list, verify
-make listados   # regenerates the five src/war_*.asm
-make sanity     # the checks reassembly does NOT cover
-make test       # the tests
-make imagenes   # redraws the PNGs in docs/imagenes from the tape
-make web        # regenerates this site</code></pre>
-<p><code>make sanity</code> is the one that watches for what a correct reassembly can hide: data being read as code, and tape bytes left unexplained. Today it says <b>62,261 out of 62,261, 100%</b>.</p>
-<h2 id="the-five-listings">The five listings</h2>
-<p>The game runs with <b>all four pages in RAM and no BIOS</b>, and the three big blocks are not run where they land: the boot code relocates them. That is why there are five listings and not three.</p>
-<table><tr><th>listing</th><th>org</th><th>what it is</th></tr><tr><td><code>war_loader.asm</code></td><td><code>0xD6D8</code></td><td>the loader: sets up RAM and reads the four blocks</td></tr><tr><td><code>war_pantalla.asm</code></td><td><code>0x88B8</code></td><td>the loading screen (almost all data)</td></tr><tr><td><code>war_bajo.asm</code></td><td><code>0x0190</code></td><td>the MSX layer: VRAM, keyboard, joystick, colour, tape</td></tr><tr><td><code>war_medio.asm</code></td><td><code>0x5E00</code></td><td><b>the game</b></td></tr><tr><td><code>war_alto.asm</code></td><td><code>0x9E00</code></td><td>graphics, map and tables (all data)</td></tr></table>
-<h2 id="and-a-word-about-the-pictures">And a word about the pictures</h2>
-<p>None of the ones in <code>docs/imagenes/</code> is a screenshot. <code>tools/render_carga.py</code> and <code>tools/render_graficos.py</code> draw them by reading the tape&#x27;s bytes in the ranges the listing delimits. If a range were mislabelled, it would come out as noise.</p>
-<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work.</p></footer></div>
+<p>This is a <b>gameplay patch</b> for the MSX cassette of <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). It is not the game: it is what gets changed in it.</p>
+<p><b>No cassette image is distributed here.</b> The patch is what gets shared, and you apply it to your own copy.</p>
+<h2 id="the-quick-way-the-ips">The quick way: the IPS</h2>
+<p>The repository carries a <b><code>war_parche.ips</code></b> of 249 bytes. It holds only the bytes that change — our own code and the drawing of the Eye of Sauron — and it applies to your own tape with any IPS tool, or with the one included here:</p>
+<pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
+<p>Your tape has to be the one it was made from. Its fingerprint is <code>sha256 13c63632…b1d81208</code>; if yours differs the patch will still apply, but nobody can vouch for the result.</p>
+<h2 id="the-long-way-build-it-yourself">The long way: build it yourself</h2>
+<p>You need Python 3 and <code>make</code>. Put your <code>war.tsx</code> in the root and:</p>
+<pre><code>make extract     # pulls the block bodies out of your tape into work/
+make parche      # applies the table and writes war_parche.tsx
+make ips         # and war_parche.ips, the patch on its own
+make test        # the 23 checks</code></pre>
+<p><code>make parche</code> does not write blind: <b>each change first checks that the original bytes are the ones it expects</b>, and if a single byte outside the table differs when it finishes, it aborts. That is why it is safe to let it run on your copy.</p>
+<h2 id="playing-it">Playing it</h2>
+<pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>
+<p>then, on the MSX, <code>RUN&quot;CAS:&quot;</code>. The whole load is about six and a half minutes of emulated time; with the emulator&#x27;s throttle off, far less.</p>
+<h2 id="what-you-will-see-differently">What you will see differently</h2>
+<ul><li><b>Enemy units are drawn on the map</b>, wearing the Eye of Sauron so you do not mistake them for your own.</li><li><b>Each unit&#x27;s sheet shows the number</b> for its six attributes, not just &quot;very skilled&quot;.</li><li><b>In the Ring-bearer&#x27;s sheet</b>, to the left of the ring, the <b>months left</b> before he succumbs.</li></ul>
+<p>To reach Frodo&#x27;s sheet: put the cursor on the Fellowship&#x27;s cell, fire, and use up and down to step through the units until you get to him. The ring number only shows in the bearer&#x27;s sheet, which is where the game draws the ring.</p>
+<h2 id="before-you-judge-it">Before you judge it</h2>
+<p><b>Nobody has played a full game with the patch on.</b> What is known to be missing is in <a href="OPEN-QUESTIONS.html">Open questions</a>, and playing it and reporting back is the most useful thing you can do.</p>
+<h2 id="where-it-comes-from">Where it comes from</h2>
+<p>From a <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly">commented disassembly</a> of the whole tape, which is a <b>separate repository and a separate site</b>. Every address quoted here comes out of that listing, not out of trial and error.</p>
+<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

@@ -1,65 +1,65 @@
 # Empezar
 
-[El juego](EL-JUEGO.html) · [La cinta](LA-CINTA.html) · [El codigo](EL-CODIGO.html) · [Hallazgos](HALLAZGOS.html) · [Preguntas abiertas](PREGUNTAS-ABIERTAS.html)
+Esto es un **parche de jugabilidad** para la cinta MSX de *War in Middle Earth*
+(Melbourne House / Dro Soft, 1989). No es el juego: es lo que se le cambia.
 
-Este repositorio contiene un **desensamblado comentado** de War in Middle Earth
-para MSX (Melbourne House / Dro Soft, 1989). Todo lo que hay aquí sale del
-binario y se puede volver a generar a partir de él.
+**Aquí no hay ninguna imagen de cinta.** Se reparte el parche y cada cual lo
+aplica sobre su copia.
 
-## Qué hace falta
+## La vía rápida: el IPS
 
-- **Python 3** (sin paquetes de terceros)
-- **pasmo**, para reensamblar
-- **z80dasm**, sólo para los nemónicos
-- la cinta, que este repositorio **no distribuye**
+En el repositorio hay un **`war_parche.ips`** de 249 bytes. Lleva sólo los bytes
+que cambian —código nuestro y el dibujo del Ojo de Sauron— y se aplica sobre tu
+propia cinta con cualquier herramienta de IPS, o con la que viene aquí:
 
-La cinta va en la raíz, con el nombre `war.tsx`, y el `Makefile` la pide por su
-sha256:
+    python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx
 
-    13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208
+Tu cinta tiene que ser la misma que se usó para sacarlo. Su huella es
+`sha256 13c63632…b1d81208`; si la tuya es otra, el parche se aplicará igual pero
+nadie garantiza el resultado.
 
-Es un **TSX**, no un `.cas`: los bloques no son los del MSX sino los del ZX
-Spectrum, porque la conversión se trajo el sistema de cinta entero. Está
-contado en [La cinta](LA-CINTA.html).
+## La vía larga: montarlo tú
 
-## La comprobación que importa
+Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
 
-    make verify
+    make extract     # saca los cuerpos de los bloques de tu cinta a work/
+    make parche      # aplica la tabla y escribe war_parche.tsx
+    make ips         # y war_parche.ips, el parche a secas
+    make test        # las 23 comprobaciones
 
-Reensambla los cinco listados con pasmo y compara cada uno, byte a byte, con el
-trozo de cinta que le corresponde. Si los cinco dicen `OK: reproducible byte a
-byte`, el desensamblado no se ha inventado nada.
+`make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
+originales son los que espera**, y si al terminar hay un solo byte distinto
+fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.
 
-## Todo lo demás que se puede lanzar
+## Jugarlo
 
-    make            # el ciclo entero: extraer, trazar, listar, verificar
-    make listados   # regenera los cinco src/war_*.asm
-    make sanity     # las comprobaciones que el reensamblado NO cubre
-    make test       # los tests
-    make imagenes   # redibuja los PNG de docs/imagenes desde la cinta
-    make web        # regenera esta web
+    openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx
 
-`make sanity` es el que vigila lo que un reensamblado correcto puede esconder:
-datos leídos como código, y bytes de la cinta sin explicar. Hoy dice
-**62.261 de 62.261, el 100 %**.
+y en el MSX, `RUN"CAS:"`. La carga entera son unos seis minutos y medio de
+tiempo emulado; con el acelerador del emulador, mucho menos.
 
-## Los cinco listados
+## Qué vas a ver distinto
 
-El juego corre con **las cuatro páginas en RAM y sin BIOS**, y los tres bloques
-grandes no se ejecutan donde se cargan: el arranque los recoloca. Por eso hay
-cinco listados y no tres.
+- **Las unidades enemigas se dibujan en el mapa**, con el Ojo de Sauron, para
+  no confundirlas con las tuyas.
+- **La ficha de cada unidad enseña el número** de sus seis apartados, no sólo
+  «es muy hábil».
+- **En la ficha del portador del Anillo**, a la izquierda del anillo, salen los
+  **meses que quedan** antes de sucumbir.
 
-| listado | org | qué es |
-|---|---|---|
-| `war_loader.asm` | `0xD6D8` | el cargador: monta la RAM y lee los cuatro bloques |
-| `war_pantalla.asm` | `0x88B8` | la pantalla de carga (casi toda, datos) |
-| `war_bajo.asm` | `0x0190` | la capa MSX: VRAM, teclado, joystick, color, cinta |
-| `war_medio.asm` | `0x5E00` | **el juego** |
-| `war_alto.asm` | `0x9E00` | gráficos, mapa y tablas (todo datos) |
+Para llegar a la ficha de Frodo: pon el cursor sobre la casilla de la Comunidad,
+dispara, y con arriba y abajo vas pasando de una unidad a otra hasta llegar a
+él. El número del anillo sólo sale en la ficha del portador, que es donde el
+juego dibuja el anillo.
 
-## Y una advertencia sobre las imágenes
+## Antes de juzgarlo
 
-Ninguna de las de `docs/imagenes/` es una captura. Las dibujan
-`tools/render_carga.py` y `tools/render_graficos.py` leyendo los bytes de la
-cinta en los rangos que el listado tiene acotados. Si un rango estuviera mal
-etiquetado, saldría ruido.
+**Nadie ha jugado una partida entera con el parche puesto.** Lo que se sabe que
+falta está en [Preguntas abiertas](PREGUNTAS-ABIERTAS.md), y se agradece que lo
+juegues y lo cuentes.
+
+## De dónde sale
+
+De un [desensamblado comentado](https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly)
+de la cinta entera, que es **otro repositorio y otra web**. Todas las direcciones
+que se citan aquí salen de aquel listado, no de probar a ver qué pasa.

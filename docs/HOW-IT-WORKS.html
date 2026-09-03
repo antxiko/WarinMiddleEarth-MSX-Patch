@@ -1,0 +1,136 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How it works — War in Middle Earth (MSX)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,640px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html" style=color:var(--tinta)>How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/COMO-FUNCIONA.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="how-it-works">How it works</h1>
+<p>The four things, one by one, with an address behind every claim.</p>
+<h2 id="a-unit-s-map">A unit&#x27;s map</h2>
+<p>The engine keeps <b>256 unit slots</b>, in parallel 256-byte arrays indexed by unit number:</p>
+<table><tr><th>address</th><th>what it holds</th></tr><tr><td><code>0xB900+n</code></td><td>column (X) on the map</td></tr><tr><td><code>0xBA00+n</code></td><td>row (Y)</td></tr><tr><td><code>0xBD00+n</code></td><td>type, side and flags; <b>bit 4 = carries the Ring</b></td></tr><tr><td><code>0xC000+n</code></td><td>low nibble <em>Valioso</em>, high nibble <em>Hábil</em></td></tr><tr><td><code>0xC100+n</code></td><td>low nibble <em>Duro</em>, high nibble <em>Bravo</em></td></tr><tr><td><code>0xC200+n</code></td><td><em>Enérgico</em> (spent by walking)</td></tr><tr><td><code>0xC300+n</code></td><td><em>Decidido</em> (goes up one every month)</td></tr></table>
+<p>Yours are slots <code>0x00</code>-<code>0x77</code> except <code>0x16</code> and <code>0x17</code>; the other side&#x27;s are those two and everything from <code>0x78</code> up. The <b>Ring-bearer</b> is the first slot with bit 4 of <code>0xBD00</code> set: in a new game, <b>Frodo, unit 0x05</b>.</p>
+<p>And the map lives from <code>0xCC00</code>, <b>column by column</b>: its <code>0x33CC</code> bytes are 130 columns of <code>0x66</code>, so cell (x, y) sits at <code>0xCC00 + (x+1)*102 + (y+1)</code>.</p>
+<hr>
+<h2 id="1-enemy-units-become-visible">1 · Enemy units become visible</h2>
+<p>In each map cell, <b>bit 7</b> means &quot;someone is here&quot;, and it is what makes the game draw the 2×2 silhouette. <code>RECENTRA_EL_MAPA</code> (<code>0x7FAC</code>) sets it: it clears bit 7 across the whole map and re-plants it unit by unit. But the loop stops at 0x78:</p>
+<pre><code>7FB0  ld c,000h        ; starts at unit 0
+7FB2  ...              ; plants bit 7 in unit C&#x27;s cell
+7FCC  set 7,(hl)       ; &quot;someone is here&quot;
+7FCE  inc c
+7FCF  ld a,c
+7FD0  cp 078h          ; &lt;- stops exactly where the enemy begins
+7FD2  jr nz,0x7FB2</code></pre>
+<p><b>One byte at <code>0x7FD1</code></b>, from <code>0x78</code> to <code>0x00</code>, and the loop walks all 256 slots. <code>0x7FC7</code> already skips the ones sitting at (0,0), so empty slots do no harm. Measured: <b>136 enemy units planted</b> where zero were before.</p>
+<blockquote><b>Note.</b> The opcode switch at <code>0x8982</code>/<code>0x8993</code> over <code>0x8AF3</code> — writing <code>0xD0</code> = <code>ret nc</code> or <code>0xD8</code> = <code>ret c</code> — does <b>not</b> decide this: it is the battle&#x27;s side filter. That was checked before ruling it out.</blockquote>
+<hr>
+<h2 id="2-every-attribute-shows-its-number">2 · Every attribute shows its number</h2>
+<p>The sheet is assembled in a buffer at <code>0x7C17</code>, 24 columns by 10 rows, and painted afterwards. Column 20 of each line has room for three digits.</p>
+<p>The new routine lives at <code>0x6600</code> and a <b>three-byte trampoline</b> at <code>0x708A</code> hooks it: where <code>ARMA_LA_FICHA</code> used to do <code>ld hl,0x5FBD</code> right before painting, it now does <code>call 0x6600</code>. The routine writes the six numbers and <b>ends by redoing that same <code>ld hl,0x5FBD</code></b>, so the render is unchanged.</p>
+<p>The values come from <code>0xC000</code>-<code>0xC300</code> for whichever unit the operand at <code>0x6EAD</code> names, and the digits are written by <code>ESCRIBE_A_EN_TRES_CIFRAS</code> (<code>0x7113</code>), which is the game&#x27;s own.</p>
+<hr>
+<h2 id="3-the-ring-s-deadline">3 · The Ring&#x27;s deadline</h2>
+<p>The clock (<code>0x831B</code>) counts ticks, days and months. Going from day 60 to 61:</p>
+<pre><code>8332  ld a,000h      ; the operand at 0x8333 is the COUNTDOWN of months
+8334  dec a          ; 0x7F4F sets it to 255 when the game starts
+8335  ld (08333h),a  ; one month less
+8338  jp z,DERROTA   ; at zero, Sauron&#x27;s screen
+8340  ld hl,0853ah   ; &quot;El Anillo corrompe al que lo usa.&quot;</code></pre>
+<p>That operand <b>is</b> what you have left before losing, and the game ties it to the Ring with its own message. There are other roads to <code>DERROTA</code> — losing the bearer, running the <code>0xC000</code> uses down in battle, handing the Ring to a unit with none — but that is the only one that is a <b>deadline</b>.</p>
+<p><code>MARCA_AL_PORTADOR</code> (<code>0x6F6E</code>) checks bit 4 of <code>0xBD00</code> and, if that unit carries the Ring, writes character <code>0x5F</code> at <code>0x7C46</code>, the last column of the sheet&#x27;s second row. To its left, <code>0x7C43</code>, three columns were free.</p>
+<p>That <code>ld a,05fh</code> + <code>ld (07c46h),a</code> is now a <code>call ANILLO_CON_PLAZO</code> (<code>0x666D</code>), which places the ring the same way and also writes <code>0x8333</code> at <code>0x7C43</code>.</p>
+<p><b>And it saves BC, DE and HL.</b> What follows in the sheet is <code>call DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), which relies on the HL it was handed: <code>0x7C27</code>, where the <code>ESCRIBE_A_EN_TRES_CIFRAS</code> at <code>0x6F6B</code> left it. Without saving it the sheet gets written somewhere else, with half the Fellowship&#x27;s names on top of it. Tried, and you can see it.</p>
+<hr>
+<h2 id="4-the-eye-of-sauron">4 · The Eye of Sauron</h2>
+<p>The game picks a cell&#x27;s artwork by looking at <b>its map byte and nothing else</b>:</p>
+<pre><code>PINTA_LA_UNIDAD (0x7708):   or a          ; without bit 7 there is nothing
+                            ret p
+                            bit 6,a       ; cell with an order under way -&gt; 0x11
+                            ld a,011h
+                            jr nz,ESTAMPA
+                            ld a,015h     ; otherwise, the usual artwork</code></pre>
+<p>So when it draws it <b>cannot know which side a unit belongs to</b>. That has to go into the map byte itself, and for that we need a free bit. <b>Bit 5</b> was free: zero uses across all 13,260 cells.</p>
+<ul><li><code>SIEMBRA_CON_BANDO</code> (<code>0x664C</code>) replaces the <code>call CELDA_DEL_MAPA</code> + <code>set 7,(hl)</code> at <code>0x7FC9</code>: it sets bit 7 as always and, if the unit is <code>0x78</code> or higher, bit 5 too.</li><li><code>DIBUJO_SEGUN_BANDO</code> (<code>0x6658</code>) replaces the body of <code>PINTA_LA_UNIDAD</code> from <code>0x770A</code> and looks at that bit 5 before anything else.</li></ul>
+<p>The icon is <b>four new tiles</b> at indices 111 to 114 of the <code>0x9E00</code> table, which were all zeros. Each tile is nine bytes: eight of artwork and a <b>ZX Spectrum attribute</b> glued behind. They carry <code>0x38</code> — black ink on white paper — the same as the friendly icon&#x27;s tiles, so the Eye covers the ground exactly as the helmet does.</p>
+<p><b>The ZX&#x27;s colour is per 8×8 cell, not per pixel.</b> Giving the Eye red ink would be one byte per quadrant; it was left black on white, as it was drawn.</p>
+<p>What could <b>not</b> be done, and why, is in <a href="FINDINGS.html">Findings</a>.</p>
+<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

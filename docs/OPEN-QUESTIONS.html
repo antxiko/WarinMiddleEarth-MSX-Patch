@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open questions — War in Middle Earth (1989)</title>
+<title>Open questions — War in Middle Earth (MSX)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,30 +82,24 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-GAME.html">The game</a><a href="THE-TAPE.html">The tape</a><a href="THE-CODE.html">The code</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html" style=color:var(--tinta)>Open questions</a><a href="es/PREGUNTAS-ABIERTAS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html" style=color:var(--tinta)>Open questions</a><a href="es/PREGUNTAS-ABIERTAS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
 <h1 id="open-questions">Open questions</h1>
-<p><a href="GETTING-STARTED.html">Getting started</a> · <a href="THE-GAME.html">The game</a> · <a href="THE-TAPE.html">The tape</a> · <a href="THE-CODE.html">The code</a> · <a href="FINDINGS.html">Findings</a></p>
-<p>What is still open, keeping MEASURED and ASSUMED apart. What is measured carries its measurement; what is assumed is labelled as such and <b>has not been written into the listing as if it were a fact</b>.</p>
-<hr>
-<h2 id="measured-and-closed">MEASURED, and closed</h2>
-<ul><li>The whole tape: <b>62,261 bytes, 62,261 explained, zero unexplained</b>.</li><li>All five listings <b>reassemble byte for byte</b> with pasmo.</li><li><b>52 data ranges</b> declared, all crossed against the trace.</li><li>Commented at <b>29.7%</b>, with no routine below 10% out of 767.</li><li>The budget was closed with <b>Araubi&#x27;s complete playthrough</b>: the 13.8 KB that had never been seen running were the two ending screens.</li></ul>
-<hr>
-<h2 id="assumed-labelled-as-such">ASSUMED (labelled as such)</h2>
-<ul><li><b>That bit 4 of <code>0xBD00+n</code> means &quot;carries the Ring&quot;.</b> What is measured is that <code>0x733E</code> looks for the first unit with that bit, that the game loop checks whether that unit is on <code>(0x68, 0x3F)</code>, and that it decides victory (<code>0x7F7D</code>) and defeat (<code>0x9218</code>). Everything points the same way, but the binary does not say it in so many words.</li><li><b>That units <code>0x16</code> and <code>0x17</code> are Sauron and Saruman.</b> The chain is long: <code>0x72FD</code> stores the bearer and does <code>inc a</code> to mark the row, and <code>0x7314</code> does <code>dec a</code> on the way back; so row = unit + 1 and row 0 is &quot;Vuelve&quot;, making unit <em>n</em> the *n+1*th name in the list at <code>0x6B46</code>. Counting gives Gollum, Sauron and Saruman. It fits with <code>0x6AE3</code> skipping exactly those two when painting armies, and with <code>0x7514</code> (choosing an enemy) accepting exactly <code>{0x16, 0x17, &gt;= 0x78}</code>. It is a deduction, not a direct reading.</li><li><b>That the figures stack in pairs.</b> Measured: each sprite is 32 bytes of 16×8. That consecutive entries fit together into 16×16 figures is what you see when you draw them, but <b>no routine that stacks them has been found</b>.</li></ul>
-<hr>
-<h2 id="open-what-could-not-be-closed">OPEN: what could not be closed</h2>
-<h3 id="1-the-insides-of-the-state-tables">1. The insides of the state tables</h3>
-<p><code>0xB8E8</code>-<code>0xC600</code> and <code>0xE400</code>-<code>0xE678</code> are delimited and we know who reads them (<code>0x6AC2</code>, <code>0x6EAC</code>, <code>0x8F7A</code>, <code>0x92E4</code>, <code>0x81A9</code>, <code>0x8189</code>, <code>0x7FF0</code>), but they have <b>not been broken down field by field</b>. <code>0xB900</code> is called X and <code>0xBA00</code> Y because <code>0x8108</code> multiplies the first by 102, which is the column stride, and <code>0x8166</code> walks columns in the outer loop; that is consistent, not proven.</p>
-<h3 id="2-what-the-map-s-second-pass-adds">2. What the map&#x27;s second pass adds</h3>
-<p>Drawing the map takes three passes. The second (<code>0x7714</code>) indexes <code>0x77B5</code> with <b>the same low nibble</b> the terrain pass already used (<code>0x7687</code>), and what it contributes could not be established.</p>
-<h3 id="3-who-sets-bit-7-of-a-map-byte">3. Who sets bit 7 of a map byte</h3>
-<p>The third pass of <code>0x7708</code> only paints if that bit is set. It is set from <code>0x8F70</code>, <code>0x8044</code> and <code>0x80BD</code>, but on what criterion was not settled.</p>
-<h3 id="4-the-nibble-shuffling-with-the-countdown">4. The nibble shuffling with the countdown</h3>
-<p><code>0x6A76</code>-<code>0x6A94</code> takes the operand of <code>0x8333</code> — the month countdown, set to 255 at <code>0x7F4F</code> — stores it <b>multiplied by 16</b>, and puts its high nibble minus one into the low nibble of <code>0xC000+bearer</code>. With 255 in there, that leaves the countdown at 240 the first time and at 0 the second. Either it is a deliberate penalty, or that byte has a second use nobody has worked out. It is commented by describing <b>what it does</b>, without interpreting it.</p>
-<h3 id="5-0x9144-reads-what-0x904d-has-just-cleared">5. <code>0x9144</code> reads what <code>0x904D</code> has just cleared</h3>
-<p>In the same routine, a few instructions apart: <code>0x904D</code> zeroes <code>0x5E00</code>+<code>0x4FF</code> — <code>0x6010</code> included — and <code>0x9144</code> then does <code>ld hl,0x6010 / ld a,(hl) / ld (0x8B19),a</code>. Either it is meant to read the battle board, or it is a Spectrum leftover where that byte lived somewhere else. The mechanism is commented, not the intent.</p>
-<h3 id="6-rows-of-tiles-that-are-computed-and-never-drawn">6. Rows of tiles that are computed and never drawn</h3>
-<p><code>0x86AF</code> works out <b>19 rows</b> of tiles (<code>ld c,0x13</code> at <code>0x86CC</code>) but the drawing loop does 16×16. Three rows prepared and never seen.</p>
-<h3 id="7-two-ranges-that-ought-to-be-split-off">7. Two ranges that ought to be split off</h3>
-<p>They currently sit inside <code>textos_de_los_paneles</code> and deserve names of their own: <code>0x83F8</code>-<code>0x83FB</code>, the four two-bit fills (<code>00</code>, <code>FF</code>, <code>AA</code>, <code>55</code>), and <code>0x846F</code>-<code>0x8496</code>, the five terrain textures <code>0x80BD</code> picks from.</p>
-<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work.</p></footer></div>
+<p>What is not done, what is not known, and what it would take to close it.</p>
+<h2 id="nobody-has-played-a-full-game">Nobody has played a full game</h2>
+<p>This is the most important line on the page. The patch is measured instant by instant in the emulator, but <b>nobody has sat down and played a complete game with it on</b>. Everything that follows is the kind of thing you only see by playing.</p>
+<p>If you play it, what would help to know:</p>
+<ul><li>whether the number in the sheet <b>eats a letter</b> on some unit type;</li><li>whether the Ring&#x27;s deadline <b>counts down as it should</b> as the months pass;</li><li>whether an Eye shows up <b>where nobody is</b>;</li><li>and whether the game misbehaves in battle, which this patch does not touch but which shares memory with what it does.</li></ul>
+<h2 id="the-sheet-on-every-unit-type">The sheet, on every unit type</h2>
+<p>It has been seen on <b>Gandalf</b> (Brujo) and <b>Frodo</b> (Hobbit), and it fits on both. But the sheet&#x27;s labels vary in length — &quot;Es muy Decidido ,&quot; is a long one — and the numbers go in column 20. The other types are unchecked.</p>
+<h2 id="two-enemy-units-are-still-invisible">Two enemy units are still invisible</h2>
+<p>The planting loop deliberately skips slots <code>0x16</code> and <code>0x17</code>, and both are enemy units. Of the ten cells holding enemies, nine get planted.</p>
+<p><b>What is not known: why.</b> The game treats them differently in more places — the loop that colours unit cells (<code>0x6AE3</code>) skips them too, and there is a routine, <code>PON_EL_EJERCITO_16_EN_SU_SITIO</code> (<code>0x922C</code>), dedicated to putting <code>0x16</code> back where it belongs — so they look like something special rather than an oversight. Making them visible without knowing what they are is asking for trouble.</p>
+<h2 id="the-deadline-only-shows-inside-the-bearer-s-sheet">The deadline only shows inside the bearer&#x27;s sheet</h2>
+<p>Today the number appears in the sheet, which is where the game draws the ring. A counter <b>permanently on screen</b> would mean hooking the play loop (<code>0x7F57</code>) and writing into the ZX screen every frame: new code, more risk, and no way to check it without playing for a while.</p>
+<p>The hook is located: <code>0x733E</code> gives the bearer, <code>0x8333</code> the value, and <code>0x7113</code> knows how to paint the number.</p>
+<h2 id="the-eye-in-red">The Eye, in red</h2>
+<p>The four tiles carry attribute <code>0x38</code> — black ink on white paper — the same as the friendly icon. Making it <b>red ink</b> would be one byte per quadrant, four in all.</p>
+<p>It has not been done because the ZX&#x27;s colour is per 8×8 cell and it would need looking at on screen: whether red over the map&#x27;s dithering reads well or just muddies it. That is a test, not a problem.</p>
+<h2 id="what-this-patch-does-not-touch">What this patch does not touch</h2>
+<ul><li><b>Battle.</b> The board is built on top of the menu&#x27;s code and has its own side-filtering routines; nothing here reaches into it.</li><li><b>Game balance.</b> Not one unit value has been changed, nor the deadline, nor the corruption. It only shows what was already there.</li><li><b>Sound.</b> Still silent. The beeper engine the conversion brought across is now half occupied by this patch.</li></ul>
+<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>
