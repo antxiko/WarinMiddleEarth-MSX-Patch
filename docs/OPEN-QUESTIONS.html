@@ -85,10 +85,12 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html" style=color:var(--tinta)>Open questions</a><a href="es/PREGUNTAS-ABIERTAS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
 <h1 id="open-questions">Open questions</h1>
 <p>What is not done, what is not known, and what it would take to close it.</p>
-<h2 id="nobody-has-played-a-full-game">Nobody has played a full game</h2>
-<p>This is the most important line on the page. The patch is measured instant by instant in the emulator, but <b>nobody has sat down and played a complete game with it on</b>. Everything that follows is the kind of thing you only see by playing.</p>
-<p>If you play it, what would help to know:</p>
+<h2 id="araubi-played-it-and-found-the-big-one-closed">Araubi played it, and found the big one (closed)</h2>
+<p>This page used to open by asking someone to play a full game, because the patch was measured instant by instant in the emulator but nobody had sat down and played it. <b>Araubi did, and sent the recording</b>: eight minutes in, the sheet&#x27;s labels came out as garbage, and shortly after that the machine hung.</p>
+<p>It was the patch&#x27;s fault: the Ring hook pointed one byte before the start of its routine and slipped in an <code>ld (hl),a</code> that ate the separators of the name list, one per sheet drawn. It is written up in <a href="FINDINGS.html">Findings</a>, and fixed with a single byte.</p>
+<p>One recorded game was worth more than every automated check put together. What still needs playing to be seen:</p>
 <ul><li>whether the number in the sheet <b>eats a letter</b> on some unit type;</li><li>whether the Ring&#x27;s deadline <b>counts down as it should</b> as the months pass;</li><li>whether an Eye shows up <b>where nobody is</b>;</li><li>and whether the game misbehaves in battle, which this patch does not touch but which shares memory with what it does.</li></ul>
+<p>And one the recording left open: the hang came after the broken panel and was most likely its consequence —with no separator, copying a name never finds where to stop— but <b>that is not proven</b>. With the corrected tape the game is still alive ten minutes in and does not hang; a genuinely long game would close it.</p>
 <h2 id="the-sheet-on-every-unit-type">The sheet, on every unit type</h2>
 <p>It has been seen on <b>Gandalf</b> (Brujo) and <b>Frodo</b> (Hobbit), and it fits on both. But the sheet&#x27;s labels vary in length — &quot;Es muy Decidido ,&quot; is a long one — and the numbers go in column 20. The other types are unchecked.</p>
 <h2 id="two-enemy-units-are-still-invisible">Two enemy units are still invisible</h2>

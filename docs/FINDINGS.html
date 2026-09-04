@@ -116,4 +116,18 @@ bit 3: 2148   bit 7:   28</code></pre>
 <h2 id="writing-into-the-sheet-means-saving-the-registers">Writing into the sheet means saving the registers</h2>
 <p><code>ANILLO_CON_PLAZO</code> calls <code>ESCRIBE_A_EN_TRES_CIFRAS</code>, which leaves HL three bytes further on. What follows in the sheet, <code>DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), <b>relies on the HL it was handed</b>. Without saving it the sheet gets written somewhere else: with half the Fellowship&#x27;s names on top of it.</p>
 <p>That is not a guess: it was tried without saving, and the sheet came out broken.</p>
+<h2 id="one-byte-short-in-a-call-and-the-panel-fell-apart-after-eight-minutes">One byte short in a <code>call</code>, and the panel fell apart after eight minutes</h2>
+<p>Araubi played a full game and sent the recording. From the <b>eighth minute</b> on, the sheet&#x27;s labels came out as garbage —the numbers and <code>Destino:</code> still read fine— and shortly after that the machine hung.</p>
+<p>The texts in RAM were <b>untouched</b>: 1,536 bytes compared against the tape, zero differences. What broke was the <b>separator</b>. The 24 proper names at <code>0x6B46</code> sit back to back with a <code>0xB7</code> between them, and the routines that copy them read up to that byte. Comparing RAM at two moments:</p>
+<pre><code>t=430   every separator in place
+t=470   one turned into 0x10
+t=500   6 left of the 25 0xB7 bytes in 0x6B45..0x6BFA</code></pre>
+<p>One fewer per sheet drawn. A write watchpoint on the table caught it first try:</p>
+<pre><code>t=471.686   writes 10 at 6B75   PC=666D  HL=6B75  A=10
+t=474.471   writes 10 at 6B7B   PC=666D  HL=6B7B  A=10
+...eighteen times, up to t=492.173</code></pre>
+<p><code>0x666D</code> belongs to this patch. And it is one byte before where it should be: <code>ANILLO_CON_PLAZO</code> starts at <b><code>0x666E</code></b> —that is what pasmo&#x27;s symbol file says—. At <code>0x666D</code> sits the <code>0x77</code> that ends the <code>jp 07717h</code> on the line above, and that stray byte reads as <b><code>ld (hl),a</code></b>.</p>
+<p>So every time the ring-bearer&#x27;s sheet was drawn, a free <code>ld (hl),a</code> ran before the routine proper, with whatever HL and A <code>MARCA_AL_PORTADOR</code> was carrying: HL inside the name table and A holding <code>0x10</code>. The patch was eating its own separators, one at a time, until copying a name no longer found where to stop.</p>
+<p>The fix is <b>one byte</b>: <code>cd 6d 66</code> → <code>cd 6e 66</code>. Measured on that same recording, with the corrected tape and replaying from the start: the routine is called <b>29 times</b> over the stretch where it used to break, there are <b>zero</b> writes into the name table, the separators stay whole and the sheet still reads correctly ten minutes in.</p>
+<p>The galling part is that <b>there was a test for this</b> and it passed: it checked that the hook pointed <code>base + 33</code> bytes in, counted by hand just as wrongly as in the patch. The addresses now come from the assembler&#x27;s symbol file, which is the only thing that really knows where each routine starts.</p>
 <footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

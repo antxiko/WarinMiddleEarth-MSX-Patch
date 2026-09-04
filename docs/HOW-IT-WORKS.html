@@ -117,7 +117,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 8340  ld hl,0853ah   ; &quot;El Anillo corrompe al que lo usa.&quot;</code></pre>
 <p>That operand <b>is</b> what you have left before losing, and the game ties it to the Ring with its own message. There are other roads to <code>DERROTA</code> — losing the bearer, running the <code>0xC000</code> uses down in battle, handing the Ring to a unit with none — but that is the only one that is a <b>deadline</b>.</p>
 <p><code>MARCA_AL_PORTADOR</code> (<code>0x6F6E</code>) checks bit 4 of <code>0xBD00</code> and, if that unit carries the Ring, writes character <code>0x5F</code> at <code>0x7C46</code>, the last column of the sheet&#x27;s second row. To its left, <code>0x7C43</code>, three columns were free.</p>
-<p>That <code>ld a,05fh</code> + <code>ld (07c46h),a</code> is now a <code>call ANILLO_CON_PLAZO</code> (<code>0x666D</code>), which places the ring the same way and also writes <code>0x8333</code> at <code>0x7C43</code>.</p>
+<p>That <code>ld a,05fh</code> + <code>ld (07c46h),a</code> is now a <code>call ANILLO_CON_PLAZO</code> (<code>0x666E</code>), which places the ring the same way and also writes <code>0x8333</code> at <code>0x7C43</code>.</p>
 <p><b>And it saves BC, DE and HL.</b> What follows in the sheet is <code>call DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), which relies on the HL it was handed: <code>0x7C27</code>, where the <code>ESCRIBE_A_EN_TRES_CIFRAS</code> at <code>0x6F6B</code> left it. Without saving it the sheet gets written somewhere else, with half the Fellowship&#x27;s names on top of it. Tried, and you can see it.</p>
 <hr>
 <h2 id="4-the-eye-of-sauron">4 · The Eye of Sauron</h2>

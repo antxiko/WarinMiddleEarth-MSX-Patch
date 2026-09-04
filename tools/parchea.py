@@ -143,8 +143,19 @@ PARCHES = [
     # MARCA_AL_PORTADOR escribia solo el anillo en 0x7C46, ahora llama a
     # ANILLO_CON_PLAZO, que escribe tambien ese numero en las tres columnas de
     # su izquierda (0x7C43).
-    dict(grupo="anillo", bloque="medio", dir=0x6F77, orig="3e5f32467c", nuevo="cd6d660000",
-         motivo="call ANILLO_CON_PLAZO (0x666D): el anillo y los meses que quedan"),
+    #
+    # OJO CON LA DIRECCION. ANILLO_CON_PLAZO empieza en 0x666E, no en 0x666D:
+    # 0x664C + 12 (SIEMBRA_CON_BANDO) + 10 + 12 (las dos mitades de
+    # DIBUJO_SEGUN_BANDO) = 34 bytes. La primera version puso 0x666D, un byte
+    # antes, que es el 0x77 con que acaba el `jp 07717h` de la linea anterior:
+    # o sea un `ld (hl),a` de propina antes de entrar en la rutina. Con el HL
+    # que traia MARCA_AL_PORTADOR -la tabla de nombres de 0x6B46- eso escribia
+    # el A del momento (0x10) encima del separador 0xB7 de un nombre, uno por
+    # cada ficha pintada, hasta que el panel entero salia en basura. Es el bug
+    # que reporto Araubi. El test lo comprueba ahora contra los simbolos que
+    # saca pasmo, no contra un numero escrito a mano.
+    dict(grupo="anillo", bloque="medio", dir=0x6F77, orig="3e5f32467c", nuevo="cd6e660000",
+         motivo="call ANILLO_CON_PLAZO (0x666E): el anillo y los meses que quedan"),
 
     # ---- (5) LOS TEXTOS EN ESPANOL ---------------------------------------
     # La conversion dejo los toponimos del mapa en ingles y tres nombres de raza

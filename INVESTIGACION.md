@@ -216,7 +216,7 @@ la segunda fila de la ficha. A su izquierda, 0x7C43, hay tres columnas libres:
 justo tres cifras.
 
 Donde el juego hacia `ld a,05fh` + `ld (07c46h),a`, ahora llama a
-**ANILLO_CON_PLAZO (0x666D)**, que pone el anillo igual y ademas escribe el
+**ANILLO_CON_PLAZO (0x666E)**, que pone el anillo igual y ademas escribe el
 0x8333 en 0x7C43 con `ESCRIBE_A_EN_TRES_CIFRAS` (0x7113), la misma rutina que la
 ficha ya usaba dos lineas antes.
 

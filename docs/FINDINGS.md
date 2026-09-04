@@ -89,3 +89,45 @@ on the HL it was handed**. Without saving it the sheet gets written somewhere
 else: with half the Fellowship's names on top of it.
 
 That is not a guess: it was tried without saving, and the sheet came out broken.
+
+## One byte short in a `call`, and the panel fell apart after eight minutes
+
+Araubi played a full game and sent the recording. From the **eighth minute** on,
+the sheet's labels came out as garbage —the numbers and `Destino:` still read
+fine— and shortly after that the machine hung.
+
+The texts in RAM were **untouched**: 1,536 bytes compared against the tape, zero
+differences. What broke was the **separator**. The 24 proper names at `0x6B46`
+sit back to back with a `0xB7` between them, and the routines that copy them
+read up to that byte. Comparing RAM at two moments:
+
+    t=430   every separator in place
+    t=470   one turned into 0x10
+    t=500   6 left of the 25 0xB7 bytes in 0x6B45..0x6BFA
+
+One fewer per sheet drawn. A write watchpoint on the table caught it first try:
+
+    t=471.686   writes 10 at 6B75   PC=666D  HL=6B75  A=10
+    t=474.471   writes 10 at 6B7B   PC=666D  HL=6B7B  A=10
+    ...eighteen times, up to t=492.173
+
+`0x666D` belongs to this patch. And it is one byte before where it should be:
+`ANILLO_CON_PLAZO` starts at **`0x666E`** —that is what pasmo's symbol file
+says—. At `0x666D` sits the `0x77` that ends the `jp 07717h` on the line above,
+and that stray byte reads as **`ld (hl),a`**.
+
+So every time the ring-bearer's sheet was drawn, a free `ld (hl),a` ran before
+the routine proper, with whatever HL and A `MARCA_AL_PORTADOR` was carrying: HL
+inside the name table and A holding `0x10`. The patch was eating its own
+separators, one at a time, until copying a name no longer found where to stop.
+
+The fix is **one byte**: `cd 6d 66` → `cd 6e 66`. Measured on that same
+recording, with the corrected tape and replaying from the start: the routine is
+called **29 times** over the stretch where it used to break, there are **zero**
+writes into the name table, the separators stay whole and the sheet still reads
+correctly ten minutes in.
+
+The galling part is that **there was a test for this** and it passed: it checked
+that the hook pointed `base + 33` bytes in, counted by hand just as wrongly as
+in the patch. The addresses now come from the assembler's symbol file, which is
+the only thing that really knows where each routine starts.

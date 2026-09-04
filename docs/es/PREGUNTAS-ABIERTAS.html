@@ -85,10 +85,12 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html" style=color:var(--tinta)>Preguntas abiertas</a><a href="../OPEN-QUESTIONS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
 <h1 id="preguntas-abiertas">Preguntas abiertas</h1>
 <p>Lo que no está hecho, lo que no se sabe, y lo que hace falta para cerrarlo.</p>
-<h2 id="nadie-ha-jugado-una-partida-entera">Nadie ha jugado una partida entera</h2>
-<p>Es lo más importante de esta página. El parche está medido instante a instante en el emulador, pero <b>nadie se ha sentado a jugar una partida completa con él puesto</b>. Todo lo que sigue son cosas que sólo se ven jugando.</p>
-<p>Si lo juegas, lo que interesa saber:</p>
+<h2 id="araubi-jugo-y-encontro-el-fallo-gordo-cerrada">Araubi jugó, y encontró el fallo gordo (cerrada)</h2>
+<p>Esta página empezaba pidiendo que alguien jugara una partida entera, porque el parche estaba medido instante a instante en el emulador pero nadie se había sentado a jugarlo. <b>Araubi lo hizo y mandó la grabación</b>: a los ocho minutos las etiquetas de la ficha salían en basura y poco después la máquina se colgaba.</p>
+<p>Era del parche: el gancho del Anillo apuntaba un byte antes del principio de su rutina y colaba un <code>ld (hl),a</code> que se comía los separadores de la lista de nombres, uno por cada ficha pintada. Está contado en <a href="HALLAZGOS.html">Hallazgos</a>, y arreglado con un byte.</p>
+<p>Una partida grabada valió más que todas las comprobaciones automáticas juntas. Lo que sigue faltando por ver jugando:</p>
 <ul><li>si el número de la ficha <b>se come alguna letra</b> en algún tipo de unidad;</li><li>si el plazo del Anillo <b>baja como debe</b> al pasar los meses;</li><li>si en alguna pantalla aparece un Ojo <b>donde no hay nadie</b>;</li><li>y si el juego se comporta raro en la batalla, que es la parte que este parche no toca pero comparte memoria con lo que sí.</li></ul>
+<p>Y una que dejó abierta la grabación: el cuelgue venía después del panel roto y lo más probable es que fuera su consecuencia —sin separador, la copia de un nombre no encuentra dónde parar—, pero <b>eso no está demostrado</b>. Con la cinta corregida la partida llega viva a los diez minutos y no se cuelga; una partida larga de verdad lo cerraría.</p>
 <h2 id="la-ficha-en-todos-los-tipos-de-unidad">La ficha, en todos los tipos de unidad</h2>
 <p>Se ha visto en <b>Gandalf</b> (Brujo) y en <b>Frodo</b> (Hobbit), y en las dos cabe. Pero las etiquetas de la ficha son de longitud variable —«Es muy Decidido ,» es larga— y los números van en la columna 20. Falta comprobar los demás tipos.</p>
 <h2 id="dos-unidades-enemigas-siguen-invisibles">Dos unidades enemigas siguen invisibles</h2>

@@ -2,20 +2,31 @@
 
 What is not done, what is not known, and what it would take to close it.
 
-## Nobody has played a full game
+## Araubi played it, and found the big one (closed)
 
-This is the most important line on the page. The patch is measured instant by
-instant in the emulator, but **nobody has sat down and played a complete game
-with it on**. Everything that follows is the kind of thing you only see by
-playing.
+This page used to open by asking someone to play a full game, because the patch
+was measured instant by instant in the emulator but nobody had sat down and
+played it. **Araubi did, and sent the recording**: eight minutes in, the sheet's
+labels came out as garbage, and shortly after that the machine hung.
 
-If you play it, what would help to know:
+It was the patch's fault: the Ring hook pointed one byte before the start of its
+routine and slipped in an `ld (hl),a` that ate the separators of the name list,
+one per sheet drawn. It is written up in [Findings](FINDINGS.md), and fixed with
+a single byte.
+
+One recorded game was worth more than every automated check put together. What
+still needs playing to be seen:
 
 - whether the number in the sheet **eats a letter** on some unit type;
 - whether the Ring's deadline **counts down as it should** as the months pass;
 - whether an Eye shows up **where nobody is**;
 - and whether the game misbehaves in battle, which this patch does not touch but
   which shares memory with what it does.
+
+And one the recording left open: the hang came after the broken panel and was
+most likely its consequence —with no separator, copying a name never finds where
+to stop— but **that is not proven**. With the corrected tape the game is still
+alive ten minutes in and does not hang; a genuinely long game would close it.
 
 ## The sheet, on every unit type
 

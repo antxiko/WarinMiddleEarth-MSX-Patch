@@ -92,7 +92,7 @@ el Anillo, escribe el carácter `0x5F` en `0x7C46`, la última columna de la
 segunda fila de la ficha. A su izquierda, `0x7C43`, había tres columnas libres.
 
 Ahora ese `ld a,05fh` + `ld (07c46h),a` es un `call ANILLO_CON_PLAZO`
-(`0x666D`), que pone el anillo igual y además escribe el `0x8333` en `0x7C43`.
+(`0x666E`), que pone el anillo igual y además escribe el `0x8333` en `0x7C43`.
 
 **Y guarda BC, DE y HL.** Lo que va detrás en la ficha es
 `call DESCRIBE_EL_DESTINO` (`0x6F7C`), que se aprovecha del HL que traía de

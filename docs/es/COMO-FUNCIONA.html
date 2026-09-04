@@ -117,7 +117,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 8340  ld hl,0853ah   ; &quot;El Anillo corrompe al que lo usa.&quot;</code></pre>
 <p>Ese operando <b>es</b> lo que queda antes de perder, y el juego lo ata al Anillo con su propio mensaje. Hay más caminos a <code>DERROTA</code> —quedarse sin portador, agotar los usos de <code>0xC000</code> en la batalla, entregar el Anillo a una unidad sin usos—, pero ése es el único que es un <b>plazo</b>.</p>
 <p><code>MARCA_AL_PORTADOR</code> (<code>0x6F6E</code>) mira el bit 4 de <code>0xBD00</code> y, si esa unidad lleva el Anillo, escribe el carácter <code>0x5F</code> en <code>0x7C46</code>, la última columna de la segunda fila de la ficha. A su izquierda, <code>0x7C43</code>, había tres columnas libres.</p>
-<p>Ahora ese <code>ld a,05fh</code> + <code>ld (07c46h),a</code> es un <code>call ANILLO_CON_PLAZO</code> (<code>0x666D</code>), que pone el anillo igual y además escribe el <code>0x8333</code> en <code>0x7C43</code>.</p>
+<p>Ahora ese <code>ld a,05fh</code> + <code>ld (07c46h),a</code> es un <code>call ANILLO_CON_PLAZO</code> (<code>0x666E</code>), que pone el anillo igual y además escribe el <code>0x8333</code> en <code>0x7C43</code>.</p>
 <p><b>Y guarda BC, DE y HL.</b> Lo que va detrás en la ficha es <code>call DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), que se aprovecha del HL que traía de antes: <code>0x7C27</code>, donde lo dejó el <code>ESCRIBE_A_EN_TRES_CIFRAS</code> de <code>0x6F6B</code>. Sin guardarlo, la ficha sale escrita en otro sitio, con los nombres de media Comunidad encima. Probado, y se ve.</p>
 <hr>
 <h2 id="4-el-ojo-de-sauron">4 · El Ojo de Sauron</h2>

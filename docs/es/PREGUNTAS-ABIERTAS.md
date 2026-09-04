@@ -2,19 +2,32 @@
 
 Lo que no está hecho, lo que no se sabe, y lo que hace falta para cerrarlo.
 
-## Nadie ha jugado una partida entera
+## Araubi jugó, y encontró el fallo gordo (cerrada)
 
-Es lo más importante de esta página. El parche está medido instante a instante
-en el emulador, pero **nadie se ha sentado a jugar una partida completa con él
-puesto**. Todo lo que sigue son cosas que sólo se ven jugando.
+Esta página empezaba pidiendo que alguien jugara una partida entera, porque el
+parche estaba medido instante a instante en el emulador pero nadie se había
+sentado a jugarlo. **Araubi lo hizo y mandó la grabación**: a los ocho minutos
+las etiquetas de la ficha salían en basura y poco después la máquina se colgaba.
 
-Si lo juegas, lo que interesa saber:
+Era del parche: el gancho del Anillo apuntaba un byte antes del principio de su
+rutina y colaba un `ld (hl),a` que se comía los separadores de la lista de
+nombres, uno por cada ficha pintada. Está contado en
+[Hallazgos](HALLAZGOS.md), y arreglado con un byte.
+
+Una partida grabada valió más que todas las comprobaciones automáticas juntas.
+Lo que sigue faltando por ver jugando:
 
 - si el número de la ficha **se come alguna letra** en algún tipo de unidad;
 - si el plazo del Anillo **baja como debe** al pasar los meses;
 - si en alguna pantalla aparece un Ojo **donde no hay nadie**;
 - y si el juego se comporta raro en la batalla, que es la parte que este parche
   no toca pero comparte memoria con lo que sí.
+
+Y una que dejó abierta la grabación: el cuelgue venía después del panel roto y
+lo más probable es que fuera su consecuencia —sin separador, la copia de un
+nombre no encuentra dónde parar—, pero **eso no está demostrado**. Con la cinta
+corregida la partida llega viva a los diez minutos y no se cuelga; una partida
+larga de verdad lo cerraría.
 
 ## La ficha, en todos los tipos de unidad
 

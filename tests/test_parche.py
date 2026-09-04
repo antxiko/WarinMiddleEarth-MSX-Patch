@@ -31,6 +31,26 @@ def pasmo():
     return cand if os.path.exists(cand) else None
 
 
+@functools.lru_cache(maxsize=1)
+def simbolos_del_icono(pas):
+    """{etiqueta: direccion} de src/parche/icono_enemigo.asm, tal como los
+    escribe pasmo (`NOMBRE EQU 0666EH`). Es la unica autoridad sobre donde
+    empieza cada rutina del parche."""
+    os.makedirs(WORK, exist_ok=True)
+    binario = os.path.join(WORK, "icono_enemigo.sym.bin")
+    sym = os.path.join(WORK, "icono_enemigo.sym")
+    r = subprocess.run([pas, "--bin", ASM_ICONO, binario, sym],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr or r.stdout)
+    tabla = {}
+    for linea in open(sym):
+        partes = linea.split()
+        if len(partes) == 3 and partes[1].upper() == "EQU":
+            tabla[partes[0]] = int(partes[2].rstrip("Hh"), 16)
+    return tabla
+
+
 def hay_cuerpos():
     return all(os.path.exists(os.path.join(WORK, n + ".raw"))
                for n in parchea.BLOQUES_SPECTRUM)
@@ -123,18 +143,39 @@ class TestTabla(unittest.TestCase):
         self.assertEqual(open(bin_, "rb").read(), parchea.RUTINA_ICONO)
 
     def test_los_ganchos_del_icono_apuntan_donde_toca(self):
-        """Los tres ganchos de la segunda tanda entran en la rutina nueva:
-        la siembra por `call`, el dibujo por `jp` y el anillo por `call`."""
+        """Los tres ganchos de la segunda tanda entran en la rutina nueva: la
+        siembra por `call`, el dibujo por `jp` y el anillo por `call`.
+
+        Las direcciones se sacan del fichero de SIMBOLOS que escribe pasmo, no
+        de sumar bytes a mano. La primera version las contaba a mano y le puso
+        al anillo 0x666D en vez de 0x666E: el test repetia la misma cuenta
+        equivocada, asi que confirmaba el fallo en vez de cazarlo."""
+        pas = pasmo()
+        if not pas:
+            self.skipTest("pasmo no esta en el PATH")
+        simbolos = simbolos_del_icono(pas)
         rut = next(p for p in parchea.PARCHES if p["dir"] == 0x664C)
-        base = 0x664C
         self.assertEqual(len(bytes.fromhex(rut["nuevo"])), len(parchea.RUTINA_ICONO))
-        for direccion, opcode, destino in ((0x7FC9, 0xCD, base),          # SIEMBRA_CON_BANDO
-                                           (0x770A, 0xC3, base + 12),     # DIBUJO_SEGUN_BANDO
-                                           (0x6F77, 0xCD, base + 33)):    # ANILLO_CON_PLAZO
+        for direccion, opcode, etiqueta in ((0x7FC9, 0xCD, "SIEMBRA_CON_BANDO"),
+                                            (0x770A, 0xC3, "DIBUJO_SEGUN_BANDO"),
+                                            (0x6F77, 0xCD, "ANILLO_CON_PLAZO")):
             g = bytes.fromhex(next(p for p in parchea.PARCHES
                                    if p["dir"] == direccion)["nuevo"])
             self.assertEqual(g[0], opcode, hex(direccion))
-            self.assertEqual(g[1] | (g[2] << 8), destino, hex(direccion))
+            self.assertEqual(g[1] | (g[2] << 8), simbolos[etiqueta],
+                             "el gancho de 0x%04X no entra en %s" % (direccion, etiqueta))
+
+    def test_el_gancho_del_anillo_cae_en_la_primera_instruccion(self):
+        """Sin pasmo tambien: el byte al que salta el gancho del anillo tiene
+        que ser el `ld a,05fh` con que empieza ANILLO_CON_PLAZO. Si el destino
+        se corre un byte cae en el 0x77 con que acaba el `jp 07717h` anterior,
+        que es un `ld (hl),a` que escribe donde le pille -el bug de Araubi-."""
+        g = bytes.fromhex(next(p for p in parchea.PARCHES
+                               if p["dir"] == 0x6F77)["nuevo"])
+        destino = g[1] | (g[2] << 8)
+        cuerpo = parchea.RUTINA_ICONO[destino - 0x664C:]
+        self.assertEqual(cuerpo[:5], bytes.fromhex("3e5f32467c"),
+                         "0x%04X no es el `ld a,05fh` / `ld (07c46h),a` del anillo" % destino)
 
     def test_el_ojo_no_usa_un_hueco_de_la_tabla_de_cuadros(self):
         """Los huecos a cero de la tabla de 0x77B5 NO estan libres: los indices

@@ -116,4 +116,18 @@ bit 3: 2148   bit 7:   28</code></pre>
 <h2 id="al-escribir-en-la-ficha-hay-que-guardar-los-registros">Al escribir en la ficha hay que guardar los registros</h2>
 <p><code>ANILLO_CON_PLAZO</code> llama a <code>ESCRIBE_A_EN_TRES_CIFRAS</code>, que deja HL tres bytes más allá. Lo que va detrás en la ficha, <code>DESCRIBE_EL_DESTINO</code> (<code>0x6F7C</code>), <b>se aprovecha del HL que traía de antes</b>. Sin guardarlo, la ficha sale escrita en otro sitio: con los nombres de media Comunidad encima.</p>
 <p>No es una suposición: se probó sin guardar y la ficha salió rota.</p>
+<h2 id="un-byte-de-menos-en-un-call-y-el-panel-se-deshacia-a-los-ocho-minutos">Un byte de menos en un <code>call</code>, y el panel se deshacía a los ocho minutos</h2>
+<p>Araubi jugó una partida entera y mandó la grabación. A partir del <b>minuto ocho</b> las etiquetas de la ficha salían en basura —los números y <code>Destino:</code> seguían bien— y poco después la máquina se colgaba.</p>
+<p>Los textos en RAM <b>no estaban tocados</b>: 1.536 bytes comparados contra la cinta, cero diferencias. Lo que se rompía era el <b>separador</b>. Los 24 nombres propios de <code>0x6B46</code> van pegados con un <code>0xB7</code> en medio, y las rutinas que los copian leen hasta ese byte. Comparando la RAM en dos instantes:</p>
+<pre><code>t=430   todos los separadores en su sitio
+t=470   uno convertido en 0x10
+t=500   quedaban 6 de los 25 bytes 0xB7 de 0x6B45..0x6BFA</code></pre>
+<p>Uno menos por cada ficha que se pintaba. Un punto de observación de escritura sobre la tabla lo cazó a la primera:</p>
+<pre><code>t=471,686   escribe 10 en 6B75   PC=666D  HL=6B75  A=10
+t=474,471   escribe 10 en 6B7B   PC=666D  HL=6B7B  A=10
+...dieciocho veces hasta t=492,173</code></pre>
+<p><code>0x666D</code> es de este parche. Y es un byte antes de donde tenía que ser: <code>ANILLO_CON_PLAZO</code> empieza en <b><code>0x666E</code></b> —lo dice el fichero de símbolos que saca pasmo—. En <code>0x666D</code> está el <code>0x77</code> con que acaba el <code>jp 07717h</code> de la línea de arriba, y ese byte suelto se lee como <b><code>ld (hl),a</code></b>.</p>
+<p>O sea que cada vez que se pintaba la ficha del portador, antes de entrar en la rutina se ejecutaba un <code>ld (hl),a</code> de propina, con el HL y el A que traía <code>MARCA_AL_PORTADOR</code>: <code>HL</code> en la tabla de nombres y <code>A</code> valiendo <code>0x10</code>. El parche se comía sus propios separadores, uno a uno, hasta que la copia de un nombre ya no encontraba dónde parar.</p>
+<p>El arreglo es <b>un byte</b>: <code>cd 6d 66</code> → <code>cd 6e 66</code>. Medido sobre la misma grabación, con la cinta corregida y reproduciendo desde el principio: la rutina se llama <b>29 veces</b> en el tramo donde antes se rompía, hay <b>cero</b> escrituras en la tabla de nombres, los separadores siguen enteros y la ficha se lee bien a los diez minutos.</p>
+<p>Lo que dolió es que <b>había un test para esto</b> y daba verde: comprobaba que el gancho apuntaba a <code>base + 33</code> bytes, contados a mano igual de mal que en el parche. Ahora las direcciones las saca del fichero de símbolos del ensamblador, que es el único que sabe de verdad dónde empieza cada rutina.</p>
 <footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>

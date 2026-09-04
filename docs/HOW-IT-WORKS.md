@@ -90,7 +90,7 @@ with none — but that is the only one that is a **deadline**.
 carries the Ring, writes character `0x5F` at `0x7C46`, the last column of the
 sheet's second row. To its left, `0x7C43`, three columns were free.
 
-That `ld a,05fh` + `ld (07c46h),a` is now a `call ANILLO_CON_PLAZO` (`0x666D`),
+That `ld a,05fh` + `ld (07c46h),a` is now a `call ANILLO_CON_PLAZO` (`0x666E`),
 which places the ring the same way and also writes `0x8333` at `0x7C43`.
 
 **And it saves BC, DE and HL.** What follows in the sheet is

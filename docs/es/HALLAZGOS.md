@@ -89,3 +89,47 @@ aprovecha del HL que traía de antes**. Sin guardarlo, la ficha sale escrita en
 otro sitio: con los nombres de media Comunidad encima.
 
 No es una suposición: se probó sin guardar y la ficha salió rota.
+
+## Un byte de menos en un `call`, y el panel se deshacía a los ocho minutos
+
+Araubi jugó una partida entera y mandó la grabación. A partir del **minuto
+ocho** las etiquetas de la ficha salían en basura —los números y `Destino:`
+seguían bien— y poco después la máquina se colgaba.
+
+Los textos en RAM **no estaban tocados**: 1.536 bytes comparados contra la
+cinta, cero diferencias. Lo que se rompía era el **separador**. Los 24 nombres
+propios de `0x6B46` van pegados con un `0xB7` en medio, y las rutinas que los
+copian leen hasta ese byte. Comparando la RAM en dos instantes:
+
+    t=430   todos los separadores en su sitio
+    t=470   uno convertido en 0x10
+    t=500   quedaban 6 de los 25 bytes 0xB7 de 0x6B45..0x6BFA
+
+Uno menos por cada ficha que se pintaba. Un punto de observación de escritura
+sobre la tabla lo cazó a la primera:
+
+    t=471,686   escribe 10 en 6B75   PC=666D  HL=6B75  A=10
+    t=474,471   escribe 10 en 6B7B   PC=666D  HL=6B7B  A=10
+    ...dieciocho veces hasta t=492,173
+
+`0x666D` es de este parche. Y es un byte antes de donde tenía que ser:
+`ANILLO_CON_PLAZO` empieza en **`0x666E`** —lo dice el fichero de símbolos que
+saca pasmo—. En `0x666D` está el `0x77` con que acaba el `jp 07717h` de la
+línea de arriba, y ese byte suelto se lee como **`ld (hl),a`**.
+
+O sea que cada vez que se pintaba la ficha del portador, antes de entrar en la
+rutina se ejecutaba un `ld (hl),a` de propina, con el HL y el A que traía
+`MARCA_AL_PORTADOR`: `HL` en la tabla de nombres y `A` valiendo `0x10`. El
+parche se comía sus propios separadores, uno a uno, hasta que la copia de un
+nombre ya no encontraba dónde parar.
+
+El arreglo es **un byte**: `cd 6d 66` → `cd 6e 66`. Medido sobre la misma
+grabación, con la cinta corregida y reproduciendo desde el principio: la rutina
+se llama **29 veces** en el tramo donde antes se rompía, hay **cero** escrituras
+en la tabla de nombres, los separadores siguen enteros y la ficha se lee bien a
+los diez minutos.
+
+Lo que dolió es que **había un test para esto** y daba verde: comprobaba que el
+gancho apuntaba a `base + 33` bytes, contados a mano igual de mal que en el
+parche. Ahora las direcciones las saca del fichero de símbolos del ensamblador,
+que es el único que sabe de verdad dónde empieza cada rutina.
