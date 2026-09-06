@@ -21,7 +21,7 @@ The tape image is **not** distributed here. Anyone who wants to
 rebuild the listing has to supply their own, and the `Makefile` checks its
 sha256 before doing anything.
 
-The images produced by `tools/graficos.py` are not illustrations brought in
+The images produced by `tools/render_graficos.py` are not illustrations brought in
 from outside: they are the game's own video memory, rebuilt by replaying the
 copies the cartridge makes —the same addresses and the same order that are in
 the listing— and drawn as they come. They are part of the proof that the

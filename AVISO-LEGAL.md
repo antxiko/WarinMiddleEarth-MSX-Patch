@@ -20,7 +20,7 @@ La imagen de la cinta **no** se distribuye aquí. Quien quiera volver
 a montar el listado tiene que poner la suya, y el `Makefile` comprueba su
 sha256 antes de hacer nada.
 
-Las imágenes que produce `tools/graficos.py` no son ilustraciones traídas de
+Las imágenes que produce `tools/render_graficos.py` no son ilustraciones traídas de
 fuera: son la memoria de vídeo del propio juego, reconstruida repitiendo las
 copias que hace el cartucho —las mismas direcciones y el mismo orden que están
 en el listado— y dibujada tal cual. Son parte de la prueba de que la lectura
