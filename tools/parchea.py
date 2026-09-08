@@ -16,6 +16,16 @@ escribir se comprueba que orig es lo que hay; despues se comprueba que, fuera de
 los rangos de la tabla, el cuerpo es identico al original. Asi el parche no
 puede tocar nada por accidente.
 
+LOS GRAFICOS NO SE ESCRIBEN EN LA TABLA: SE DIBUJAN. Los 128 tiles del mapa
+-toda la tabla de 0x9E00, no solo los del Ojo de Sauron- viven en un PNG de
+128x64, src/parche/tiles_del_mapa.png, con cada tile de 8x8 a tamano real y sin
+separacion. Se edita con cualquier editor de imagenes; al hacer `make parche` se
+compara con lo que trae la cinta y cada casilla repintada sale sola como una
+entrada mas de la tabla, del grupo "graficos". Si el lienzo no se toca, no
+aparece ni una entrada de mas. Las reglas del ZX que hay que respetar al pintar
+-dos colores por casilla y los dos del mismo brillo- y la ida y vuelta exacta
+estan explicadas en tools/tiles_del_mapa.py.
+
 Con los cuerpos ya parcheados se vuelve a montar la cinta: cada bloque del ZX
 Spectrum se reenvuelve con su bandera delante y su XOR detras (la unica
 verificacion de integridad que trae la cinta), y tools/tsx_build.py arma el TSX.
@@ -48,7 +58,14 @@ import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "tools"))
+import tiles_del_mapa  # noqa: E402
 import tsx_build  # noqa: E402
+
+# EL LIENZO DE LOS GRAFICOS. Los 128 tiles del mapa, de 8x8, puestos en un PNG
+# de 128x64 sin escalar y sin separacion: un pixel del PNG es un pixel del
+# juego. Se edita con cualquier editor y de ahi salen, solas, las entradas del
+# grupo "graficos" de la tabla (ver parches_de_graficos y tools/tiles_del_mapa.py).
+PNG_TILES = os.path.join(RAIZ, "src", "parche", "tiles_del_mapa.png")
 
 # Los cuatro bloques del ZX Spectrum: nombre del cuerpo -> (fichero de bloque en
 # el manifiesto, direccion de ejecucion). El cuerpo va envuelto [bandera][cuerpo][XOR].
@@ -86,9 +103,15 @@ ORIG_ICONO = bytes.fromhex(
     "1467ed53f9667ef52a80667cb52824ed4bba6678b1281c227a66af0808d3feee10082b"
     "7db4c26e660b79b02806210000c36866210000110000193e00b7")
 
-# Los cuatro tiles del Ojo de Sauron (tools/icono_a_tiles.py sobre el PNG de
-# 16x16). Nueve bytes cada uno: ocho de dibujo y el atributo del ZX detras,
-# 0x38 = tinta negra sobre papel blanco, el mismo que usan las unidades aliadas.
+# Los cuatro tiles del Ojo de Sauron. Nueve bytes cada uno: ocho de dibujo y el
+# atributo del ZX detras, 0x38 = tinta negra sobre papel blanco, el mismo que
+# usan las unidades aliadas.
+#
+# ESTO YA NO SE ESCRIBE DESDE AQUI. El dibujo vive en el lienzo, PNG_TILES, y
+# las entradas del parche salen de compararlo con la cinta. Este hexadecimal se
+# queda como CONTROL: es lo que el lienzo tiene que seguir dando, y el test
+# test_el_lienzo_sigue_trayendo_el_ojo lo comprueba. Si alguien rehace el lienzo
+# desde la cinta y se lleva el Ojo por delante, el test se pone rojo.
 TILES_OJO = bytes.fromhex(
     "011608502041418138806014888482c2c138814140215108060938c1c282040a14609038")
 
@@ -132,10 +155,8 @@ PARCHES = [
     dict(grupo="icono", bloque="medio", dir=0x770A, orig="cb773e1120073e151803",
          nuevo="c3586600000000000000",
          motivo="jp DIBUJO_SEGUN_BANDO (0x6658): el Ojo de Sauron si la casilla es enemiga"),
-    # Y los tiles, en el hueco del final de la tabla de 0x9E00 (111-127 estaban
-    # a cero; se usan los cuatro primeros).
-    dict(grupo="icono", bloque="alto", dir=0xA1E7, orig="00" * 36, nuevo=TILES_OJO.hex(),
-         motivo="tiles 111-114: el dibujo del Ojo de Sauron, 8 bytes + atributo"),
+    # Y el dibujo del Ojo -los tiles 111 a 114, que en la cinta estaban a cero-
+    # NO va aqui: sale del lienzo, como los otros 124. Ver parches_de_graficos.
 
     # ---- (4) EL PLAZO QUE QUEDA, AL LADO DEL ANILLO ----------------------
     # El reloj baja un mes el operando de 0x8333 (255 al empezar) y a cero salta
@@ -235,10 +256,53 @@ PARCHES = [
 ]
 
 
+def parches_de_graficos(cuerpo_alto, png=PNG_TILES, avisos=None):
+    """Las entradas del grupo "graficos", sacadas de comparar el lienzo con la cinta.
+
+    LOS 128 TILES DEL MAPA SE EDITAN AQUI, no solo los cuatro del Ojo. El lienzo
+    PNG_TILES lleva la tabla entera de 0x9E00 dibujada a tamano real; se compara
+    casilla por casilla con lo que trae la cinta y cada trozo que no coincide
+    sale como una entrada mas de la tabla, con su `orig` y su `nuevo` de la
+    misma longitud, igual que las escritas a mano.
+
+    Una casilla que se vea exactamente igual que la de la cinta devuelve SUS
+    BYTES de siempre, asi que si no se toca el lienzo no aparece ni una entrada
+    de mas. Hoy solo salen los 36 bytes del Ojo de Sauron.
+    """
+    if not os.path.exists(png):
+        return []
+    tabla = tiles_del_mapa.tabla_del_bloque(cuerpo_alto)
+    nueva, avs = tiles_del_mapa.lee_lienzo(png, tabla)
+    if avisos is not None:
+        avisos.extend(avs)
+    fuera = []
+    for off, viejo, nuevo in tiles_del_mapa.tramos(tabla, nueva):
+        primero = off // tiles_del_mapa.PASO
+        ultimo = (off + len(nuevo) - 1) // tiles_del_mapa.PASO
+        cual = ("el tile %d" % primero if primero == ultimo
+                else "los tiles %d-%d" % (primero, ultimo))
+        fuera.append(dict(
+            grupo="graficos", bloque="alto",
+            dir=tiles_del_mapa.TABLA_INI + off,
+            orig=viejo.hex(), nuevo=nuevo.hex(),
+            motivo="%s del mapa, dibujados en src/parche/tiles_del_mapa.png" % cual))
+    return fuera
+
+
+def tabla_de_parches(cuerpo_alto, png=PNG_TILES, avisos=None):
+    """La tabla entera: lo escrito a mano mas lo que sale del lienzo."""
+    return PARCHES + parches_de_graficos(cuerpo_alto, png, avisos)
+
+
 def aplica(cuerpos):
-    """Aplica la tabla sobre un dict {nombre: bytearray}. Devuelve rangos tocados."""
+    """Aplica la tabla sobre un dict {nombre: bytearray}. Devuelve rangos tocados.
+
+    Los graficos se leen del lienzo ANTES de escribir nada, con el cuerpo alto
+    todavia tal cual vino de la cinta: es la referencia contra la que se decide
+    que casillas han cambiado.
+    """
     rangos = {}
-    for p in PARCHES:
+    for p in tabla_de_parches(cuerpos["alto"]):
         nombre = p["bloque"]
         org = BLOQUES_SPECTRUM[nombre][1]
         cuerpo = cuerpos[nombre]
@@ -283,9 +347,13 @@ def main(argv):
 
     # 2. Comprobar que SOLO ha cambiado lo de la tabla.
     print("== parches aplicados ==")
+    avisos = []
+    tabla = tabla_de_parches(origs["alto"], avisos=avisos)
+    for a in avisos:
+        print(a)
     total = 0
-    for grupo in ("visibilidad", "valores", "icono", "anillo", "textos"):
-        gp = [p for p in PARCHES if p["grupo"] == grupo]
+    for grupo in ("visibilidad", "valores", "icono", "anillo", "graficos", "textos"):
+        gp = [p for p in tabla if p["grupo"] == grupo]
         if not gp:
             continue
         print("  [%s]" % grupo)

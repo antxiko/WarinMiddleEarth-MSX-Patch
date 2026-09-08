@@ -85,3 +85,4 @@ you want to see.
 | `tools/omsx_censo.tcl` | dumps all 256 unit slots at the start of a game |
 | `tools/render_icono.py` | draws one 2×2 entry of the `0x77B5` table |
 | `tools/icono_a_tiles.py` | turns a 16×16 PNG into the four nine-byte tiles |
+| `tools/tiles_del_mapa.py` | exports the 128 map tiles to an editable 128×64 PNG, and reads them back |

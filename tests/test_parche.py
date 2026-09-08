@@ -15,6 +15,7 @@ import unittest
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "tools"))
 import parchea
+import tiles_del_mapa  # noqa: E402
 import ips  # noqa: E402
 
 WORK = os.path.join(RAIZ, "work")
@@ -184,18 +185,17 @@ class TestTabla(unittest.TestCase):
         self.assertFalse([p for p in parchea.PARCHES if 0x77B5 <= p["dir"] < 0x7845],
                          "el parche escribe en la tabla de cuadros de 0x77B5")
 
-    def test_los_tiles_del_ojo_caben_donde_no_habia_nada(self):
-        """Los cuatro tiles nuevos son de nueve bytes y van a los indices
-        111-114 de la tabla de 0x9E00, que venian a cero."""
-        t = next(p for p in parchea.PARCHES if p["dir"] == 0xA1E7)
-        self.assertEqual(t["bloque"], "alto")
-        self.assertEqual(bytes.fromhex(t["orig"]), bytes(36))
-        b = bytes.fromhex(t["nuevo"])
-        self.assertEqual(len(b), 36)
-        self.assertEqual(0xA1E7, 0x9E00 + 111 * 9)
-        for i in range(4):
-            self.assertEqual(b[i * 9 + 8], 0x38,
-                             "el atributo del tile %d no es el del aliado" % (111 + i))
+    def test_ninguna_entrada_escrita_a_mano_toca_los_tiles(self):
+        """La tabla de tiles de 0x9E00 la lleva el lienzo y solo el lienzo: si
+        alguien vuelve a escribir tiles a mano en PARCHES, las dos fuentes se
+        pisarian y el `orig` de una de ellas dejaria de cuadrar."""
+        for p in parchea.PARCHES:
+            if p["bloque"] != "alto":
+                continue
+            a = p["dir"]
+            b = a + len(bytes.fromhex(p["nuevo"]))
+            self.assertTrue(b <= 0x9E00 or a >= 0xA280,
+                            "0x%04X escribe dentro de la tabla de tiles" % a)
 
     def test_el_trampolin_apunta_a_la_rutina(self):
         """El trampolin de 0x708A es `call 0x6600`, justo donde vive la rutina."""
@@ -248,6 +248,58 @@ class TestAplicacion(unittest.TestCase):
             nuevo = bytes.fromhex(p["nuevo"])
             self.assertEqual(bytes(cuerpos[p["bloque"]][off:off + len(nuevo)]), nuevo,
                              "0x%04X no quedo con los bytes nuevos" % p["dir"])
+
+    # ---- los graficos, que ahora salen del lienzo -------------------------
+    def test_el_lienzo_sigue_trayendo_el_ojo(self):
+        """El Ojo de Sauron ya no se escribe a mano en la tabla: se dibuja en
+        src/parche/tiles_del_mapa.png, y de ahi salen sus 36 bytes. Este test
+        es el control: el lienzo tiene que seguir dando EXACTAMENTE los mismos
+        bytes que cuando eran un hexadecimal en el codigo. Si alguien rehace el
+        lienzo desde la cinta y se lleva el Ojo por delante, esto se pone rojo.
+
+        Los cuatro tiles son los indices 111 a 114, que en la cinta venian a
+        cero, y llevan el atributo 0x38 -tinta negra sobre papel blanco-, el
+        mismo que usan las unidades aliadas."""
+        g = parchea.parches_de_graficos(self._origs()["alto"])
+        ojo = [p for p in g if p["dir"] == 0xA1E7]
+        self.assertEqual(len(ojo), 1, "el lienzo no dibuja el Ojo en 0xA1E7")
+        self.assertEqual(ojo[0]["bloque"], "alto")
+        self.assertEqual(bytes.fromhex(ojo[0]["orig"]), bytes(36))
+        b = bytes.fromhex(ojo[0]["nuevo"])
+        self.assertEqual(b, parchea.TILES_OJO)
+        self.assertEqual(0xA1E7, 0x9E00 + 111 * 9)
+        for i in range(4):
+            self.assertEqual(b[i * 9 + 8], 0x38,
+                             "el atributo del tile %d no es el del aliado" % (111 + i))
+
+    def test_el_lienzo_no_cambia_ningun_otro_tile(self):
+        """Hoy el parche solo repinta cuatro casillas de las 128. Las otras 124
+        tienen que salir del lienzo con los bytes de la cinta, sin recodificar:
+        si aparece una entrada de mas, el lienzo se ha ensuciado por el camino
+        (lo tipico: guardarlo escalado, o con el color retocado)."""
+        g = parchea.parches_de_graficos(self._origs()["alto"])
+        self.assertEqual([p["dir"] for p in g], [0xA1E7])
+        self.assertEqual([p["grupo"] for p in g], ["graficos"])
+
+    def test_el_lienzo_dibuja_la_tabla_tal_y_como_esta_en_la_cinta(self):
+        """La otra mitad de la ida y vuelta: sacar el lienzo desde la cinta y
+        volver a leerlo tiene que devolver los 1152 bytes intactos. Es lo que
+        permite editar una casilla sin que las demas se muevan."""
+        import tempfile
+        tabla = tiles_del_mapa.tabla_del_bloque(self._origs()["alto"])
+        with tempfile.TemporaryDirectory() as d:
+            png = os.path.join(d, "lienzo.png")
+            tiles_del_mapa.saca_lienzo(tabla, png)
+            vuelta, avisos = tiles_del_mapa.lee_lienzo(png, tabla)
+        self.assertEqual(vuelta, tabla)
+        self.assertEqual(avisos, [])
+
+    def test_sin_lienzo_el_parche_se_queda_sin_graficos(self):
+        """Si el PNG no esta, no hay entradas de graficos y el resto del parche
+        sigue funcionando: el lienzo es una pieza suelta, no un requisito."""
+        g = parchea.parches_de_graficos(self._origs()["alto"],
+                                        png=os.path.join(WORK, "no_existe.png"))
+        self.assertEqual(g, [])
 
     # ---- los textos, leidos como los lee el propio Z80 --------------------
     @staticmethod
