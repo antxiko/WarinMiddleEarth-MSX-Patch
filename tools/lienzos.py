@@ -18,9 +18,9 @@ vuelven a leer.
   sprites   0xA2E8-0xB8E8  LOS 176 SPRITES DE BATALLA, de 16x8 CON MASCARA. 32
                            bytes: parejas [mascara][dibujo] en el zigzag que
                            recorre 0x887B. Donde la mascara vale 1 el sprite es
-                           transparente. Van de dos en dos, que es como encajan
-                           en figuras de 16x16 (ver mas abajo). 11 columnas de
-                           figuras: 176x128.
+                           transparente y se ve lo que hubiera debajo. Van de dos
+                           en dos, que es como encajan en figuras de 16x16 (ver
+                           mas abajo). 11 columnas de figuras: 176x128.
 
   fuente    0xC800-0xCC00  LOS 128 CARACTERES, de 8x8 y un byte por linea, sin
                            atributo: un bit es un pixel. En los codigos bajos
@@ -42,7 +42,9 @@ que son las del Spectrum y no un capricho de esta herramienta:
 Si una casilla se salta alguna de las dos, la herramienta PARA y dice cual es,
 en vez de elegir por su cuenta. Los sprites y la fuente no tienen atributo, asi
 que no tienen esa limitacion: los sprites gastan tres estados -transparente,
-negro y blanco- y la fuente dos.
+negro y blanco- y la fuente dos. En el lienzo de los sprites el transparente va
+con el FONDO de las laminas de la web, #18181C, y declarado transparente en el
+propio PNG; no hay ningun color-clave inventado.
 
 LOS SPRITES VAN DE DOS EN DOS EN EL LIENZO. MEDIDO es que cada sprite son 32
 bytes y 16x8: los dos caminos que los pintan lo dicen igual (0x87E9 calcula
@@ -108,12 +110,23 @@ ZX = [(0, 0, 0), (0, 0, 215), (215, 0, 0), (215, 0, 215),
 NOMBRE_COLOR = ["negro", "azul", "rojo", "magenta",
                 "verde", "cian", "amarillo", "blanco"]
 
-# La de los sprites: tres estados. El transparente se pinta de MAGENTA a
-# proposito, en vez de dejarlo transparente de verdad, porque un color se ve y
-# no se pierde al aplanar la imagen; aun asi, al leer se acepta tambien un pixel
-# con alfa a cero, que es lo que sale si se borra con la goma.
+# La de los sprites: TRES estados, y los tres hacen falta. No es una eleccion:
+# la rutina que los pinta (0x887B) hace `and` con la mascara y `or` con el
+# dibujo, asi que un pixel puede dejar el fondo como estaba (mascara 1), o
+# escribirlo a papel (mascara 0, dibujo 0) o a tinta (mascara 0, dibujo 1). Los
+# dos primeros SE VEN IGUAL cuando debajo hay papel, pero son bytes distintos y
+# los dos aparecen: 12.489 pixels transparentes y 2.892 negros escritos, en 153
+# de los 176 sprites. Con dos colores no se podrian distinguir.
+#
+# El transparente NO se marca con un color inventado tipo chroma-key: se marca
+# con el FONDO que ya usan las laminas publicadas de la web
+# (tools/render_graficos.py), #18181C, y ademas se declara transparente de
+# verdad en el PNG, para que el editor lo enseñe como tal. Al leer valen las dos
+# cosas: el pixel con alfa a cero -la goma- y el pixel de ese color, que es lo
+# que queda si se aplana la imagen.
 TRANSPARENTE, NEGRO, BLANCO = 0, 1, 2
-SPRITE = [(255, 0, 255), (0, 0, 0), (255, 255, 255)]
+FONDO = (24, 24, 28)                 # el mismo de tools/render_graficos.py
+SPRITE = [FONDO, (0, 0, 0), (255, 255, 255)]
 NOMBRE_SPRITE = ["transparente", "negro", "blanco"]
 
 # La de la fuente: un bit, un pixel.
@@ -149,15 +162,23 @@ def _trozo(tipo, datos):
             + struct.pack(">I", zlib.crc32(tipo + datos) & 0xFFFFFFFF))
 
 
-def escribe_png(ruta, ancho, alto, indices, paleta):
+def escribe_png(ruta, ancho, alto, indices, paleta, transparente=None):
     """PNG indexado de 8 bits. La paleta va dentro, asi que el editor la ofrece
-    hecha y no hay manera de pintar un color que el juego no sepa dar."""
+    hecha y no hay manera de pintar un color que el juego no sepa dar.
+
+    `transparente` es el indice que ademas se declara transparente (tRNS), para
+    que el editor enseñe como tal lo que en el juego deja pasar el fondo. Su
+    color sigue estando en la paleta, asi que aplanar la imagen no lo pierde.
+    """
     crudo = b"".join(b"\x00" + bytes(f) for f in indices)
     plte = b"".join(bytes(c) for c in paleta)
+    trns = b""
+    if transparente is not None:
+        trns = _trozo(b"tRNS", bytes([255] * transparente + [0]))
     with open(ruta, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n"
                 + _trozo(b"IHDR", struct.pack(">IIBBBBB", ancho, alto, 8, 3, 0, 0, 0))
-                + _trozo(b"PLTE", plte)
+                + _trozo(b"PLTE", plte) + trns
                 + _trozo(b"IDAT", zlib.compress(crudo, 9))
                 + _trozo(b"IEND", b""))
 
@@ -517,7 +538,8 @@ def a_indices(tabla, hoja):
 
 
 def saca_lienzo(tabla, hoja, ruta):
-    escribe_png(ruta, hoja.px_ancho, hoja.px_alto, a_indices(tabla, hoja), hoja.paleta)
+    escribe_png(ruta, hoja.px_ancho, hoja.px_alto, a_indices(tabla, hoja), hoja.paleta,
+                TRANSPARENTE if hoja.opacidad == "transparente" else None)
 
 
 # ===========================================================================

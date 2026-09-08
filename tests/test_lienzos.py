@@ -203,14 +203,15 @@ class TestIdaYVuelta(unittest.TestCase):
         self.assertTrue(vuelta[3 * 9 + 8] & 0x80, "se perdio el parpadeo del tile 3")
 
     def test_la_goma_del_editor_vale_como_transparente_en_los_sprites(self):
-        """En los sprites el transparente se pinta de magenta para que se vea y
-        no se pierda al aplanar, pero si el editor devuelve el pixel con alfa a
-        cero -o sea, borrado con la goma- tambien cuenta como transparente."""
+        """El lienzo de los sprites declara su transparencia de verdad (tRNS),
+        asi que el editor la enseña como tal; si la devuelve como pixel con alfa
+        a cero -borrado con la goma-, tambien cuenta. Y si se aplana, el color
+        del fondo que queda debajo sigue valiendo, que es la otra mitad."""
         hoja = L.POR_NOMBRE["sprites"]
         tabla = tabla_de_muestra(hoja)
         L.saca_lienzo(tabla, hoja, self.png(hoja))
         ind = indices_de(self.png(hoja), hoja)
-        # se reescribe como RGBA con los magentas convertidos en alfa 0
+        # se reescribe como RGBA con los transparentes en alfa 0
         lineas = []
         for y in range(hoja.px_alto):
             fila = bytearray()
@@ -427,6 +428,36 @@ class TestElLectorDePng(unittest.TestCase):
 
 class TestLosLienzosDelRepositorio(unittest.TestCase):
     """Los tres PNG que se reparten, mirados sin necesidad de la cinta."""
+
+    def test_el_fondo_de_los_sprites_es_el_de_la_web(self):
+        """En el lienzo de los sprites NO hay color-clave inventado: el
+        transparente lleva el mismo FONDO que las laminas ya publicadas
+        (tools/render_graficos.py), y ademas va declarado transparente en el
+        propio PNG para que el editor lo enseñe como tal."""
+        import render_graficos
+        self.assertEqual(L.SPRITE[L.TRANSPARENTE], render_graficos.FONDO)
+        hoja = L.POR_NOMBRE["sprites"]
+        raw = open(os.path.join(PARCHE, hoja.png), "rb").read()
+        self.assertIn(b"tRNS", raw, "al lienzo de sprites le falta la transparencia")
+        _, _, filas, opacos = L.lee_png(os.path.join(PARCHE, hoja.png))
+        self.assertEqual(sum(1 for f in opacos for o in f if not o), 12489)
+        self.assertFalse([p for f in filas for p in f if p == (255, 0, 255)],
+                         "ha vuelto el magenta de chroma-key")
+
+    def test_los_sprites_necesitan_los_tres_estados(self):
+        """Que no se caiga en la tentacion de quitar uno: los tres se usan. Un
+        pixel negro OPACO -mascara 0, dibujo 0- escribe papel encima de lo que
+        hubiera, y uno transparente lo deja pasar. Se ven igual sobre papel,
+        pero son bytes distintos, y los dos estan en el lienzo."""
+        hoja = L.POR_NOMBRE["sprites"]
+        ind = indices_de(os.path.join(PARCHE, hoja.png), hoja)
+        cuenta = {L.TRANSPARENTE: 0, L.NEGRO: 0, L.BLANCO: 0}
+        for f in ind:
+            for v in f:
+                cuenta[v] += 1
+        self.assertEqual(cuenta[L.TRANSPARENTE], 12489)
+        self.assertEqual(cuenta[L.NEGRO], 2892)
+        self.assertEqual(cuenta[L.BLANCO], 7147)
 
     def test_existen_y_miden_lo_que_tienen_que_medir(self):
         for hoja in L.HOJAS:

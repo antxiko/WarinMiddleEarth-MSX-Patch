@@ -103,12 +103,20 @@ bytes que cuando estaban escritos a mano en el código.
   El negro es la excepción: es `#000000` con brillo y sin él. Si una casilla se
   salta alguna, la herramienta **para y dice cuál es y por qué**, en vez de
   elegir por su cuenta.
-- **Los sprites** no llevan atributo: llevan **máscara**. Tienen tres estados
-  —**transparente**, negro y blanco— y el transparente se pinta de **magenta**,
-  para que se vea y no se pierda al aplanar la imagen; borrar con la goma
-  también vale. Van **apilados de dos en dos**, que es como encajan en figuras
-  de 16 × 16 (eso último es una lectura de la imagen, no una rutina encontrada:
-  cada sprite sigue yendo a su dirección, calculada aparte).
+- **Los sprites** no llevan atributo: llevan **máscara**. La rutina que los
+  pinta (`0x887B`) hace `and` con la máscara y `or` con el dibujo, así que un
+  píxel puede **dejar el fondo como estaba**, escribirlo a **papel** o
+  escribirlo a **tinta**. Son tres estados y los tres se usan: 12.489 píxeles
+  transparentes, **2.892 negros escritos** —en 153 de los 176— y 7.147 blancos.
+  Los dos primeros se ven igual sobre papel, pero son bytes distintos, así que
+  en el lienzo hacen falta tres colores. Aquí **no hay ningún color‑clave
+  inventado**: el transparente lleva el mismo fondo que las láminas de la web
+  (`#18181C`) y va además **declarado transparente en el propio PNG**, para que
+  el editor lo enseñe como tal; borrar con la goma también vale, y si se aplana
+  la imagen ese color sigue sirviendo. Van **apilados de dos en dos**, que es
+  como encajan en figuras de 16 × 16 (eso último es una lectura de la imagen, no
+  una rutina encontrada: cada sprite sigue yendo a su dirección, calculada
+  aparte).
 - **La fuente** es lo más simple: un bit, un píxel, blanco sobre negro. El
   índice **es** el código del carácter, así que la `A` está en el 65.
 
@@ -137,7 +145,7 @@ Se reparte eso, no el juego.
 
 ## Las comprobaciones
 
-`make test` son 66, y no son de adorno. Entre ellas:
+`make test` son 68, y no son de adorno. Entre ellas:
 
 - que **`orig` y `nuevo` miden igual** en las veintidós entradas, o sea que nada
   se desplaza;

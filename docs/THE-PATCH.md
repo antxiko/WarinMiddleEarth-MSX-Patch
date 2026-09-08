@@ -104,12 +104,19 @@ hand-written in the code.
   the two of them. Black is the exception: it is `#000000` with and without
   bright. If a cell breaks either rule the tool **stops and says which one and
   why**, instead of deciding on its own.
-- **The sprites** carry no attribute: they carry a **mask**. They have three
-  states — **transparent**, black and white — and the transparent one is painted
-  **magenta**, so it is visible and survives flattening; erasing with the eraser
-  works too. They are **stacked in pairs**, which is how they fit into 16 × 16
-  figures (that last part is a reading of the picture, not a routine we found:
-  each sprite still goes to its own address, worked out separately).
+- **The sprites** carry no attribute: they carry a **mask**. The routine that
+  draws them (`0x887B`) does `and` with the mask and `or` with the bitmap, so a
+  pixel can **leave the background as it was**, write it to **paper**, or write
+  it to **ink**. Three states, and all three are used: 12,489 transparent
+  pixels, **2,892 written blacks** - in 153 of the 176 - and 7,147 whites. The
+  first two look alike over paper but are different bytes, so the canvas needs
+  three colours. There is **no invented colour key** here: the transparent one
+  carries the same background as the web's plates (`#18181C`) and is also
+  **declared transparent in the PNG itself**, so the editor shows it as such;
+  erasing with the eraser works too, and if the image is flattened that colour
+  still does the job. They are **stacked in pairs**, which is how they fit into
+  16 × 16 figures (that last part is a reading of the picture, not a routine we
+  found: each sprite still goes to its own address, worked out separately).
 - **The font** is the simplest of the three: one bit, one pixel, white on black.
   The index **is** the character code, so `A` sits at 65.
 
@@ -138,7 +145,7 @@ That is what gets shared. Not the game.
 
 ## The checks
 
-`make test` is 66 of them, and they are not decoration. Among others:
+`make test` is 68 of them, and they are not decoration. Among others:
 
 - that **`orig` and `nuevo` are the same length** in all twenty-two entries, i.e.
   nothing shifts;
