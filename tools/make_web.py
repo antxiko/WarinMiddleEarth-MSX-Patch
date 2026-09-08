@@ -26,13 +26,13 @@ from estilo_web import ESTILO                                   # noqa: E402
 # Las cifras salen de las herramientas, no de escribirlas aqui a ojo:
 #   `make parche` -> 393 bytes cambiados en 22 entradas, 0 fuera de la tabla
 #   `make ips`    -> war_parche.ips, 487 bytes en 18 registros
-#   `make test`   -> 60 comprobaciones
+#   `make test`   -> 66 comprobaciones
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
 BYTES = 393
 CAMBIOS = 22
 IPS_BYTES = 487
 IPS_REGISTROS = 18
-TESTS = 60
+TESTS = 66
 CODIGO_NUEVO = 137
 TEXTO = 196
 CADENAS = 15

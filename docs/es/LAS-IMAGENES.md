@@ -85,4 +85,4 @@ la unidad que se quiere ver.
 | `tools/omsx_censo.tcl` | vuelca las 256 ranuras de unidad al empezar |
 | `tools/render_icono.py` | dibuja un cuadro de 2×2 de la tabla de `0x77B5` |
 | `tools/icono_a_tiles.py` | pasa un PNG de 16×16 a los cuatro tiles de 9 bytes |
-| `tools/tiles_del_mapa.py` | saca los 128 tiles del mapa a un PNG editable de 128×64, y los vuelve a meter |
+| `tools/lienzos.py` | saca los tiles, los sprites y la fuente a tres PNG editables a tamaño real, y los vuelve a meter |

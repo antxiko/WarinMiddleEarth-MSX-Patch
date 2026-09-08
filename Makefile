@@ -16,7 +16,7 @@ TSX  := war.tsx
 TSX_SHA := 13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208
 SYMS := work/msx.sym
 
-.PHONY: all verify clean extract cuerpos trazado listados sanity test cinta imagenes web parche verifica_parche lienzo tiles
+.PHONY: all verify clean extract cuerpos trazado listados sanity test cinta imagenes web parche verifica_parche lienzos graficos
 
 all: verify
 
@@ -133,20 +133,22 @@ imagenes: extracted/.stamp
 parche: extract src/parche/ficha_valores.asm src/parche/icono_enemigo.asm
 	python3 tools/parchea.py work war_parche.tsx
 
-# LOS GRAFICOS DEL MAPA, EN UN PNG. Los 128 tiles de la tabla de 0x9E00 viven en
-# src/parche/tiles_del_mapa.png: 128x64 pixels, cada tile de 8x8, pegados y sin
-# escalar. Se edita con cualquier editor de imagenes y `make parche` lo convierte
-# solo en entradas del parche. `make tiles` dice que casillas cambian respecto a
-# la cinta sin llegar a montar nada.
+# LOS GRAFICOS, EN TRES PNG. Todos los dibujos del bloque alto viven en
+# src/parche/, a tamano real y sin separacion -un pixel del PNG es un pixel del
+# juego-: tiles_del_mapa.png (128 tiles de 8x8, 128x64), sprites_de_batalla.png
+# (176 sprites de 16x8 con mascara, apilados de dos en dos, 176x128) y fuente.png
+# (128 caracteres de 8x8, 128x64). Se editan con cualquier editor de imagenes y
+# `make parche` los convierte solos en entradas del parche. `make graficos` dice
+# que dibujos cambian respecto a la cinta sin llegar a montar nada.
 #
-# `make lienzo` REHACE el PNG desde la cinta, o sea que se lleva por delante lo
+# `make lienzos` REHACE los PNG desde la cinta, o sea que se lleva por delante lo
 # que este dibujado encima (hoy, el Ojo de Sauron). Por eso la herramienta se
 # niega si el fichero ya existe y hay que insistirle con --rehaz.
-tiles: extract
-	python3 tools/tiles_del_mapa.py mete work/alto.raw src/parche/tiles_del_mapa.png
+graficos: extract
+	python3 tools/lienzos.py mete work/alto.raw src/parche
 
-lienzo: extract
-	python3 tools/tiles_del_mapa.py saca work/alto.raw src/parche/tiles_del_mapa.png
+lienzos: extract
+	python3 tools/lienzos.py saca work/alto.raw src/parche
 
 # El parche a secas, para repartirlo SIN repartir el juego: solo los bytes que
 # cambian, para aplicar sobre tu propia cinta. Se comprueba en el sitio que,

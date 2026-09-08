@@ -15,7 +15,7 @@ import unittest
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "tools"))
 import parchea
-import tiles_del_mapa  # noqa: E402
+import lienzos  # noqa: E402
 import ips  # noqa: E402
 
 WORK = os.path.join(RAIZ, "work")
@@ -185,17 +185,19 @@ class TestTabla(unittest.TestCase):
         self.assertFalse([p for p in parchea.PARCHES if 0x77B5 <= p["dir"] < 0x7845],
                          "el parche escribe en la tabla de cuadros de 0x77B5")
 
-    def test_ninguna_entrada_escrita_a_mano_toca_los_tiles(self):
-        """La tabla de tiles de 0x9E00 la lleva el lienzo y solo el lienzo: si
-        alguien vuelve a escribir tiles a mano en PARCHES, las dos fuentes se
+    def test_ninguna_entrada_escrita_a_mano_toca_los_graficos(self):
+        """Las tres tablas de graficos las llevan los lienzos y solo ellos: si
+        alguien vuelve a escribir dibujos a mano en PARCHES, las dos fuentes se
         pisarian y el `orig` de una de ellas dejaria de cuadrar."""
         for p in parchea.PARCHES:
             if p["bloque"] != "alto":
                 continue
             a = p["dir"]
             b = a + len(bytes.fromhex(p["nuevo"]))
-            self.assertTrue(b <= 0x9E00 or a >= 0xA280,
-                            "0x%04X escribe dentro de la tabla de tiles" % a)
+            for hoja in lienzos.HOJAS:
+                self.assertTrue(b <= hoja.ini or a >= hoja.fin,
+                                "0x%04X escribe dentro de la hoja de %s"
+                                % (a, hoja.nombre))
 
     def test_el_trampolin_apunta_a_la_rutina(self):
         """El trampolin de 0x708A es `call 0x6600`, justo donde vive la rutina."""
@@ -272,33 +274,22 @@ class TestAplicacion(unittest.TestCase):
             self.assertEqual(b[i * 9 + 8], 0x38,
                              "el atributo del tile %d no es el del aliado" % (111 + i))
 
-    def test_el_lienzo_no_cambia_ningun_otro_tile(self):
-        """Hoy el parche solo repinta cuatro casillas de las 128. Las otras 124
-        tienen que salir del lienzo con los bytes de la cinta, sin recodificar:
-        si aparece una entrada de mas, el lienzo se ha ensuciado por el camino
-        (lo tipico: guardarlo escalado, o con el color retocado)."""
+    def test_los_lienzos_no_cambian_ningun_otro_dibujo(self):
+        """Hoy el parche solo repinta cuatro casillas de los 432 dibujos que hay
+        entre las tres hojas -128 tiles, 176 sprites y 128 caracteres-. Los
+        demas tienen que salir de los lienzos con los bytes de la cinta, sin
+        recodificar: si aparece una entrada de mas, algun lienzo se ha ensuciado
+        por el camino (lo tipico: guardarlo escalado, o con el color retocado)."""
         g = parchea.parches_de_graficos(self._origs()["alto"])
         self.assertEqual([p["dir"] for p in g], [0xA1E7])
         self.assertEqual([p["grupo"] for p in g], ["graficos"])
 
-    def test_el_lienzo_dibuja_la_tabla_tal_y_como_esta_en_la_cinta(self):
-        """La otra mitad de la ida y vuelta: sacar el lienzo desde la cinta y
-        volver a leerlo tiene que devolver los 1152 bytes intactos. Es lo que
-        permite editar una casilla sin que las demas se muevan."""
-        import tempfile
-        tabla = tiles_del_mapa.tabla_del_bloque(self._origs()["alto"])
-        with tempfile.TemporaryDirectory() as d:
-            png = os.path.join(d, "lienzo.png")
-            tiles_del_mapa.saca_lienzo(tabla, png)
-            vuelta, avisos = tiles_del_mapa.lee_lienzo(png, tabla)
-        self.assertEqual(vuelta, tabla)
-        self.assertEqual(avisos, [])
-
-    def test_sin_lienzo_el_parche_se_queda_sin_graficos(self):
-        """Si el PNG no esta, no hay entradas de graficos y el resto del parche
-        sigue funcionando: el lienzo es una pieza suelta, no un requisito."""
+    def test_sin_lienzos_el_parche_se_queda_sin_graficos(self):
+        """Si los PNG no estan, no hay entradas de graficos y el resto del
+        parche sigue funcionando: los lienzos son una pieza suelta, no un
+        requisito."""
         g = parchea.parches_de_graficos(self._origs()["alto"],
-                                        png=os.path.join(WORK, "no_existe.png"))
+                                        carpeta=os.path.join(WORK, "no_existe"))
         self.assertEqual(g, [])
 
     # ---- los textos, leidos como los lee el propio Z80 --------------------

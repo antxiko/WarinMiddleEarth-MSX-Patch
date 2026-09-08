@@ -69,56 +69,63 @@ piden un efecto de sonido llaman a `0x65FF`, que es un `ret` pelado. Del PSG del
 MSX sólo se escriben dos registros, el 7 y el 14, y los dos son para leer el
 joystick. Este juego es mudo, y su silencio nos deja 276 bytes de sitio.
 
-## Los gráficos del mapa, en un PNG
+## Los gráficos, en tres PNG
 
-Los **128 tiles** de la tabla de `0x9E00` no se escriben en hexadecimal: se
-dibujan. Están en `src/parche/tiles_del_mapa.png`, un PNG de **128 × 64
-píxeles** con los 128 tiles de 8 × 8 puestos en dieciséis columnas, **pegados y
-sin escalar**: un píxel del PNG es un píxel del juego.
+**Todos** los dibujos del bloque alto se editan con un editor de imágenes. Están
+en `src/parche/`, a tamaño real y **sin separación**: un píxel del PNG es un
+píxel del juego.
 
-Se abre con cualquier editor, se repinta lo que se quiera y `make parche` hace
-el resto: compara el lienzo con la cinta y cada casilla que haya cambiado sale
-sola como una entrada más de la tabla, del grupo `graficos`, con su `orig` y su
-`nuevo` de la misma longitud, igual que las escritas a mano. Si el lienzo no se
-toca, no aparece ni una entrada de más; hoy la única que sale es el Ojo de
-Sauron, y da **exactamente** los mismos 36 bytes que cuando estaban escritos a
-mano en el código.
+| lienzo | qué lleva | dónde vive | tamaño |
+|---|---|---|---|
+| `tiles_del_mapa.png` | los **128 tiles** del mapa, de 8 × 8 | `0x9E00` | 128 × 64 |
+| `sprites_de_batalla.png` | los **176 sprites** de batalla, de 16 × 8 con máscara | `0xA2E8` | 176 × 128 |
+| `fuente.png` | los **128 caracteres**, de 8 × 8 | `0xC800` | 128 × 64 |
+
+Se repinta lo que se quiera y `make parche` hace el resto: compara los lienzos
+con la cinta y cada dibujo que haya cambiado sale solo como una entrada más de
+la tabla, del grupo `graficos`, con su `orig` y su `nuevo` de la misma longitud,
+igual que las escritas a mano. Si no se tocan, no aparece ni una entrada de más.
+Hoy la única que sale es el Ojo de Sauron, y da **exactamente** los mismos 36
+bytes que cuando estaban escritos a mano en el código.
 
 | orden | qué hace |
 |---|---|
-| `make tiles` | dice qué casillas cambian respecto a la cinta, sin montar nada |
-| `make parche` | las convierte en entradas del parche y arma la cinta |
-| `make lienzo` | **rehace** el PNG desde la cinta, o sea que se lleva por delante lo que esté dibujado encima; hay que insistirle con `--rehaz` |
+| `make graficos` | dice qué dibujos cambian respecto a la cinta, sin montar nada |
+| `make parche` | los convierte en entradas del parche y arma la cinta |
+| `make lienzos` | **rehace** los PNG desde la cinta, o sea que se lleva por delante lo que esté dibujado encima; hay que insistirle con `--rehaz` |
 
-### Las dos reglas del Spectrum
+### Cómo se pinta cada hoja
 
-No son un capricho de la herramienta: es lo que cabe en los nueve bytes de un
-tile, ocho de dibujo y uno de atributo (bits 0-2 la tinta, 3-5 el papel, 6 el
-brillo y 7 el parpadeo).
-
-1. **Dos colores por casilla** de 8 × 8, una tinta y un papel. Es el famoso
-   *attribute clash*.
-2. **Los dos del mismo brillo**, porque el bit de brillo es uno solo para los
-   dos. El negro es la excepción: es `#000000` con brillo y sin él, así que se
-   lleva bien con cualquiera.
-
-Si una casilla se salta alguna de las dos, la herramienta **para y dice cuál es
-y por qué**, en vez de elegir por su cuenta.
+- **Los tiles** llevan **atributo del ZX** detrás del dibujo (bits 0‑2 la tinta,
+  3‑5 el papel, 6 el brillo y 7 el parpadeo), y de ahí salen las dos reglas del
+  Spectrum: **dos colores por casilla** de 8 × 8 —el famoso *attribute clash*— y
+  **los dos del mismo brillo**, porque el bit de brillo es uno solo para los dos.
+  El negro es la excepción: es `#000000` con brillo y sin él. Si una casilla se
+  salta alguna, la herramienta **para y dice cuál es y por qué**, en vez de
+  elegir por su cuenta.
+- **Los sprites** no llevan atributo: llevan **máscara**. Tienen tres estados
+  —**transparente**, negro y blanco— y el transparente se pinta de **magenta**,
+  para que se vea y no se pierda al aplanar la imagen; borrar con la goma
+  también vale. Van **apilados de dos en dos**, que es como encajan en figuras
+  de 16 × 16 (eso último es una lectura de la imagen, no una rutina encontrada:
+  cada sprite sigue yendo a su dirección, calculada aparte).
+- **La fuente** es lo más simple: un bit, un píxel, blanco sobre negro. El
+  índice **es** el código del carácter, así que la `A` está en el 65.
 
 ### Lo que no se toca
 
-Una casilla que se vea *exactamente* igual que la de la cinta se devuelve con
-**sus bytes de siempre**, sin recodificar. Por eso abrir el PNG y guardarlo sin
-cambiar nada no mueve un solo byte, ni siquiera en los tiles que no se pueden
-reconstruir mirando el dibujo: el **85** lleva tinta blanca sobre papel blanco,
-con ocho bytes de dibujo escondidos debajo, y del **111 al 127** son negro sobre
-negro. Sin esa regla, cada ida y vuelta ensuciaría el parche con cambios que
-nadie ha pedido.
+Un dibujo que se vea *exactamente* igual que el de la cinta se devuelve con
+**sus bytes de siempre**, sin recodificar. Por eso abrir un PNG y guardarlo sin
+cambiar nada no mueve un solo byte, ni siquiera en los que no se pueden
+reconstruir mirando la imagen: el tile **85** lleva tinta blanca sobre papel
+blanco, con ocho bytes de dibujo escondidos debajo, y del **111 al 127** son
+negro sobre negro. Sin esa regla, cada ida y vuelta ensuciaría el parche con
+cambios que nadie ha pedido.
 
-Los dieciséis colores del ZX van **dentro** del PNG, en su paleta, así que un
-editor en modo indexado los ofrece hechos. Si aun así entra un color de fuera
-—por trabajar en color verdadero, por ejemplo—, se toma el más parecido y se
-avisa por pantalla de cuál era, cuántos píxeles y por qué color se ha cambiado.
+La paleta de cada hoja va **dentro** del PNG, así que un editor en modo indexado
+la ofrece hecha. Si aun así entra un color de fuera —por trabajar en color
+verdadero, por ejemplo—, se toma el más parecido y se avisa por pantalla de cuál
+era, cuántos píxeles y por qué color se ha cambiado.
 
 ## El IPS
 
@@ -130,7 +137,7 @@ Se reparte eso, no el juego.
 
 ## Las comprobaciones
 
-`make test` son 60, y no son de adorno. Entre ellas:
+`make test` son 66, y no son de adorno. Entre ellas:
 
 - que **`orig` y `nuevo` miden igual** en las veintidós entradas, o sea que nada
   se desplaza;
@@ -144,12 +151,19 @@ Se reparte eso, no el juego.
 - que los cuatro tiles del Ojo van al hueco que estaba a cero y **con el mismo
   atributo de color que el icono aliado**, y que el lienzo los sigue dando
   **byte a byte** como cuando estaban escritos a mano;
-- que sacar el lienzo desde la cinta y volver a leerlo devuelve **los 1152 bytes
-  intactos**, y que hoy no cambia **ninguna otra casilla** de las 128;
+- que sacar cada lienzo desde la cinta y volver a leerlo devuelve **los bytes
+  intactos**, y que hoy no cambia **ningún otro dibujo** de los 432 que hay entre
+  las tres hojas;
+- que los tres códecs dibujan **píxel a píxel** lo mismo que
+  `tools/render_graficos.py`, que es el que hace las láminas de la web: si aquí
+  se leyera el zigzag de los sprites o el atributo de los tiles de otra manera,
+  los dibujos no coincidirían;
 - que una casilla con **tres colores** o que **mezcle brillos** se rechaza con el
-  número de casilla y el motivo, y que el lector de PNG traga lo que sale de un
-  editor de verdad —indexado, gris, RGB, RGBA, de 1 a 16 bits y los cinco
-  filtros—;
+  número de casilla y el motivo, que los sprites y la fuente **no** cargan con
+  esa limitación, y que el lector de PNG traga lo que sale de un editor de
+  verdad —indexado, gris, RGB, RGBA, de 1 a 16 bits y los cinco filtros—;
+- que el sitio de cada dibujo dentro de un lienzo **no se solapa con ningún
+  otro**, o repintar uno estropearía a su vecino;
 - que los parches de texto **no cambian el número de cadenas** de una lista (si
   metieran o quitaran una, todas las de detrás se correrían de índice y el juego
   diría «Orcs» donde pone «Enanos»);

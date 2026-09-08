@@ -69,56 +69,64 @@ that ask for a sound effect call `0x65FF`, which is a bare `ret`. Of the MSX's
 PSG only two registers are ever written, 7 and 14, and both are for reading the
 joystick. This game is silent, and its silence gives us 276 bytes of room.
 
-## The map graphics, in a PNG
+## The graphics, in three PNGs
 
-The **128 tiles** of the table at `0x9E00` are not written out in hexadecimal:
-they are drawn. They live in `src/parche/tiles_del_mapa.png`, a **128 x 64
-pixel** PNG holding the 128 tiles of 8 x 8 laid out in sixteen columns,
-**touching and unscaled**: one pixel of the PNG is one pixel of the game.
+**All** the artwork in the high block is edited with an image editor. It lives
+in `src/parche/`, at full size and **with no gaps**: one pixel of the PNG is one
+pixel of the game.
 
-Open it in any editor, repaint whatever you like, and `make parche` does the
-rest: it compares the canvas with the cassette and every cell that changed comes
-out on its own as one more entry in the table, in the `graficos` group, with its
-`orig` and its `nuevo` the same length, exactly like the hand-written ones. If
-the canvas is left alone, not a single extra entry appears; today the only one
-that shows up is the Eye of Sauron, and it yields **exactly** the same 36 bytes
-it did when they were hand-written in the code.
+| canvas | what it holds | where it lives | size |
+|---|---|---|---|
+| `tiles_del_mapa.png` | the **128 map tiles**, 8 × 8 | `0x9E00` | 128 × 64 |
+| `sprites_de_batalla.png` | the **176 battle sprites**, 16 × 8 with a mask | `0xA2E8` | 176 × 128 |
+| `fuente.png` | the **128 characters**, 8 × 8 | `0xC800` | 128 × 64 |
+
+Repaint whatever you like and `make parche` does the rest: it compares the
+canvases with the cassette and every drawing that changed comes out on its own
+as one more entry in the table, in the `graficos` group, with its `orig` and its
+`nuevo` the same length, exactly like the hand-written ones. Leave them alone
+and not a single extra entry appears. Today the only one that shows up is the
+Eye of Sauron, and it yields **exactly** the same 36 bytes it did when they were
+hand-written in the code.
 
 | command | what it does |
 |---|---|
-| `make tiles` | says which cells differ from the cassette, without building anything |
+| `make graficos` | says which drawings differ from the cassette, without building anything |
 | `make parche` | turns them into patch entries and builds the cassette |
-| `make lienzo` | **redraws** the PNG from the cassette, wiping whatever was painted on top; it has to be forced with `--rehaz` |
+| `make lienzos` | **redraws** the PNGs from the cassette, wiping whatever was painted on top; it has to be forced with `--rehaz` |
 
-### The Spectrum's two rules
+### How each sheet is painted
 
-They are not a whim of the tool: they are what fits in a tile's nine bytes,
-eight of bitmap and one attribute (bits 0-2 the ink, 3-5 the paper, 6 the
-bright, 7 the flash).
-
-1. **Two colours per 8 x 8 cell**, one ink and one paper. The famous *attribute
-   clash*.
-2. **Both of the same brightness**, because there is a single bright bit for the
-   two of them. Black is the exception: it is `#000000` with and without bright,
-   so it gets along with either.
-
-If a cell breaks either rule the tool **stops and says which one and why**,
-instead of deciding on its own.
+- **The tiles** carry a **ZX attribute** behind the bitmap (bits 0-2 the ink, 3-5
+  the paper, 6 the bright, 7 the flash), and that is where the Spectrum's two
+  rules come from: **two colours per 8 × 8 cell** — the famous *attribute clash* —
+  and **both of the same brightness**, because there is a single bright bit for
+  the two of them. Black is the exception: it is `#000000` with and without
+  bright. If a cell breaks either rule the tool **stops and says which one and
+  why**, instead of deciding on its own.
+- **The sprites** carry no attribute: they carry a **mask**. They have three
+  states — **transparent**, black and white — and the transparent one is painted
+  **magenta**, so it is visible and survives flattening; erasing with the eraser
+  works too. They are **stacked in pairs**, which is how they fit into 16 × 16
+  figures (that last part is a reading of the picture, not a routine we found:
+  each sprite still goes to its own address, worked out separately).
+- **The font** is the simplest of the three: one bit, one pixel, white on black.
+  The index **is** the character code, so `A` sits at 65.
 
 ### What is left alone
 
-A cell that looks *exactly* like the one on the cassette is handed back with
-**its original bytes**, not re-encoded. That is why opening the PNG and saving
-it unchanged does not move a single byte, not even in the tiles that cannot be
-rebuilt from the picture: number **85** carries white ink on white paper, with
+A drawing that looks *exactly* like the one on the cassette is handed back with
+**its original bytes**, not re-encoded. That is why opening a PNG and saving it
+unchanged does not move a single byte, not even in the ones that cannot be
+rebuilt from the picture: tile **85** carries white ink on white paper, with
 eight bytes of bitmap hidden underneath, and **111 to 127** are black on black.
 Without that rule every round trip would dirty the patch with changes nobody
 asked for.
 
-The ZX's sixteen colours travel **inside** the PNG, in its palette, so an editor
-in indexed mode offers them ready-made. If a colour from outside still gets in
--by working in true colour, say- the nearest one is taken and the screen reports
-which it was, how many pixels, and what it was changed to.
+Each sheet's palette travels **inside** its PNG, so an editor in indexed mode
+offers it ready-made. If a colour from outside still gets in - by working in
+true colour, say - the nearest one is taken and the screen reports which it was,
+how many pixels, and what it was changed to.
 
 ## The IPS
 
@@ -130,7 +138,7 @@ That is what gets shared. Not the game.
 
 ## The checks
 
-`make test` is 60 of them, and they are not decoration. Among others:
+`make test` is 66 of them, and they are not decoration. Among others:
 
 - that **`orig` and `nuevo` are the same length** in all twenty-two entries, i.e.
   nothing shifts;
@@ -144,12 +152,19 @@ That is what gets shared. Not the game.
 - that the four tiles of the Eye go into the slot that was all zeros and **with
   the same colour attribute as the friendly icon**, and that the canvas still
   yields them **byte for byte** as when they were hand-written;
-- that exporting the canvas from the cassette and reading it back returns **all
-  1152 bytes untouched**, and that today **no other cell** of the 128 changes;
+- that exporting each canvas from the cassette and reading it back returns
+  **every byte untouched**, and that today **no other drawing** changes among the
+  432 across the three sheets;
+- that the three codecs draw **pixel for pixel** what `tools/render_graficos.py`
+  draws — the tool that makes the web's plates: if the sprites' zigzag or the
+  tiles' attribute were read differently here, the drawings would not match;
 - that a cell with **three colours**, or one that **mixes brightnesses**, is
-  rejected with the cell number and the reason, and that the PNG reader swallows
-  what a real editor puts out - indexed, greyscale, RGB, RGBA, 1 to 16 bits and
-  all five filters;
+  rejected with the cell number and the reason, that the sprites and the font do
+  **not** carry that limitation, and that the PNG reader swallows what a real
+  editor puts out - indexed, greyscale, RGB, RGBA, 1 to 16 bits and all five
+  filters;
+- that each drawing's slot inside a canvas **overlaps no other**, or repainting
+  one would ruin its neighbour;
 - that the text patches **do not change how many strings a list holds** (adding
   or removing one would shift every string behind it by an index, and the game
   would say "Orcs" where it says "Enanos");
