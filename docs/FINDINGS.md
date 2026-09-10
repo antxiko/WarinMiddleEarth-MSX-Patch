@@ -131,3 +131,32 @@ The galling part is that **there was a test for this** and it passed: it checked
 that the hook pointed `base + 33` bytes in, counted by hand just as wrongly as
 in the patch. The addresses now come from the assembler's symbol file, which is
 the only thing that really knows where each routine starts.
+
+
+## The canvas was lying: the attribute is the Spectrum's, the colour is the MSX's
+
+The tiles were exported to a PNG and painted with the **ZX Spectrum's** colours,
+because that is what the attribute glued behind each tile says. On screen they
+never look like that. This port does not send the attribute to the VDP:
+`ATRIBUTO_A_COLOR` (`0x049F`) translates it first, with two eight-colour tables —
+`0x04CE` without bright, `0x04D6` with it — and what comes out is an **MSX**
+colour byte. The canvas showed the ZX's grey where the game paints white.
+
+Two things follow, and both change what can be drawn:
+
+- **Only twelve of the MSX's fifteen colours can be asked for.** The sixteen
+  slots of the two tables hold twelve distinct values. There is no attribute that
+  produces the medium red, the medium green or the grey. Measured on the repaint
+  that arrived: **349 pixels of medium red across 16 tiles**, 47 of medium green
+  across 4, and 3 of grey in one. Each is now swapped for the nearest reachable
+  colour, and the tool says which, how many pixels and what it became.
+- **The "both of the same brightness" rule is weaker than it looks.** Only four
+  of the eight colours change between the two tables: blue, red, green and
+  yellow. Black, magenta, cyan and white give the same MSX colour with bright and
+  without, so they force nothing. The check used to reject cells that were
+  perfectly drawable.
+
+The lesson is not about this game: **a canvas that shows different colours from
+the ones the machine will show is a canvas that lies**, and the check is to draw
+it with the game's own translation, not with the palette of the machine it was
+converted from.

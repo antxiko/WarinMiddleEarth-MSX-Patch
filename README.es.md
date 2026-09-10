@@ -32,11 +32,13 @@ para un MSX1 real (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.
 
 ## Que cambia
 
-Todo cae en el bloque medio del juego (el que corre desde `0x5E00`) mas cuatro
-tiles del bloque alto: **393 bytes en 22 entradas de la tabla** (197 de codigo y
-dibujo, 196 de texto). Cada una comprueba antes de escribir que los bytes
-originales son los que espera; nada se desplaza, y `make parche` avisa si cambia
-un solo byte fuera de la tabla (`tools/parchea.py`).
+Cae en el bloque medio del juego (el que corre desde `0x5E00`) y en la tabla de
+tiles del mapa del bloque alto: **1.396 bytes en 130 entradas de la tabla**. De
+ellas, **27 estan escritas a mano** -548 bytes de codigo, punteros y texto- y
+**103 salen solas de los lienzos**, 848 bytes de tiles repintados. Cada una
+comprueba antes de escribir que los bytes originales son los que espera; nada se
+desplaza, y `make parche` avisa si cambia un solo byte fuera de la tabla
+(`tools/parchea.py`).
 
 **1 · Las unidades enemigas se ven.** El mapa guarda un bit de "aqui hay
 alguien" por casilla, y `RECENTRA_EL_MAPA` (0x7FAC) lo vuelve a sembrar unidad a
@@ -80,11 +82,13 @@ nuevos al final de la tabla de 0x9E00 (los 111 a 114, que estaban a cero).
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
 
 **5 · El texto termina de traducirse.** La conversion de Animagic dejo los
-toponimos del mapa en ingles y tres nombres de raza truncados. Cambian quince
-cadenas: diez sitios del mapa (`Bywater` -> `Delagua`, `Michel Delving` ->
-`Cavada Grande`, `Dale` -> `Vale`...), un nombre de unidad (`Brand III` ->
-`Bardo III`), uno de los adjetivos de la ficha (`Valioso` -> `Integro`) y las
-tres razas (`Brujo` -> `Mago`, `Elf` -> `Elfo`, `Hum` -> `Hombre`).
+toponimos del mapa en ingles y tres nombres de raza truncados. Cambian
+diecinueve cadenas: diez sitios del mapa (`Bywater` -> `Delagua`,
+`Michel Delving` -> `Cavada Grande`, `Dale` -> `Valle`...), un nombre de unidad
+(`Brand III` -> `Bardo III`), las tres razas (`Brujo` -> `Mago`, `Elf` ->
+`Elfo`, `Hum` -> `Hombre`), los cuatro adjetivos de la ficha (`Habil` ->
+`Firme`, `Valioso` -> `Virtuoso`, `Duro` -> `Valiente`, `Bravo` -> `Fuerte`) y
+su ultima linea (`Aliado a la Sociedad` -> `Aliado a la Comunidad`).
 
 Y no se mueve un byte. El registro de un sitio lleva **el tamano de su cartel**
 (`ancho<<4 | filas`) y el texto lo rellena entero, asi que el nombre nuevo tiene
@@ -101,12 +105,25 @@ La misma casilla y la misma unidad, con la cinta original y con la parcheada:
 |---|---|
 | ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
 
-Cambian 45 celdas de caracter y **cero atributos de color**. El cartel de dos
-filas, que era el que podia romperse, cambia 13 celdas, todas dentro del cartel:
+El cartel de dos filas, que era el que podia romperse, lleva
+`Cavada `/`Grande ` en la misma caja de 7x2:
 
 | sin parche | con parche |
 |---|---|
 | ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
+
+**6 · El mapa, repintado.** Los 128 tiles de 8x8 del mapa se sacan a un PNG a
+tamano real, se repintan con cualquier editor y se vuelven a leer: **122 de los
+128** entran solos en el parche, como 103 entradas del grupo `graficos`. Y con
+ellos salio que **el lienzo mentia**: el tile lleva un atributo del ZX, pero
+`ATRIBUTO_A_COLOR` (`0x049F`) lo traduce a un color del MSX antes de pintarlo,
+con dos tablas de ocho, asi que solo se pueden pedir **doce de los quince
+colores** del MSX. El texto va ahora sobre el khaki de los marcos, que es un byte
+en `0x763F`.
+
+| los tiles de la cinta | repintados |
+|---|---|
+| ![](docs/imagenes/tiles-del-mapa.png) | ![](docs/imagenes/tiles-repintados.png) |
 
 Ninguna de estas imagenes es una captura de pantalla: el juego resube la
 pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres
@@ -117,7 +134,7 @@ Las direcciones, las medidas y la salida de openMSX estan en
 
 ## Lo que falta
 
-- **Nadie ha jugado una partida entera** con el parche puesto.
+- **Nadie ha jugado una partida entera** con el mapa repintado. Araubi si jugo una con la version de septiembre, y de ahi salio el fallo gordo.
 - La ficha se ha visto en el jefe de una formacion (Gandalf) y en el portador
   (Frodo); **no se han comprobado todos los tipos de unidad** por si el numero
   choca con una etiqueta larga.

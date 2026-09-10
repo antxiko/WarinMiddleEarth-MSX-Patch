@@ -121,9 +121,14 @@ sanity: work/juego.trace.json work/loader.trace.json work/pantalla.trace.json
 # repitiendo lo que hace el propio cargador. Si el reparto estuviera mal,
 # saldria ruido en vez de un dibujo.
 imagenes: extracted/.stamp
-	@mkdir -p docs/imagenes
+	@mkdir -p docs/imagenes work/laminas_parche
 	@python3 tools/render_carga.py work/pantalla.raw docs/imagenes/carga.png
 	@python3 tools/render_graficos.py work/alto.raw docs/imagenes
+	@# Y la misma lamina de tiles, pero del bloque alto YA PARCHEADO: es la
+	@# unica forma de ensenar los 128 dibujos repintados sin capturar nada.
+	@python3 tools/cuerpo_parcheado.py alto work/alto_parcheado.raw
+	@python3 tools/render_graficos.py work/alto_parcheado.raw work/laminas_parche
+	@cp work/laminas_parche/tiles-del-mapa.png docs/imagenes/tiles-repintados.png
 
 # ------------------------------------------------------------------ el parche
 # EL PARCHE DE ARAUBI. Aplica la tabla de tools/parchea.py sobre los cuerpos de

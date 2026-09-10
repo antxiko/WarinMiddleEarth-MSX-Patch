@@ -8,9 +8,9 @@ aplica sobre su copia.
 
 ## La vía rápida: el IPS
 
-En el repositorio hay un **`war_parche.ips`** de 487 bytes. Lleva sólo los bytes
-que cambian —código nuestro, el dibujo del Ojo de Sauron y el texto nuevo— y se
-aplica sobre tu
+En el repositorio hay un **`war_parche.ips`** de 1.718 bytes. Lleva sólo los
+bytes que cambian —código nuestro, los 122 tiles repintados del mapa y el texto
+nuevo— y se aplica sobre tu
 propia cinta con cualquier herramienta de IPS, o con la que viene aquí:
 
     python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx
@@ -26,7 +26,7 @@ Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make ips         # y war_parche.ips, el parche a secas
-    make test        # las 30 comprobaciones
+    make test        # las 73 comprobaciones
 
 `make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
 originales son los que espera**, y si al terminar hay un solo byte distinto
@@ -41,12 +41,17 @@ tiempo emulado; con el acelerador del emulador, mucho menos.
 
 ## Qué vas a ver distinto
 
+- **El mapa entero está repintado**: 122 de los 128 dibujos de 8 × 8. Es lo
+  primero que se nota, porque cambia toda la pantalla.
 - **Las unidades enemigas se dibujan en el mapa**, con el Ojo de Sauron, para
   no confundirlas con las tuyas.
 - **La ficha de cada unidad enseña el número** de sus seis apartados, no sólo
   «es muy hábil».
 - **En la ficha del portador del Anillo**, a la izquierda del anillo, salen los
   **meses que quedan** antes de sucumbir.
+- **El texto va sobre el mismo khaki de los marcos**, en lugar de sobre blanco.
+- Y la ficha dice **Firme, Virtuoso, Valiente y Fuerte** donde decía Hábil,
+  Valioso, Duro y Bravo, con la última línea entera: «Aliado a la Comunidad».
 
 Para llegar a la ficha de Frodo: pon el cursor sobre la casilla de la Comunidad,
 dispara, y con arriba y abajo vas pasando de una unidad a otra hasta llegar a
@@ -55,9 +60,11 @@ juego dibuja el anillo.
 
 ## Antes de juzgarlo
 
-**Nadie ha jugado una partida entera con el parche puesto.** Lo que se sabe que
-falta está en [Preguntas abiertas](PREGUNTAS-ABIERTAS.md), y se agradece que lo
-juegues y lo cuentes.
+Araubi jugó una partida entera con la versión de septiembre y ahí salió el fallo
+grande —está contado en [Hallazgos](HALLAZGOS.md)—. **Con el mapa repintado no
+la ha jugado nadie todavía.** Lo que se sabe que falta está en
+[Preguntas abiertas](PREGUNTAS-ABIERTAS.md), y se agradece que lo juegues y lo
+cuentes.
 
 ## De dónde sale
 

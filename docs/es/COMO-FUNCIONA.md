@@ -1,6 +1,6 @@
 # Cómo funciona
 
-Las cinco cosas, una a una, con la dirección de cada afirmación.
+Las seis cosas, una a una, con la dirección de cada afirmación.
 
 ## El mapa de una unidad
 
@@ -127,19 +127,21 @@ usos en las 13.260 casillas.
 
 El icono son **cuatro tiles nuevos** en los índices 111 a 114 de la tabla de
 `0x9E00`, que estaban a cero. Cada tile son nueve bytes: ocho de dibujo y el
-**atributo del ZX Spectrum** pegado detrás. Se les ha puesto `0x38` —tinta
-negra sobre papel blanco—, el mismo que llevan los tiles del icono aliado, así
-que el Ojo tapa el fondo igual que el casco.
+**atributo del ZX Spectrum** pegado detrás.
 
-**El color del ZX va por celda de 8×8, no por píxel.** Darle tinta roja al Ojo
-sería un byte por cuadrante; se ha dejado en negro sobre blanco, como se dibujó.
+**El color del ZX va por celda de 8×8, no por píxel**, así que el Ojo sólo puede
+tener dos colores por cuadrante. Los tiene: se repintó en **rojo oscuro sobre el
+crema del mapa** —atributo `0x3A`, y `0x17` en el cuadrante de arriba a la
+izquierda, que va al revés—, y el icono aliado pasó a ser un **escudo azul**.
+Antes los dos llevaban el mismo `0x38`, negro sobre blanco, y a distancia se
+parecían demasiado.
 
 ## 5 · El texto termina de traducirse
 
 La conversión de Animagic tradujo el juego a medias: los topónimos del mapa se
-quedaron en inglés y tres nombres de raza salen truncados. Cambian quince
+quedaron en inglés y tres nombres de raza salen truncados. Cambian diecinueve
 cadenas, y **no se mueve un byte**. Lo que lo hace posible es que el juego
-guarda su texto de tres maneras distintas, y cada una permite una cosa.
+guarda su texto de cuatro maneras distintas, y cada una permite una cosa.
 
 **La tabla de sitios, `0x7A5E`.** La recorre `BUSCA_EL_SITIO` (`0x6E50`). Cada
 registro es
@@ -162,10 +164,10 @@ nombre nuevo tiene que medir **exactamente ancho × filas**:
 | `0x7B5D` | Far Downs | **Quebradas** | 9×1 |
 | `0x7B4B` | Michel Delving | **Cavada Grande** | 7×2: `Cavada ` + `Grande ` |
 | `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6×2: `Ptos  ` + `Grises` |
-| `0x7AA5` | Rivendell | **Rivendel** | 9×1: ocho letras y un espacio |
+| `0x7AA5` | Rivendell | **Rivendel** | de 9×1 a **8×1**: le sobra una letra |
 | `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10×1 |
 | `0x7A79` | Morannon | **Puerta N** | 8×1 |
-| `0x7B0D` | Dale | **Vale** | 4×1 |
+| `0x7B0D` | Dale | **Valle** | de 4×1 a **5×1**, con el byte que le presta Rivendel |
 | `0x7B7F` | HelmsDeep | **AbismHelm** | 5×2: `Abism` + `Helm ` |
 
 **Las listas de cadenas pegadas**, cada una con el **bit 7 en su última
@@ -203,12 +205,77 @@ la escribió el juego en singular («Brujo »), y se respeta: queda «Mago».
 copiados hasta ese separador (`0x6E23`, `0x6F38`). `Brand III` → **`Bardo III`**,
 nueve letras por nueve.
 
-Y una cadena suelta: el cuarto adjetivo de la ficha, en `0x7DF0`, al que apunta
-`0x6FEF`. `Valioso` → **`Integro`**, siete letras y el bit 7 al final.
+**Y los seis adjetivos de la ficha, que no están en ninguna lista.** A cada uno
+lo carga su propio `ld hl` absoluto —`0x704B`, `0x7061`, `0x7006`, `0x6FEF`,
+`0x701E` y `0x7035`—, así que, al revés que todo lo anterior, sí pueden crecer:
+se mueve la cadena y se cambia el puntero. Cuatro lo hacen:
+
+| puntero | era | es | dónde vive ahora |
+|---|---|---|---|
+| `0x7006` | Habil | **Firme** | `0x7DE6`, su propio hueco: cinco letras por cinco |
+| `0x6FEF` | Valioso | **Virtuoso** | `0x6689`, en el motor de altavoz muerto |
+| `0x701E` | Duro | **Valiente** | `0x6692` |
+| `0x7035` | Bravo | **Fuerte** | `0x669B` |
+
+Los tres que se mudan ocupan 25 bytes y sus tres punteros otros seis. `Enérgico`
+y `Decidido` se quedan como estaban, y también se quedan intactas las tres
+cadenas abandonadas de `0x7DF0`-`0x7DFF`: ya no las lee nadie, y hay una prueba
+que comprueba que no se tocan.
+
+La **última línea** de la ficha era una plantilla más una palabra de la lista de
+`0x7D6A`, y por eso decía `Aliado a la Sociedad`. `Comunidad` tiene una letra
+más, así que la lista entera se mudó a `0x66A2` con la frase completa en cada
+entrada, y la escritura empieza en la columna 0 (`0x7CEF`) en vez de en la 10.
+Así las otras tres se leen exactamente igual que antes.
 
 La fuente decide qué letras hay: `0xC800` lleva 128 caracteres de ocho bytes, y
 del `0x21` al `0x7F` están todos dibujados (sólo el `0x20`, el espacio, está en
 blanco). Los códigos con el bit 7 puesto no son letras —son dibujos de la tabla
 de `0x9E00`—, así que **no hay acentos**, y «Nazgul» sigue sin su circunflejo.
+
+---
+
+## 6 · El mapa, repintado
+
+El mapa se dibuja con **128 tiles de 8 × 8** en `0x9E00`, de nueve bytes cada
+uno: ocho de dibujo y un **atributo del ZX Spectrum** detrás.
+`tools/lienzos.py` los saca todos a un PNG de 128 × 64 a tamaño real —dieciséis
+tiles por fila— y los vuelve a leer; `make parche` compara el lienzo con la
+cinta y convierte en entrada cada dibujo que haya cambiado. Han cambiado
+**122 de los 128**.
+
+Lo que hay que saber es qué colores se pueden pedir, porque el atributo es del
+Spectrum pero **el color es del MSX**:
+
+```
+ATRIBUTO_A_COLOR (0x049F):  ld hl,004ceh   ; la tabla sin brillo
+                            bit 6,a
+                            jr z,+3
+                            ld hl,004d6h   ; y la que lo lleva
+                            ...            ; tinta -> nibble alto, papel -> bajo
+```
+
+Dos tablas de ocho bytes, leídas de la cinta:
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| `0x04CE`, sin brillo | 1 | 4 | 6 | 13 | 12 | 7 | 10 | 15 |
+| `0x04D6`, con brillo | 1 | 5 | 9 | 13 | 3 | 7 | 11 | 15 |
+
+Dieciséis huecos, **doce colores distintos del MSX**: no hay forma de sacar el
+rojo medio (8), el verde medio (2) ni el gris (14). Y sólo cuatro de los ocho
+—azul, rojo, verde y amarillo— cambian de verdad con el bit de brillo, así que
+la regla del Spectrum de «los dos del mismo brillo» sólo obliga en ésos. La
+herramienta sabe todo esto: dibuja el lienzo con los colores del MSX, rechaza
+una casilla con tres, y si entra un color imposible coge el más parecido y lo
+dice.
+
+**Y un byte más, el del papel.** `UN_CARACTER_NORMAL` (`0x7616`) pinta todos los
+caracteres de la fuente con un atributo fijo, el `ld a,078h` de `0x763E`. Su
+operando —`0x763F`— pasa de `0x78` a `0x70`: papel 6 con brillo, que la tabla de
+`0x04D6` manda al color 11 del MSX, el mismo khaki con el que están pintados los
+marcos. Se lleva por delante también los **espacios**, que son los que rellenan
+el interior de un cartel, así que la caja sale de khaki entero en vez de dejar
+un halo detrás de cada letra. Es global: menú, rótulos, ficha y batalla.
 
 Lo que **no** se pudo hacer, y por qué, está en [Hallazgos](HALLAZGOS.md).

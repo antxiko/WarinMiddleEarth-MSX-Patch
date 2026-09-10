@@ -133,3 +133,32 @@ Lo que dolió es que **había un test para esto** y daba verde: comprobaba que e
 gancho apuntaba a `base + 33` bytes, contados a mano igual de mal que en el
 parche. Ahora las direcciones las saca del fichero de símbolos del ensamblador,
 que es el único que sabe de verdad dónde empieza cada rutina.
+
+
+## El lienzo mentía: el atributo es del ZX, el color es del MSX
+
+Los tiles salían al PNG pintados con los colores del **ZX Spectrum**, que es lo
+que dice el atributo pegado detrás de cada uno. En pantalla no se ven así nunca.
+Esta conversión no manda el atributo al VDP: lo traduce antes
+`ATRIBUTO_A_COLOR` (`0x049F`) con dos tablas de ocho colores —`0x04CE` sin
+brillo y `0x04D6` con él— y lo que sale es un byte de color del **MSX**. El
+lienzo enseñaba el gris del ZX donde el juego pone blanco.
+
+De ahí salen dos cosas, y las dos cambian lo que se puede dibujar:
+
+- **Sólo se pueden pedir doce de los quince colores del MSX.** Los dieciséis
+  huecos de las dos tablas guardan doce valores distintos. No hay atributo que
+  dé el rojo medio, el verde medio ni el gris. Medido sobre el repintado que
+  llegó: **349 píxeles de rojo medio en 16 tiles**, 47 de verde medio en 4, y 3
+  de gris en uno. Cada uno se cambia ahora por el alcanzable más parecido, y la
+  herramienta dice cuál era, cuántos píxeles y en qué se ha convertido.
+- **La regla de «los dos del mismo brillo» aprieta menos de lo que parecía.**
+  Sólo cuatro de los ocho colores cambian entre las dos tablas: azul, rojo, verde
+  y amarillo. El negro, el magenta, el cian y el blanco dan el mismo color del
+  MSX con brillo y sin él, así que no obligan a nada. La comprobación rechazaba
+  casillas que se podían dibujar perfectamente.
+
+La lección no es de este juego: **un lienzo que enseña colores distintos de los
+que va a enseñar la máquina es un lienzo que miente**, y la forma de
+comprobarlo es dibujarlo con la traducción del propio juego, no con la paleta de
+la máquina de la que se convirtió.

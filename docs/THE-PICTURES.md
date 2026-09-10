@@ -86,3 +86,25 @@ you want to see.
 | `tools/render_icono.py` | draws one 2×2 entry of the `0x77B5` table |
 | `tools/icono_a_tiles.py` | turns a 16×16 PNG into the four nine-byte tiles |
 | `tools/lienzos.py` | exports the tiles, the sprites and the font to three editable 1:1 PNGs, and reads them back |
+| `tools/previo_repinta.py` | repaints an existing screen, cell by cell, with the canvas's tiles |
+| `tools/cuerpo_parcheado.py` | the same block body with the patch applied, for drawing the "after" plates |
+
+## Seeing a repaint before touching the cassette
+
+Repainting 128 tiles and finding out afterwards that the map does not read is an
+expensive way to work. `tools/previo_repinta.py` avoids it: it takes a screen
+already dumped from the game and **identifies each of its 768 cells** against the
+cassette's tiles and font — the eight bytes of the drawing, and the two colours
+the attribute would give — and draws it again with the canvas's tiles. What it
+cannot identify it leaves alone and reports, so nothing gets invented. Across the
+four screens used here, **768 of 768 cells were identified in each**.
+
+It also takes the font's attribute as an argument, which is how the khaki paper
+was looked at before spending a byte on it.
+
+And then it was checked against the real thing. The same screen, dumped from the
+patched cassette running in the emulator, against the preview:
+
+    0 pixels differing out of 196,608
+
+The preview is not an illustration: it is what the machine ends up drawing.

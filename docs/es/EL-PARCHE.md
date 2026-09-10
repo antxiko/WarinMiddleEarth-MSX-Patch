@@ -1,8 +1,16 @@
 # El parche
 
-Veintidós entradas, **393 bytes**, ninguna fuera de la tabla y ninguna
+Ciento treinta entradas, **1.396 bytes**, ninguna fuera de la tabla y ninguna
 desplazada: cada parche mide exactamente lo mismo que lo que sustituye, así que
 ninguna dirección del juego se mueve.
+
+Son dos cosas de origen distinto: **27 entradas escritas a mano** —548 bytes de
+código, punteros y texto— y **103 que salen solas de los lienzos** —848 bytes,
+los 122 tiles del mapa repintados—. Byte a byte: 848 de tiles, 376 de texto, 137
+de código nuevo, 23 de ganchos y trampolines, 10 de punteros y 2 sueltos —el
+tope del bucle de siembra y el papel del texto—. La herramienta no distingue entre unas y
+otras: todas llevan los bytes que esperan encontrar y todas miden lo mismo que
+lo que sustituyen.
 
 ## La tabla
 
@@ -15,19 +23,26 @@ ninguna dirección del juego se mueve.
 | `0x7FC9` | medio | 5 | gancho de la siembra |
 | `0x770A` | medio | 10 | gancho del dibujo |
 | `0x6F77` | medio | 5 | gancho del anillo |
-| `0xA1E7` | alto | 36 | los cuatro tiles del Ojo de Sauron, dibujados en el lienzo |
-| `0x7A79`…`0x7BC7` | medio | 91 | los diez toponimos del mapa |
+| `0x763F` | medio | 1 | el papel del texto, `0x78` → `0x70` |
+| `0x7DE6` | medio | 9 | `Habil` → `Firme`, en su propio hueco |
+| `0x6689` | medio | 25 | ` Virtuoso`, ` Valiente` y ` Fuerte` |
+| `0x6FF0`, `0x701F`, `0x7036` | medio | 2 cada uno | los tres punteros de esos adjetivos |
+| `0x66A2` | medio | 64 | las cuatro frases enteras de la última línea de la ficha |
+| `0x7074`, `0x707A` | medio | 2 cada uno | el puntero de esa lista y su columna |
+| `0x7A79`…`0x7BC7` | medio | 180 | los diez toponimos del mapa |
 | `0x6BA5` | medio | 9 | `Brand III` → `Bardo III` |
-| `0x7DF0` | medio | 7 | `Valioso` → `Integro` |
 | `0x7D07` | medio | 45 | las razas en plural |
 | `0x7D3A` | medio | 44 | las razas en singular |
+| `0x9E02`…`0xA280` | alto | 848 | los 122 tiles repintados, en 103 entradas |
 
 Las direcciones son de **ejecución**. El bloque «medio» corre desde `0x5E00` y
-el «alto» desde `0x9E00`. Los diez toponimos son diez entradas sueltas: `0x7A79`,
-`0x7AA5`, `0x7AB2`, `0x7B0D`, `0x7B28`, `0x7B34`, `0x7B4B`, `0x7B5D`, `0x7B7F` y
-`0x7BC7`.
+el «alto» desde `0x9E00`. Los diez toponimos son ocho entradas: siete sueltas
+—`0x7A79`, `0x7B28`, `0x7B34`, `0x7B4B`, `0x7B5D`, `0x7B7F` y `0x7BC7`— y una de
+112 bytes que reescribe de una vez el tramo de nueve registros que empieza en
+`0x7AA1`, porque ahí `Rivendell` encoge una letra para prestársela a `Dale`, y
+encoger un registro **corre todos los de detrás**.
 
-## Los tres formatos de texto
+## Los cuatro formatos de texto
 
 Nada se desplaza, así que el sitio de cada cadena manda. Y aprieta distinto
 según dónde viva:
@@ -45,6 +60,21 @@ según dónde viva:
   bytes y sale dos veces en cada lista, los cuatro justos que necesitan
   `Elf` → `Elfo` y `Hum` → `Hombre`.
 - **La lista de los 24 nombres propios (`0x6B46`)**, separados por `0xB7`.
+- **Los seis adjetivos de la ficha, cada uno con su `ld hl`.** Éstos no van en
+  ninguna lista que haya que recorrer: `0x704B`, `0x7061`, `0x7006`, `0x6FEF`,
+  `0x701E` y `0x7035` cargan cada uno su dirección absoluta. Por eso sí pueden
+  crecer —se llevan a otro sitio y se cambia el puntero—, y por eso `Valioso`
+  cabe como `Virtuoso`. Aquí el límite **no es la cinta, es la pantalla**: la
+  ficha tiene 24 columnas y el número del parche va en la 20, así que con el
+  adverbio más largo (` No es muy `, once) un adjetivo de ocho letras deja la
+  coma justo debajo del número. Eso ya le pasaba a `Energico` antes de este
+  parche, y hay una prueba que exige que ninguno lo empeore.
+
+La cuarta lista, la de la **última línea** de la ficha (`0x7D6A`), se mudó
+entera a `0x66A2`. La línea se componía con una plantilla más la palabra de la
+lista y ahora cada entrada trae **la frase completa**, escrita desde la columna
+0: era la única forma de que `Aliado a la Sociedad` pasara a
+`Aliado a la Comunidad` sin tocar las otras tres.
 
 ## Cómo se aplica
 
@@ -61,13 +91,17 @@ los rangos de la tabla, el cuerpo es idéntico al original.
 
 Los 137 bytes de código nuevo —76 de la rutina de los valores y 61 de la segunda
 tanda— están escritos **encima del motor del altavoz del ZX Spectrum**, en
-`0x6600`-`0x6688`.
+`0x6600`-`0x6688`. Detrás van 89 bytes más que ya no son código sino **texto**:
+los tres adjetivos largos (`0x6689`-`0x66A1`) y las cuatro frases de la última
+línea de la ficha (`0x66A2`-`0x66E1`).
 
 Ese motor lo trajo la conversión entero y **no lo llama nadie**: ni una
 instrucción de los cinco listados apunta a `0x6600`, y los cuatro sitios que
 piden un efecto de sonido llaman a `0x65FF`, que es un `ret` pelado. Del PSG del
 MSX sólo se escriben dos registros, el 7 y el 14, y los dos son para leer el
-joystick. Este juego es mudo, y su silencio nos deja 276 bytes de sitio.
+joystick. Este juego es mudo, y su silencio nos deja 276 bytes de sitio, de los
+que el parche gasta **226** y deja 50 libres. Hay una prueba que comprueba que
+ninguna entrada se sale de ese tramo ni pisa a otra.
 
 ## Los gráficos, en tres PNG
 
@@ -85,8 +119,13 @@ Se repinta lo que se quiera y `make parche` hace el resto: compara los lienzos
 con la cinta y cada dibujo que haya cambiado sale solo como una entrada más de
 la tabla, del grupo `graficos`, con su `orig` y su `nuevo` de la misma longitud,
 igual que las escritas a mano. Si no se tocan, no aparece ni una entrada de más.
-Hoy la única que sale es el Ojo de Sauron, y da **exactamente** los mismos 36
-bytes que cuando estaban escritos a mano en el código.
+
+Hoy salen de ahí **122 de los 128 tiles**, repintados: 103 entradas y 848 bytes,
+más de la mitad del parche. Los seis que no se mueven son el 97 al 102, a los
+que sólo les cambió el fondo —el blanco del ZX y el del MSX son el mismo color
+15, así que el dibujo que vuelve es byte a byte el que había—. El Ojo de Sauron
+está ahora en ese grupo: eran 36 bytes escritos a mano y se dibuja en el lienzo
+como todo lo demás.
 
 | orden | qué hace |
 |---|---|
@@ -100,9 +139,18 @@ bytes que cuando estaban escritos a mano en el código.
   3‑5 el papel, 6 el brillo y 7 el parpadeo), y de ahí salen las dos reglas del
   Spectrum: **dos colores por casilla** de 8 × 8 —el famoso *attribute clash*— y
   **los dos del mismo brillo**, porque el bit de brillo es uno solo para los dos.
-  El negro es la excepción: es `#000000` con brillo y sin él. Si una casilla se
-  salta alguna, la herramienta **para y dice cuál es y por qué**, en vez de
-  elegir por su cuenta.
+  Si una casilla se salta alguna, la herramienta **para y dice cuál es y por
+  qué**, en vez de elegir por su cuenta.
+  **Pero el color que se ve es del MSX, no del Spectrum.** Esta conversión no
+  manda el atributo a la pantalla: lo traduce antes `ATRIBUTO_A_COLOR`
+  (`0x049F`) con dos tablas de ocho colores que el juego rellena al arrancar
+  —`0x04CE` para el atributo sin brillo y `0x04D6` para el que lo lleva—. Así
+  que el lienzo se dibuja y se relee **con los colores del MSX**, y sólo se
+  pueden pedir **doce de los quince**: no hay atributo que dé el rojo medio, el
+  verde medio ni el gris. Si se cuela uno de ésos, la herramienta coge el más
+  parecido de los que sí se pueden y dice cuál era, cuántos píxeles y en qué se
+  ha convertido. Y la regla del brillo afloja: sólo obligan los cuatro colores
+  cuyas dos entradas son distintas —azul, rojo, verde y amarillo—.
 - **Los sprites** no llevan atributo: llevan **máscara**. La rutina que los
   pinta (`0x887B`) hace `and` con la máscara y `or` con el dibujo, así que un
   píxel puede **dejar el fondo como estaba**, escribirlo a **papel** o
@@ -125,10 +173,10 @@ bytes que cuando estaban escritos a mano en el código.
 Un dibujo que se vea *exactamente* igual que el de la cinta se devuelve con
 **sus bytes de siempre**, sin recodificar. Por eso abrir un PNG y guardarlo sin
 cambiar nada no mueve un solo byte, ni siquiera en los que no se pueden
-reconstruir mirando la imagen: el tile **85** lleva tinta blanca sobre papel
-blanco, con ocho bytes de dibujo escondidos debajo, y del **111 al 127** son
-negro sobre negro. Sin esa regla, cada ida y vuelta ensuciaría el parche con
-cambios que nadie ha pedido.
+reconstruir mirando la imagen: un tile con tinta blanca sobre papel blanco lleva
+ocho bytes de dibujo escondidos debajo, y otro tanto uno que sea negro sobre
+negro. Sin esa regla, cada ida y vuelta ensuciaría el parche con cambios que
+nadie ha pedido —y es lo que hoy deja fuera del parche a los tiles 97 a 102—.
 
 La paleta de cada hoja va **dentro** del PNG, así que un editor en modo indexado
 la ofrece hecha. Si aun así entra un color de fuera —por trabajar en color
@@ -137,7 +185,7 @@ era, cuántos píxeles y por qué color se ha cambiado.
 
 ## El IPS
 
-`make ips` saca **`war_parche.ips`**: 487 bytes en dieciocho registros, con sólo
+`make ips` saca **`war_parche.ips`**: 1.718 bytes en 39 registros, con sólo
 lo que cambia. Comprobado en el sitio —y en las pruebas— que **aplicado sobre
 `war.tsx` devuelve la cinta parcheada byte a byte**.
 
@@ -145,9 +193,9 @@ Se reparte eso, no el juego.
 
 ## Las comprobaciones
 
-`make test` son 68, y no son de adorno. Entre ellas:
+`make test` son 73, y no son de adorno. Entre ellas:
 
-- que **`orig` y `nuevo` miden igual** en las veintidós entradas, o sea que nada
+- que **`orig` y `nuevo` miden igual** en las 130 entradas, o sea que nada
   se desplaza;
 - que cada entrada **cae dentro de su bloque**;
 - que los bytes de la tabla son **exactamente** lo que sale de ensamblar

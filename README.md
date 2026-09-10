@@ -38,11 +38,12 @@ for a real MSX1 (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.ts
 
 ## What it changes
 
-Everything is in the game's middle block (which runs at `0x5E00`) plus four
-tiles in the high block, **393 bytes across 22 table entries** (197 of code and
-artwork, 196 of text). Each one is checked against the bytes it expects before
-writing — nothing shifts, and `make parche` fails if a single byte changes
-outside the table (`tools/parchea.py`).
+It lands in the game's middle block (which runs at `0x5E00`) and in the map's
+tile table in the high block: **1,396 bytes across 130 table entries**. Of those,
+**27 are written by hand** — 548 bytes of code, pointers and text — and **103
+fall out of the canvases**, 848 bytes of repainted tiles. Each one is checked
+against the bytes it expects before writing — nothing shifts, and `make parche`
+fails if a single byte changes outside the table (`tools/parchea.py`).
 
 **1 · Enemy units become visible.** The map keeps a "someone is here" bit for
 each cell, and `RECENTRA_EL_MAPA` (0x7FAC) re-plants it unit by unit — but its
@@ -85,11 +86,13 @@ that byte was free** (measured: zero uses across all 13,260 cells). It now marks
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
 
 **5 · The text finishes its translation.** Animagic's conversion left the map's
-place names in English and truncated three race names. Fifteen strings change:
+place names in English and truncated three race names. Nineteen strings change:
 ten place names (`Bywater` → `Delagua`, `Michel Delving` → `Cavada Grande`,
-`Dale` → `Vale`…), one unit name (`Brand III` → `Bardo III`), one of the sheet's
-adjectives (`Valioso` → `Integro`) and the three races (`Brujo` → `Mago`,
-`Elf` → `Elfo`, `Hum` → `Hombre`).
+`Dale` → `Valle`…), one unit name (`Brand III` → `Bardo III`), the three races
+(`Brujo` → `Mago`, `Elf` → `Elfo`, `Hum` → `Hombre`), the sheet's four adjectives
+(`Habil` → `Firme`, `Valioso` → `Virtuoso`, `Duro` → `Valiente`,
+`Bravo` → `Fuerte`) and its last line (`Aliado a la Sociedad` →
+`Aliado a la Comunidad`).
 
 Not one byte moves. A place-name record carries the **size of its signpost**
 (`ancho<<4 | filas`) and the text fills it exactly, so a new name has to measure
@@ -105,12 +108,25 @@ Same cell, same unit, original tape and patched one:
 |---|---|
 | ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
 
-45 character cells change and **zero colour attributes**. The two-row signpost,
-the one that could have broken, changes 13 cells, all inside the sign:
+The two-row signpost, the one that could have broken, holds `Cavada `/`Grande `
+in the same 7×2 box:
 
 | without the patch | with it |
 |---|---|
 | ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
+
+**6 · The map, repainted.** The map's 128 8×8 tiles are exported to a PNG at
+full size, repainted in any image editor and read back in: **122 of the 128** go
+into the patch on their own, as 103 entries of the `graficos` group. And with
+them came the finding that **the canvas was lying**: the tile carries a ZX
+attribute, but `ATRIBUTO_A_COLOR` (`0x049F`) translates it into an MSX colour
+before it is drawn, with two tables of eight, so only **twelve of the MSX's
+fifteen colours** can be asked for. The text now sits on the frames' khaki, which
+is one byte at `0x763F`.
+
+| the cassette's tiles | repainted |
+|---|---|
+| ![](docs/imagenes/tiles-del-mapa.png) | ![](docs/imagenes/tiles-repintados.png) |
 
 None of the images above are screen captures: the game re-uploads the screen to
 the VDP constantly, so two photographs of the *same* state, three seconds apart,
@@ -120,7 +136,7 @@ the openMSX output are in [INVESTIGACION.md](INVESTIGACION.md).
 
 ## What is still missing
 
-- **Nobody has played a full game** with the patch on.
+- **Nobody has played a full game** with the map repainted. Araubi did play one with the September build, and that is where the big bug turned up.
 - The unit sheet has been seen for a formation leader (Gandalf) and for the
   Ring-bearer (Frodo); **not every unit type has been checked** for the number
   colliding with a long label.

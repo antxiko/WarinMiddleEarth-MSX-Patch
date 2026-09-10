@@ -87,7 +87,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <p>Esto es un <b>parche de jugabilidad</b> para la cinta MSX de <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). No es el juego: es lo que se le cambia.</p>
 <p><b>Aquí no hay ninguna imagen de cinta.</b> Se reparte el parche y cada cual lo aplica sobre su copia.</p>
 <h2 id="la-via-rapida-el-ips">La vía rápida: el IPS</h2>
-<p>En el repositorio hay un <b><code>war_parche.ips</code></b> de 487 bytes. Lleva sólo los bytes que cambian —código nuestro, el dibujo del Ojo de Sauron y el texto nuevo— y se aplica sobre tu propia cinta con cualquier herramienta de IPS, o con la que viene aquí:</p>
+<p>En el repositorio hay un <b><code>war_parche.ips</code></b> de 1.718 bytes. Lleva sólo los bytes que cambian —código nuestro, los 122 tiles repintados del mapa y el texto nuevo— y se aplica sobre tu propia cinta con cualquier herramienta de IPS, o con la que viene aquí:</p>
 <pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
 <p>Tu cinta tiene que ser la misma que se usó para sacarlo. Su huella es <code>sha256 13c63632…b1d81208</code>; si la tuya es otra, el parche se aplicará igual pero nadie garantiza el resultado.</p>
 <h2 id="la-via-larga-montarlo-tu">La vía larga: montarlo tú</h2>
@@ -95,16 +95,16 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # saca los cuerpos de los bloques de tu cinta a work/
 make parche      # aplica la tabla y escribe war_parche.tsx
 make ips         # y war_parche.ips, el parche a secas
-make test        # las 30 comprobaciones</code></pre>
+make test        # las 73 comprobaciones</code></pre>
 <p><code>make parche</code> no escribe a ciegas: <b>cada cambio comprueba antes que los bytes originales son los que espera</b>, y si al terminar hay un solo byte distinto fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.</p>
 <h2 id="jugarlo">Jugarlo</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>
 <p>y en el MSX, <code>RUN&quot;CAS:&quot;</code>. La carga entera son unos seis minutos y medio de tiempo emulado; con el acelerador del emulador, mucho menos.</p>
 <h2 id="que-vas-a-ver-distinto">Qué vas a ver distinto</h2>
-<ul><li><b>Las unidades enemigas se dibujan en el mapa</b>, con el Ojo de Sauron, para no confundirlas con las tuyas.</li><li><b>La ficha de cada unidad enseña el número</b> de sus seis apartados, no sólo «es muy hábil».</li><li><b>En la ficha del portador del Anillo</b>, a la izquierda del anillo, salen los <b>meses que quedan</b> antes de sucumbir.</li></ul>
+<ul><li><b>El mapa entero está repintado</b>: 122 de los 128 dibujos de 8 × 8. Es lo primero que se nota, porque cambia toda la pantalla.</li><li><b>Las unidades enemigas se dibujan en el mapa</b>, con el Ojo de Sauron, para no confundirlas con las tuyas.</li><li><b>La ficha de cada unidad enseña el número</b> de sus seis apartados, no sólo «es muy hábil».</li><li><b>En la ficha del portador del Anillo</b>, a la izquierda del anillo, salen los <b>meses que quedan</b> antes de sucumbir.</li><li><b>El texto va sobre el mismo khaki de los marcos</b>, en lugar de sobre blanco.</li><li>Y la ficha dice <b>Firme, Virtuoso, Valiente y Fuerte</b> donde decía Hábil, Valioso, Duro y Bravo, con la última línea entera: «Aliado a la Comunidad».</li></ul>
 <p>Para llegar a la ficha de Frodo: pon el cursor sobre la casilla de la Comunidad, dispara, y con arriba y abajo vas pasando de una unidad a otra hasta llegar a él. El número del anillo sólo sale en la ficha del portador, que es donde el juego dibuja el anillo.</p>
 <h2 id="antes-de-juzgarlo">Antes de juzgarlo</h2>
-<p><b>Nadie ha jugado una partida entera con el parche puesto.</b> Lo que se sabe que falta está en <a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a>, y se agradece que lo juegues y lo cuentes.</p>
+<p>Araubi jugó una partida entera con la versión de septiembre y ahí salió el fallo grande —está contado en <a href="HALLAZGOS.html">Hallazgos</a>—. <b>Con el mapa repintado no la ha jugado nadie todavía.</b> Lo que se sabe que falta está en <a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a>, y se agradece que lo juegues y lo cuentes.</p>
 <h2 id="de-donde-sale">De dónde sale</h2>
 <p>De un <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly">desensamblado comentado</a> de la cinta entera, que es <b>otro repositorio y otra web</b>. Todas las direcciones que se citan aquí salen de aquel listado, no de probar a ver qué pasa.</p>
 <footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>

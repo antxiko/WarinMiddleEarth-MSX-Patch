@@ -86,3 +86,25 @@ la unidad que se quiere ver.
 | `tools/render_icono.py` | dibuja un cuadro de 2×2 de la tabla de `0x77B5` |
 | `tools/icono_a_tiles.py` | pasa un PNG de 16×16 a los cuatro tiles de 9 bytes |
 | `tools/lienzos.py` | saca los tiles, los sprites y la fuente a tres PNG editables a tamaño real, y los vuelve a meter |
+| `tools/previo_repinta.py` | repinta una pantalla ya volcada, casilla a casilla, con los tiles del lienzo |
+| `tools/cuerpo_parcheado.py` | el cuerpo de un bloque con el parche aplicado, para dibujar las láminas del «después» |
+
+## Ver un repintado antes de tocar la cinta
+
+Repintar 128 tiles y enterarse después de que el mapa no se lee es una forma cara
+de trabajar. `tools/previo_repinta.py` se la salta: coge una pantalla ya volcada
+del juego, **identifica cada una de sus 768 casillas** contra los tiles y la
+fuente de la cinta —los ocho bytes del dibujo, y los dos colores que daría su
+atributo— y la vuelve a dibujar con los tiles del lienzo. Lo que no identifica lo
+deja como está y lo cuenta, para no inventarse nada. En las cuatro pantallas que
+se usaron aquí, **768 de 768 casillas identificadas** en cada una.
+
+Además acepta el atributo de la fuente como argumento, que es como se miró el
+papel khaki antes de gastar un byte en él.
+
+Y luego se comprobó contra lo de verdad. La misma pantalla, volcada de la cinta
+parcheada corriendo en el emulador, contra el previo:
+
+    0 píxeles distintos de 196.608
+
+El previo no es una ilustración: es lo que la máquina acaba dibujando.

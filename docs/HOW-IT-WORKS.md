@@ -1,6 +1,6 @@
 # How it works
 
-The five things, one by one, with an address behind every claim.
+The six things, one by one, with an address behind every claim.
 
 ## A unit's map
 
@@ -126,19 +126,20 @@ zero uses across all 13,260 cells.
 
 The icon is **four new tiles** at indices 111 to 114 of the `0x9E00` table,
 which were all zeros. Each tile is nine bytes: eight of artwork and a **ZX
-Spectrum attribute** glued behind. They carry `0x38` — black ink on white paper
-— the same as the friendly icon's tiles, so the Eye covers the ground exactly
-as the helmet does.
+Spectrum attribute** glued behind.
 
-**The ZX's colour is per 8×8 cell, not per pixel.** Giving the Eye red ink would
-be one byte per quadrant; it was left black on white, as it was drawn.
+**The ZX's colour is per 8×8 cell, not per pixel**, so the Eye gets two colours
+per quadrant. It uses them: it was repainted in **dark red on the map's cream** —
+attribute `0x3A`, and `0x17` in the top-left quadrant, which runs the other way
+round — and the friendly icon became a **blue shield**. Both used to carry the
+same `0x38`, black on white, and at a glance they looked too much alike.
 
 ## 5 · The text finishes its translation
 
 Animagic's conversion translated the game half way: the map's place names stayed
-in English and three race names came across truncated. Fifteen strings change,
+in English and three race names came across truncated. Nineteen strings change,
 and **not one byte moves**. What makes that possible is that the game keeps its
-text in three different shapes, and each one allows something different.
+text in four different shapes, and each one allows something different.
 
 **The place table, `0x7A5E`.** `BUSCA_EL_SITIO` (`0x6E50`) walks it. Each record
 is
@@ -161,10 +162,10 @@ sixteen in 8×2, with the spaces put in by hand. A new name has to measure
 | `0x7B5D` | Far Downs | **Quebradas** | 9×1 |
 | `0x7B4B` | Michel Delving | **Cavada Grande** | 7×2: `Cavada ` + `Grande ` |
 | `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6×2: `Ptos  ` + `Grises` |
-| `0x7AA5` | Rivendell | **Rivendel** | 9×1: eight letters and a space |
+| `0x7AA5` | Rivendell | **Rivendel** | 9×1 to **8×1**: one letter to spare |
 | `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10×1 |
 | `0x7A79` | Morannon | **Puerta N** | 8×1 |
-| `0x7B0D` | Dale | **Vale** | 4×1 |
+| `0x7B0D` | Dale | **Valle** | 4×1 to **5×1**, with the byte Rivendel lends it |
 | `0x7B7F` | HelmsDeep | **AbismHelm** | 5×2: `Abism` + `Helm ` |
 
 **The lists of packed strings**, each ending with **bit 7 set on its last
@@ -201,13 +202,76 @@ by the game in the singular (`Brujo `), and that is respected: it reads `Mago`.
 that separator (`0x6E23`, `0x6F38`). `Brand III` → **`Bardo III`**, nine letters
 for nine.
 
-And one loose string: the sheet's fourth adjective, at `0x7DF0` and pointed at by
-`0x6FEF`. `Valioso` → **`Integro`**, seven letters and the bit 7 at the end.
+**And the sheet's six adjectives, which are in no list at all.** Each one is
+loaded by its own absolute `ld hl` — `0x704B`, `0x7061`, `0x7006`, `0x6FEF`,
+`0x701E` and `0x7035` — so unlike everything above they *can* grow: move the
+string and change the pointer. Four of them do:
+
+| pointer | was | is | where it lives now |
+|---|---|---|---|
+| `0x7006` | Habil | **Firme** | `0x7DE6`, its own slot: five letters for five |
+| `0x6FEF` | Valioso | **Virtuoso** | `0x6689`, in the dead beeper engine |
+| `0x701E` | Duro | **Valiente** | `0x6692` |
+| `0x7035` | Bravo | **Fuerte** | `0x669B` |
+
+The three that moved take 25 bytes and their three pointers six more. `Enérgico`
+and `Decidido` stay as they were, and so do the three abandoned strings at
+`0x7DF0`-`0x7DFF`: nobody reads them any more, and a check makes sure they are
+left untouched.
+
+The **last line** of the sheet was a template plus a word from the list at
+`0x7D6A`, which is how it read `Aliado a la Sociedad`. `Comunidad` is one letter
+longer, so the whole list moved to `0x66A2` with each entry carrying the complete
+phrase, and the write starts at column 0 (`0x7CEF`) instead of column 10. That
+way the other three entries read exactly as they read before.
 
 The font settles which letters are available: `0xC800` holds 128 characters of
 eight bytes, and everything from `0x21` to `0x7F` is drawn (only `0x20`, the
 space, is blank). Codes with bit 7 set are not letters — they are artwork from
 the `0x9E00` table — so **there are no accents**, and `Nazgul` keeps going
 without its circumflex.
+
+---
+
+## 6 · The map, repainted
+
+The map is drawn with **128 tiles of 8 × 8** at `0x9E00`, nine bytes each: eight
+of bitmap and a **ZX Spectrum attribute** behind. `tools/lienzos.py` exports the
+lot to a PNG of 128 × 64 at 1:1 — sixteen tiles per row — and reads it back;
+`make parche` compares the canvas against the cassette and turns every drawing
+that changed into an entry. **122 of the 128** changed.
+
+The thing worth knowing is what colours can be asked for, because the attribute
+is the Spectrum's but **the colour is the MSX's**:
+
+```
+ATRIBUTO_A_COLOR (0x049F):  ld hl,004ceh   ; the table without bright
+                            bit 6,a
+                            jr z,+3
+                            ld hl,004d6h   ; and the one with it
+                            ...            ; ink -> high nibble, paper -> low
+```
+
+Two tables of eight bytes, read out of the tape:
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| `0x04CE`, no bright | 1 | 4 | 6 | 13 | 12 | 7 | 10 | 15 |
+| `0x04D6`, bright | 1 | 5 | 9 | 13 | 3 | 7 | 11 | 15 |
+
+Sixteen slots, **twelve distinct MSX colours**: nothing produces the medium red
+(8), the medium green (2) or the grey (14). And only four of the eight — blue,
+red, green and yellow — actually change with the bright bit, so the Spectrum's
+"both of the same brightness" rule only binds for those. The tool knows all of
+this: it draws the canvas in MSX colours, refuses a cell with three of them, and
+if an unreachable colour gets in it takes the nearest one and says so.
+
+**And one byte more, for the paper.** `UN_CARACTER_NORMAL` (`0x7616`) paints
+every character of the font with one fixed attribute, the `ld a,078h` at
+`0x763E`. Its operand — `0x763F` — goes from `0x78` to `0x70`: paper 6 with
+bright, which the `0x04D6` table sends to MSX colour 11, the same khaki the
+frames are painted in. It takes the **spaces** with it, which is what fills the
+inside of a signpost, so the box comes out khaki all through instead of leaving
+a halo behind each letter. It is global: menu, labels, sheet and battle.
 
 What could **not** be done, and why, is in [Findings](FINDINGS.md).

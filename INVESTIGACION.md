@@ -107,14 +107,23 @@ unidades enemigas (0x78-0xFF) con coordenadas en el mapa = 136
 
 La misma casilla (036N/096E), sin el parche y con el:
 
-| sin parche | con parche |
+| sin parche | con el primer parche |
 |---|---|
-| ![](docs/imagenes/mapa_sin_parche.png) | ![](docs/imagenes/mapa_con_parche.png) |
+| ![](docs/imagenes/mapa_sin_parche.png) | ![](docs/imagenes/enemigas_con_casco.png) |
 
 Tres huestes de Sauron estan ahi mismo y no se dibujaba ninguna; con el parche
 aparecen las tres siluetas, que son 34 unidades enemigas. Contado sobre el mapa
 en RAM: **de 19 casillas con unidad se pasa a 28**, y en la pantalla cambian
 **doce celdas de caracter**, o sea tres dibujos de dos por dos y nada mas.
+
+Esa medida de doce celdas es de aquella pareja, la del primer parche, y por eso
+se conserva aqui: aisla el cambio de la siembra y nada mas. Contra la cinta de
+hoy no se puede medir asi, porque el mapa viene repintado entero -735 de las 768
+celdas y 560 atributos cambian- y la cuenta ya no separaria una cosa de la otra.
+
+| sin parche | la cinta de hoy |
+|---|---|
+| ![](docs/imagenes/mapa_sin_parche.png) | ![](docs/imagenes/mapa_con_parche.png) |
 
 ### El limite: dos enemigas se quedan fuera
 
@@ -316,8 +325,9 @@ mayor, tambien el bit 5. `DIBUJO_SEGUN_BANDO` mira ese bit 5 antes que nada.
 - **nueve casillas** llevan el bit 5, y son las nueve que tienen enemigos
   dentro; **cero** casillas amigas lo llevan;
 - en la pantalla cambian **doce celdas de caracter** -las tres huestes- y **cero
-  atributos de color**: el Ojo tapa el fondo igual que el casco, con la misma
-  tinta negra sobre papel blanco;
+  atributos de color**: el Ojo tapaba el fondo igual que el casco, con la misma
+  tinta negra sobre papel blanco (asi era entonces; al repintar el mapa cada uno
+  se llevo su color, y por eso los dos dibujos de mas abajo ya no son estos);
 - los dos aliados de la esquina siguen con su casco.
 
 El icono, ampliado y releido de la cinta ya parcheada:
@@ -326,9 +336,12 @@ El icono, ampliado y releido de la cinta ya parcheada:
 |---|---|
 | ![](docs/imagenes/icono_aliado.png) | ![](docs/imagenes/icono_ojo_de_sauron.png) |
 
-**El color del ZX va por celda de 8x8, no por pixel**, asi que darle tinta roja
-al Ojo seria un byte por cuadrante. Se ha dejado en negro sobre blanco, como
-pidio quien lo dibujo.
+**El color del ZX va por celda de 8x8, no por pixel**, asi que el Ojo solo puede
+tener dos colores por cuadrante. Al repintar el mapa se le dieron: **rojo oscuro
+sobre el crema del terreno** -atributo 0x3A, y 0x17 en el cuadrante de arriba a
+la izquierda, que va al reves-, y el icono aliado paso a ser un **escudo azul**.
+Antes los dos llevaban el mismo 0x38, negro sobre blanco, y a distancia se
+parecian demasiado. Las dos imagenes de arriba son ya las de la cinta de hoy.
 
 ---
 
@@ -336,10 +349,9 @@ pidio quien lo dibujo.
 
 La conversion de Animagic tradujo el juego a medias: los **toponimos del mapa**
 se quedaron en ingles y **tres nombres de raza** salen truncados. Aqui van los
-quince cambios que pidio el usuario, con los nombres de la traduccion de Tolkien
-al castellano.
+diecinueve cambios, con los nombres de la traduccion de Tolkien al castellano.
 
-### Los tres formatos de texto del juego
+### Los cuatro formatos de texto del juego
 
 Esto es lo que decide que se puede cambiar y que no. Ninguna cadena puede
 cambiar el numero de bytes que ocupa (el parche no desplaza nada), pero cada
@@ -371,7 +383,17 @@ codigo.
 **c) La lista de los 24 NOMBRES propios, 0x6B46**, separados por `0xB7` y
 copiados hasta ese separador (0x6E23 y 0x6F38).
 
-### Los quince cambios
+**d) Los SEIS ADJETIVOS de la ficha, cada uno con su `ld hl`.** Estos no estan
+en ninguna lista que haya que recorrer: 0x704B, 0x7061, 0x7006, 0x6FEF, 0x701E y
+0x7035 cargan cada uno su direccion absoluta. Son los unicos que **si pueden
+crecer**, moviendolos a otro sitio y cambiando el puntero. El limite aqui no es
+la cinta sino la pantalla: la ficha son 24 columnas, el numero del parche va en
+la 20 y el adverbio mas largo (" No es muy ") mide once, asi que un adjetivo de
+ocho letras deja la coma justo debajo del numero -es lo que ya le pasaba a
+"Energico"-. Lo mismo vale para la lista de la fila 9 (0x7D6A), que se ha mudado
+entera a 0x66A2 con la frase completa en cada entrada.
+
+### Los diecinueve cambios
 
 | # | direccion | como estaba | como queda | cabe porque |
 |---|-----------|-------------|------------|-------------|
@@ -380,20 +402,28 @@ copiados hasta ese separador (0x6E23 y 0x6F38).
 | 3 | `0x7B5D` | Far Downs | **Quebradas** | 9x1, nueve justas |
 | 4 | `0x7B4B` | Michel Delving | **Cavada Grande** | 7x2: `Cavada ` + `Grande ` |
 | 5 | `0x7BC7` | Grey  Havens | **Ptos  Grises** | 6x2: `Ptos  ` + `Grises` |
-| 6 | `0x7AA5` | Rivendell | **Rivendel** | 9x1: ocho letras y un espacio |
+| 6 | `0x7AA5` | Rivendell | **Rivendel** | de 9x1 a 8x1: le sobra una letra |
 | 7 | `0x7AB2` | Isenmouthe | **Ga. Hierro** | 10x1, diez justas |
 | 8 | `0x7A79` | Morannon | **Puerta N** | 8x1, ocho justas |
-| 9 | `0x7B0D` | Dale | **Vale** | 4x1, cuatro justas |
+| 9 | `0x7B0D` | Dale | **Valle** | de 4x1 a 5x1, con el byte que le presta Rivendel |
 | 10 | `0x7B7F` | HelmsDeep | **AbismHelm** | 5x2: `Abism` + `Helm ` |
 | 11 | `0x6BA5` | Brand III | **Bardo III** | nueve letras entre dos `0xB7` |
-| 12 | `0x7DF0` | Valioso | **Integro** | siete letras y el bit 7 al final |
-| 13 | `0x7D3A`, `0x7D07` | Brujo / Brujos | **Mago / Magos** | ver abajo |
-| 14 | `0x7D3A` | Elf | **Elfo** | ver abajo |
-| 15 | `0x7D3A`, `0x7D07` | Hum | **Hombre / Hombres** | ver abajo |
+| 12 | `0x7D3A`, `0x7D07` | Brujo / Brujos | **Mago / Magos** | ver abajo |
+| 13 | `0x7D3A` | Elf | **Elfo** | ver abajo |
+| 14 | `0x7D3A`, `0x7D07` | Hum | **Hombre / Hombres** | ver abajo |
+| 15 | `0x7DE6` | Habil | **Firme** | cinco letras por cinco, en su hueco |
+| 16 | `0x6689` | Valioso | **Virtuoso** | se muda al motor de altavoz muerto |
+| 17 | `0x6692` | Duro | **Valiente** | idem |
+| 18 | `0x669B` | Bravo | **Fuerte** | idem |
+| 19 | `0x66A2` | Aliado a la Sociedad | **Aliado a la Comunidad** | la lista de la fila 9, mudada entera |
 
 Los diez primeros son la tabla de sitios; el 11 es la lista de los 24 nombres
-propios (es el numero 13, entre `Thranduil` y `Theodred`); el 12 es el cuarto
-adjetivo de la ficha, al que apunta 0x6FEF.
+propios (es el numero 13, entre `Thranduil` y `Theodred`); del 15 al 18 son
+adjetivos de la ficha, que no van en ninguna lista -a cada uno lo carga su
+propio `ld hl` absoluto: 0x704B, 0x7061, 0x7006, 0x6FEF, 0x701E y 0x7035-, y por
+eso pueden crecer moviendolos y cambiando el puntero. El 19 es la ultima linea
+de la ficha, que se componia con una plantilla mas una palabra: ahora cada
+entrada de la lista trae la frase entera y se escribe desde la columna 0.
 
 ### Las dos tablas de razas: la cuenta que las hace caber
 
@@ -447,9 +477,9 @@ leyendo enteras, que es la prueba de que nada se ha desplazado:
 ```
 RAZAS EN PLURAL   (0x7D06): Magos, Nazgul, Hombres, Elfos, Enanos, Orcs, Hobbits, Mago, Gollum
 RAZAS EN SINGULAR (0x7D39): Mago, Nazgul, Hombre, Elfo, Enano, Orc, Hobbit, Mago, Gollum, Mujer
-CARTELES DE BANDO (0x7D6A):  Sociedad  , -,  union ,  union
+FILA 9 DE LA FICHA (0x66A2): Aliado a la Comunidad, Forma una -, Forma una  union, Forma una  union
 ADVERBIOS         (0x7D9A): Realmente ,  Muy ,  Es muy,  ,  Es algo ,  No muy  ,  No
-ADJETIVOS: Energico, Decidido, Habil, Integro, Duro, Bravo
+ADJETIVOS (por sus seis ld hl): Energico, Decidido, Firme, Virtuoso, Valiente, Fuerte
 NOMBRES (0x6B46): ... Thranduil, Bardo III, Theodred ...
 ```
 
@@ -460,10 +490,12 @@ la parcheada -la formacion 0x39, cinco Hombres en Valle-:
 |---|---|
 | ![](docs/imagenes/textos_sin_parche.png) | ![](docs/imagenes/textos_con_parche.png) |
 
-De un tiron: el cartel `Dale` -> `Vale`, `Formacion de 005 Hum` -> `005 Hombres`,
-`Hum:caracter:` -> `Hombre:caracter:`, `Destino: Dale` -> `Destino: Vale` y
-`No Valioso` -> `No Integro`. Cambian **45 celdas de caracter y cero atributos
-de color**.
+De un tiron: el cartel `Dale` -> `Valle`, `Formacion de 005 Hum` ->
+`005 Hombres`, `Hum:caracter:` -> `Hombre:caracter:`, `Destino: Dale` ->
+`Destino: Valle` y `No Valioso` -> `No Virtuoso`. La de la derecha es la cinta de
+hoy, asi que trae ademas el mapa repintado y el papel khaki: contra la original
+cambian **547 de las 768 celdas**, y ya no tiene sentido contarlas para medir el
+texto.
 
 Y el cartel de dos filas, que era el que podia romperse:
 
@@ -471,13 +503,88 @@ Y el cartel de dos filas, que era el que podia romperse:
 |---|---|
 | ![](docs/imagenes/cartel_sin_parche.png) | ![](docs/imagenes/cartel_con_parche.png) |
 
-`Michel`/`Delving` pasa a `Cavada`/`Grande` en el mismo cartel de 7x2: **13
-celdas de caracter cambian, todas dentro del cartel**, y ningun atributo.
+`Michel`/`Delving` pasa a `Cavada`/`Grande` en el mismo cartel de 7x2. Cuando se
+midio contra la cinta de septiembre eran **13 celdas de caracter, todas dentro
+del cartel**, y ningun atributo; la de hoy trae tambien el mapa repintado
+debajo.
 
 Las imagenes son las de siempre: el bufer de pantalla del ZX volcado de la RAM
 en un instante fijo y dibujado con `tools/render_zx.py`, no capturas.
 
 ---
+
+## 6) El mapa repintado — HECHO y VERIFICADO
+
+El mapa se dibuja con **128 tiles de 8x8** en 0x9E00, de nueve bytes cada uno:
+ocho de dibujo y un **atributo del ZX Spectrum** detras. `tools/lienzos.py` los
+saca a un PNG de 128x64 a tamano real -dieciseis por fila- y los vuelve a leer;
+`make parche` compara el lienzo con la cinta y convierte en entrada cada dibujo
+que haya cambiado. **122 de los 128** han cambiado: 103 entradas y 848 bytes.
+
+### El lienzo mentia: el atributo es del ZX, el color es del MSX
+
+Los tiles salian al PNG con los colores del **Spectrum**, que es lo que dice el
+atributo. En pantalla no se ven asi nunca: esta conversion no manda el atributo
+al VDP, lo traduce antes `ATRIBUTO_A_COLOR` (0x049F), leido de la cinta:
+
+```
+049F  push hl / push de / push bc / push af
+04A3  ld hl,004CEh        ; la tabla SIN brillo
+04A6  bit 6,a             ; el BRIGHT del atributo
+04A8  jr z,+3
+04AA  ld hl,004D6h        ; la tabla CON brillo
+...                       ; tinta -> nibble alto, papel -> nibble bajo
+```
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| `0x04CE`, sin brillo | 1 | 4 | 6 | 13 | 12 | 7 | 10 | 15 |
+| `0x04D6`, con brillo | 1 | 5 | 9 | 13 | 3 | 7 | 11 | 15 |
+
+Dieciseis huecos y **doce colores distintos del MSX**: no hay atributo que de el
+rojo medio (8), el verde medio (2) ni el gris (14). Medido sobre el repintado que
+llego: 349 pixeles de rojo medio en 16 tiles, 47 de verde medio en 4 y 3 de gris
+en uno; cada uno se cambia por el alcanzable mas parecido y la herramienta lo
+dice. Y solo cuatro de los ocho colores cambian con el bit de brillo -azul,
+rojo, verde y amarillo-, asi que la regla de "los dos del mismo brillo" solo
+obliga en esos.
+
+### El papel del texto, del blanco al khaki
+
+`UN_CARACTER_NORMAL` (0x7616) pinta **todos** los caracteres de la fuente con un
+atributo fijo, el `ld a,078h` de 0x763E. Su operando -0x763F- pasa de 0x78 a
+0x70: papel 6 con brillo, que la tabla de 0x04D6 manda al color 11 del MSX, el
+mismo khaki de los marcos. Se lleva tambien los **espacios**, que son los que
+rellenan el interior de un cartel. Es global: menu, rotulos, ficha y batalla.
+
+### Verificado (openMSX)
+
+La cinta parcheada cargada de cero en un Philips VG-8020, volcado el bufer de
+pantalla del ZX en la misma casilla de siempre (036N/096E):
+
+- los bytes del parche siguen en su sitio en el mismo volcado (0x7FD1=00,
+  0x708A=CD, 0x664C=CD), que es el control de que el juego esta donde se cree;
+- contra la cinta original cambian **735 de las 768 celdas** de caracter y 560
+  atributos;
+- y el previo que `tools/previo_repinta.py` habia dibujado ANTES de tocar la
+  cinta sale **identico al pixel**: 0 de 196.608 distintos.
+
+| sin parche | con el mapa repintado |
+|---|---|
+| ![](docs/imagenes/mapa_sin_parche.png) | ![](docs/imagenes/mapa_con_parche.png) |
+
+Los 128 tiles, como vienen en la cinta y como quedan:
+
+| la cinta | repintados |
+|---|---|
+| ![](docs/imagenes/tiles-del-mapa.png) | ![](docs/imagenes/tiles-repintados.png) |
+
+**Ocho tiles se quedan en blanco a proposito**: el 85 al 88 y el 93 al 96, que
+son los cuatro cuadrantes de los cuadros 0x16 y 0x18 de la tabla de 0x77B5. De
+esa tabla tienen dueno conocido el 0x00-0x0F (`PINTA_LO_DE_ENCIMA`, por el
+nibble del terreno), el 0x11 y el 0x15 (`PINTA_LA_UNIDAD`) y el 0x13/0x14
+(terreno 4); para el 0x10, el 0x12, el 0x16, el 0x17 y el 0x18 **no se ha
+encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 
 ## Estado
 
@@ -488,21 +595,28 @@ en un instante fijo y dibujado con `tools/render_zx.py`, no capturas.
 | 3 · plazo del Anillo | hecho, verificado | el 0x8333 -255 meses- escrito al lado del anillo |
 | 4 · el Ojo de Sauron | hecho, verificado | 9 casillas marcadas, 12 celdas cambian, 0 atributos tocados |
 | 5 · los textos en espanol | hecho, verificado | leidos de la RAM del emulador: 29 carteles cuadran, las cuatro listas se siguen leyendo |
+| 6 · el mapa repintado | hecho, verificado | 122 de 128 tiles; volcado de la cinta parcheada = previo, 0 pixeles distintos de 196.608 |
 
-**393 bytes en 22 entradas de la tabla, ninguna fuera de ella y ninguna
-desplazada** (197 de codigo y tiles, 196 de texto). `make test` = 30 en verde.
+**1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
+desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
+sacadas de los lienzos (848 de tiles repintados). `make test` = 73 en verde.
 
 ## Como se reparte
 
-`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -389
-en dieciocho registros, 487 bytes de fichero- y se aplica sobre tu propia cinta.
+`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -1.515
+en 39 registros, 1.718 bytes de fichero- y se aplica sobre tu propia cinta.
 Comprobado: aplicado sobre `war.tsx` da un fichero identico byte a byte al que
 saca `make parche`.
 
 ## Lo que queda abierto
 
-- **Nadie ha jugado una partida entera** con el parche puesto. La ficha se ha
-  visto en Gandalf y en Frodo, no en todos los tipos de unidad.
+- **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo
+  una con la version de septiembre, y de ahi salio el fallo del gancho del
+  Anillo. La ficha se ha visto en Gandalf y en Frodo, no en todos los tipos de
+  unidad.
+- **Ocho tiles se quedan en blanco**: el 85 al 88 y el 93 al 96, que son los
+  cuadros 0x16 y 0x18 de la tabla de 0x77B5. No se les ha encontrado llamador,
+  que no es lo mismo que demostrar que estan muertos.
 - **El plazo solo se ve abriendo la ficha del portador.** Un medidor siempre en
   pantalla pide enganchar el bucle de partida (0x7F57) y escribir cada cuadro:
   es codigo nuevo con mas riesgo, y queda apuntado como ampliacion.

@@ -87,7 +87,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <p>This is a <b>gameplay patch</b> for the MSX cassette of <em>War in Middle Earth</em> (Melbourne House / Dro Soft, 1989). It is not the game: it is what gets changed in it.</p>
 <p><b>No cassette image is distributed here.</b> The patch is what gets shared, and you apply it to your own copy.</p>
 <h2 id="the-quick-way-the-ips">The quick way: the IPS</h2>
-<p>The repository carries a <b><code>war_parche.ips</code></b> of 487 bytes. It holds only the bytes that change — our own code, the drawing of the Eye of Sauron and the new text — and it applies to your own tape with any IPS tool, or with the one included here:</p>
+<p>The repository carries a <b><code>war_parche.ips</code></b> of 1,718 bytes. It holds only the bytes that change — our own code, the map&#x27;s 122 repainted tiles and the new text — and it applies to your own tape with any IPS tool, or with the one included here:</p>
 <pre><code>python3 tools/ips.py --aplica war.tsx war_parche.ips war_parche.tsx</code></pre>
 <p>Your tape has to be the one it was made from. Its fingerprint is <code>sha256 13c63632…b1d81208</code>; if yours differs the patch will still apply, but nobody can vouch for the result.</p>
 <h2 id="the-long-way-build-it-yourself">The long way: build it yourself</h2>
@@ -95,16 +95,16 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # pulls the block bodies out of your tape into work/
 make parche      # applies the table and writes war_parche.tsx
 make ips         # and war_parche.ips, the patch on its own
-make test        # the 30 checks</code></pre>
+make test        # the 73 checks</code></pre>
 <p><code>make parche</code> does not write blind: <b>each change first checks that the original bytes are the ones it expects</b>, and if a single byte outside the table differs when it finishes, it aborts. That is why it is safe to let it run on your copy.</p>
 <h2 id="playing-it">Playing it</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>
 <p>then, on the MSX, <code>RUN&quot;CAS:&quot;</code>. The whole load is about six and a half minutes of emulated time; with the emulator&#x27;s throttle off, far less.</p>
 <h2 id="what-you-will-see-differently">What you will see differently</h2>
-<ul><li><b>Enemy units are drawn on the map</b>, wearing the Eye of Sauron so you do not mistake them for your own.</li><li><b>Each unit&#x27;s sheet shows the number</b> for its six attributes, not just &quot;very skilled&quot;.</li><li><b>In the Ring-bearer&#x27;s sheet</b>, to the left of the ring, the <b>months left</b> before he succumbs.</li></ul>
+<ul><li><b>The whole map is repainted</b>: 122 of the 128 8 × 8 drawings. It is the first thing you notice, because it changes the entire screen.</li><li><b>Enemy units are drawn on the map</b>, wearing the Eye of Sauron so you do not mistake them for your own.</li><li><b>Each unit&#x27;s sheet shows the number</b> for its six attributes, not just &quot;very skilled&quot;.</li><li><b>In the Ring-bearer&#x27;s sheet</b>, to the left of the ring, the <b>months left</b> before he succumbs.</li><li><b>The text sits on the frames&#x27; own khaki</b> instead of on white.</li><li>And the sheet reads <b>Firme, Virtuoso, Valiente and Fuerte</b> where it read Hábil, Valioso, Duro and Bravo, with its last line whole: &quot;Aliado a la Comunidad&quot;.</li></ul>
 <p>To reach Frodo&#x27;s sheet: put the cursor on the Fellowship&#x27;s cell, fire, and use up and down to step through the units until you get to him. The ring number only shows in the bearer&#x27;s sheet, which is where the game draws the ring.</p>
 <h2 id="before-you-judge-it">Before you judge it</h2>
-<p><b>Nobody has played a full game with the patch on.</b> What is known to be missing is in <a href="OPEN-QUESTIONS.html">Open questions</a>, and playing it and reporting back is the most useful thing you can do.</p>
+<p>Araubi played a full game with the September build, and that is where the big bug turned up — it is written up in <a href="FINDINGS.html">Findings</a>. <b>Nobody has played one with the map repainted.</b> What is known to be missing is in <a href="OPEN-QUESTIONS.html">Open questions</a>, and playing it and reporting back is the most useful thing you can do.</p>
 <h2 id="where-it-comes-from">Where it comes from</h2>
 <p>From a <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly">commented disassembly</a> of the whole tape, which is a <b>separate repository and a separate site</b>. Every address quoted here comes out of that listing, not out of trial and error.</p>
 <footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

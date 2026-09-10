@@ -20,6 +20,8 @@ still needs playing to be seen:
 - whether the number in the sheet **eats a letter** on some unit type;
 - whether the Ring's deadline **counts down as it should** as the months pass;
 - whether an Eye shows up **where nobody is**;
+- whether the repainted map still reads after an hour of play — and whether any
+  of the eight blanked tiles turns up;
 - and whether the game misbehaves in battle, which this patch does not touch but
   which shares memory with what it does.
 
@@ -56,19 +58,31 @@ check it without playing for a while.
 The hook is located: `0x733E` gives the bearer, `0x8333` the value, and `0x7113`
 knows how to paint the number.
 
-## The Eye, in red
+## The Eye, in red (closed)
 
-The four tiles carry attribute `0x38` — black ink on white paper — the same as
-the friendly icon. Making it **red ink** would be one byte per quadrant, four in
-all.
+It was asked for here and it is done: with the map repaint the Eye became **dark
+red** over the terrain's cream, and the friendly icon a **blue shield**. Both
+used to carry the same `0x38`, black on white, and at a glance they looked too
+much alike. Dark red is one of the twelve colours the Spectrum attribute can
+actually ask for in this port; bright red is not.
 
-It has not been done because the ZX's colour is per 8×8 cell and it would need
-looking at on screen: whether red over the map's dithering reads well or just
-muddies it. That is a test, not a problem.
+## Eight tiles are left blank on purpose
+
+In the repaint, tiles **85 to 88** and **93 to 96** come back empty, and on the
+cassette they had artwork. They are exactly the four quadrants of drawings `0x16`
+and `0x18` in the two-by-two table at `0x77B5`.
+
+**What is not known is whether anything asks for them.** Hunting for who uses
+each index of that table turned up owners for `0x00`-`0x0F`
+(`PINTA_LO_DE_ENCIMA`, through the terrain's nibble), `0x11` and `0x15`
+(`PINTA_LA_UNIDAD`) and `0x13`/`0x14` (terrain 4). For `0x10`, `0x12`, `0x16`,
+`0x17` and `0x18` **no caller was found**, which is not the same as proving them
+dead. If one of them ever gets drawn in a long game, a hole would show up there.
+The fix is to repaint them: eight drawings on the canvas.
 
 ## The text, on every screen
 
-The fifteen strings have been read out of the emulator's RAM and seen on screen
+The nineteen strings have been read out of the emulator's RAM and seen on screen
 on the map sign, on a named unit's sheet and on a nameless formation's. What is
 **not** checked:
 
@@ -80,11 +94,16 @@ on the map sign, on a named unit's sheet and on a nameless formation's. What is
   the two `Mago` slots read correctly out of RAM but have not each been caught
   on screen.
 
+The four new adjectives **have** been caught on screen, dumped from the patched
+cassette: `Firme`, `Virtuoso`, `Valiente` and `Fuerte` on Gandalf's sheet and on
+Frodo's, with `Aliado a la Comunidad` closing both.
+
 ## What this patch does not touch
 
 - **Battle.** The board is built on top of the menu's code and has its own
   side-filtering routines; nothing here reaches into it.
 - **Game balance.** Not one unit value has been changed, nor the deadline, nor
   the corruption. It only shows what was already there.
-- **Sound.** Still silent. The beeper engine the conversion brought across is
-  now half occupied by this patch.
+- **Sound.** Still silent. The beeper engine the conversion brought across now
+  has **226 of its 276 bytes** taken by this patch: 137 of code and 89 of text.
+  Fifty are left.

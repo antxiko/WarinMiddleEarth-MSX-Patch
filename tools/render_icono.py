@@ -4,21 +4,20 @@ caracter de la tabla de tiles del mapa (0x9E00, nueve bytes por tile: ocho de
 dibujo y el atributo del ZX detras).
 
     python3 tools/render_icono.py <imagen64k.bin> <dibujo> <salida.png> [escala]
+    python3 tools/render_icono.py <imagen64k.bin> 111,112,113,114 <salida.png>
 """
+import os
 import struct
 import sys
 import zlib
 
-PALETA = [(0, 0, 0), (0, 0, 0), (33, 200, 66), (94, 220, 120),
-          (84, 85, 237), (125, 118, 252), (212, 82, 77), (66, 235, 245),
-          (252, 85, 84), (255, 121, 120), (212, 193, 84), (230, 206, 128),
-          (33, 176, 59), (201, 91, 186), (204, 204, 204), (255, 255, 255)]
-# El atributo del ZX: bits 0-2 tinta, 3-5 papel, 6 brillo. Se pinta con la
-# paleta del MSX equivalente, que es como acaba en pantalla.
-ZX = [(0, 0, 0), (0, 0, 200), (200, 0, 0), (200, 0, 200),
-      (0, 200, 0), (0, 200, 200), (200, 200, 0), (200, 200, 200)]
-ZXB = [(0, 0, 0), (0, 0, 255), (255, 0, 0), (255, 0, 255),
-       (0, 255, 0), (0, 255, 255), (255, 255, 0), (255, 255, 255)]
+# EL ATRIBUTO ES DEL SPECTRUM, PERO EL COLOR QUE SE VE ES DEL MSX: el juego no
+# manda el atributo a la pantalla, lo traduce antes ATRIBUTO_A_COLOR (0x049F)
+# con dos tablas de ocho colores (0x04CE sin brillo, 0x04D6 con el). Aqui se
+# dibuja con los del MSX, los que ve quien juega, y salen de tools/lienzos.py
+# para que todo lo que dibuja esta serie de herramientas dibuje igual.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lienzos import ZX_EN_MSX                                   # noqa: E402
 
 
 def png(w, h, filas, fn):
@@ -34,11 +33,20 @@ def png(w, h, filas, fn):
 
 def main():
     m = open(sys.argv[1], "rb").read()
-    dib = int(sys.argv[2], 0)
     out = sys.argv[3]
     esc = int(sys.argv[4]) if len(sys.argv) > 4 else 12
-    codigos = m[0x77B5 + dib * 4: 0x77B5 + dib * 4 + 4]
-    print(f"dibujo 0x{dib:02X}: caracteres {' '.join(f'{c:02X}' for c in codigos)}")
+
+    # El segundo argumento es una entrada de la tabla de 0x77B5 -y entonces los
+    # cuatro codigos salen de ella- o los CUATRO TILES a pelo, separados por
+    # comas. Lo segundo hace falta para el Ojo de Sauron: el parche no lo mete
+    # en esa tabla, DIBUJO_SEGUN_BANDO apunta HL a su propia lista de cuatro.
+    if "," in sys.argv[2]:
+        codigos = bytes((int(t, 0) & 0x7F) | 0x80 for t in sys.argv[2].split(","))
+        print(f"tiles sueltos: {' '.join(f'{c & 0x7F:d}' for c in codigos)}")
+    else:
+        dib = int(sys.argv[2], 0)
+        codigos = m[0x77B5 + dib * 4: 0x77B5 + dib * 4 + 4]
+        print(f"dibujo 0x{dib:02X}: caracteres {' '.join(f'{c:02X}' for c in codigos)}")
 
     cuad = []
     for c in codigos:
@@ -56,8 +64,9 @@ def main():
             i = (y // 8) * 2 + (x // 8)
             dibujo, atr = cuad[i]
             bit = (dibujo[y % 8] >> (7 - (x % 8))) & 1
-            pal = ZXB if atr & 0x40 else ZX
-            fila += list(pal[atr & 7] if bit else pal[(atr >> 3) & 7]) * esc
+            brillo = 8 if atr & 0x40 else 0
+            tinta, papel = (atr & 7) | brillo, ((atr >> 3) & 7) | brillo
+            fila += list(ZX_EN_MSX[tinta if bit else papel]) * esc
         for _ in range(esc):
             filas.append(fila)
     png(16 * esc, 16 * esc, filas, out)

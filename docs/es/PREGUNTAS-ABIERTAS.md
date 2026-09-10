@@ -20,6 +20,8 @@ Lo que sigue faltando por ver jugando:
 - si el número de la ficha **se come alguna letra** en algún tipo de unidad;
 - si el plazo del Anillo **baja como debe** al pasar los meses;
 - si en alguna pantalla aparece un Ojo **donde no hay nadie**;
+- si el mapa repintado se sigue leyendo bien tras una hora de partida, y si
+  aparece alguno de los ocho tiles que se han quedado en blanco;
 - y si el juego se comporta raro en la batalla, que es la parte que este parche
   no toca pero comparte memoria con lo que sí.
 
@@ -56,19 +58,31 @@ riesgo, y sin forma de comprobarlo sin jugar un rato.
 El gancho está localizado: `0x733E` da el portador, `0x8333` el valor y `0x7113`
 sabe pintar el número.
 
-## El Ojo, en rojo
+## El Ojo, en rojo (cerrada)
 
-El atributo de los cuatro tiles es `0x38` —tinta negra sobre papel blanco—, el
-mismo que el del icono aliado. Ponerlo en **tinta roja** sería un byte por
-cuadrante, cuatro en total.
+Estaba aquí pedido y hecho está: al repintar el mapa, el Ojo pasó a **rojo
+oscuro** sobre el crema del terreno y el icono aliado a un **escudo azul**.
+Antes los dos llevaban el mismo atributo `0x38`, negro sobre blanco, y a
+distancia se parecían demasiado. El rojo oscuro es uno de los doce colores que
+el atributo del Spectrum sí puede pedir en esta conversión; el rojo vivo, no.
 
-No se ha hecho porque el color del ZX va por celda de 8×8 y habría que ver en
-pantalla si el rojo sobre el tramado del mapa se lee bien o ensucia. Es una
-prueba, no un problema.
+## Ocho tiles se quedan en blanco a propósito
+
+En el repintado, los tiles **85 a 88** y **93 a 96** vienen vacíos, y en la
+cinta tenían dibujo. Son exactamente los cuatro cuadrantes de los cuadros `0x16`
+y `0x18` de la tabla de dos por dos de `0x77B5`.
+
+**Lo que no se sabe: si alguien los pide.** Buscando quién usa cada índice de esa
+tabla aparecieron dueños para el `0x00`-`0x0F` (`PINTA_LO_DE_ENCIMA`, por el
+nibble del terreno), el `0x11` y el `0x15` (`PINTA_LA_UNIDAD`) y el `0x13`/`0x14`
+(terreno 4). Para el `0x10`, el `0x12`, el `0x16`, el `0x17` y el `0x18` **no se
+ha encontrado llamador**, que no es lo mismo que demostrar que están muertos. Si
+alguno se pinta en una partida larga, ahí saldría un hueco. Se arregla
+repintándolos: son ocho dibujos del lienzo.
 
 ## El texto, en todas las pantallas
 
-Las quince cadenas se han leído de la RAM del emulador y se han visto en
+Las diecinueve cadenas se han leído de la RAM del emulador y se han visto en
 pantalla en el cartel del mapa, en la ficha de una unidad con nombre y en la de
 una formación sin nombre. Lo que **no** está comprobado:
 
@@ -80,6 +94,10 @@ una formación sin nombre. Lo que **no** está comprobado:
   las dos casillas de `Mago` se leen bien de la RAM, pero no se ha cazado cada
   una en pantalla.
 
+Los cuatro adjetivos nuevos **sí** se han cazado en pantalla, volcados de la
+cinta parcheada: `Firme`, `Virtuoso`, `Valiente` y `Fuerte` en la ficha de
+Gandalf y en la de Frodo, con `Aliado a la Comunidad` cerrando las dos.
+
 ## Lo que este parche no toca
 
 - **La batalla.** El tablero se monta encima del código del menú y tiene sus
@@ -87,4 +105,5 @@ una formación sin nombre. Lo que **no** está comprobado:
 - **El equilibrio del juego.** No se ha cambiado ni un valor de unidad, ni el
   plazo, ni la corrupción. Sólo se enseña lo que ya había.
 - **El sonido.** Sigue mudo. El motor del altavoz que la conversión trajo está,
-  ahora, medio ocupado por este parche.
+  ahora, ocupado por este parche en **226 de sus 276 bytes**: 137 de código y 89
+  de texto. Quedan 50 libres.
