@@ -27,6 +27,8 @@ No cassette image is distributed, only the patch work (see
     make parche      # applies the table and writes war_parche.tsx
     make ips         # and war_parche.ips, the patch on its own
     make test        # the checks
+    make rom         # war.rom, the game as a cartridge (not distributed either)
+    make rom_parche  # war_parche.rom, the cartridge with the patch
 
 **`war_parche.ips` is in this repository**: it carries only the bytes that
 change — our own code and the drawing of the Eye — so you can apply it to your
@@ -134,9 +136,24 @@ already differ in 37 % of their pixels. They are drawn from the ZX screen buffer
 the game keeps in RAM, dumped at a fixed instant. Full evidence, addresses and
 the openMSX output are in [INVESTIGACION.md](INVESTIGACION.md).
 
+## From tape to cartridge
+
+The game itself is untouched: `make rom` builds from your tape **`war.rom`, a
+64 KB ASCII16 MegaROM** with a 77-byte boot and a 977-byte stub that leave RAM
+exactly as the tape loader leaves it and jump to the same place (0x0190). From
+the patched tape, `make rom_parche` builds `war_parche.rom`. Neither is
+distributed. The game only ever writes VDP register 7 and inherits everything
+else from BASIC's `SCREEN 2`, so the cartridge reproduces what was measured on
+the tape; and since page 1 is the ROM while loading, the 14,400 bytes of the
+middle block that land there go through VRAM. Checked byte for byte — RAM, VRAM,
+VDP and PSG — on four machines (`make verifica_rom`, `make verifica_rom_parche`):
+all identical to the tape. Details in [INVESTIGACION.md](INVESTIGACION.md).
+
 ## What is still missing
 
 - **Nobody has played a full game** with the map repainted. Araubi did play one with the September build, and that is where the big bug turned up.
+- **The cartridge has only been seen to boot** (the menu and the map); nobody
+  has played a full game from it.
 - The unit sheet has been seen for a formation leader (Gandalf) and for the
   Ring-bearer (Frodo); **not every unit type has been checked** for the number
   colliding with a long label.

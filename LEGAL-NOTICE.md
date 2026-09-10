@@ -19,7 +19,9 @@ that is part of MSX software history.
 
 The tape image is **not** distributed here. Anyone who wants to
 rebuild the listing has to supply their own, and the `Makefile` checks its
-sha256 before doing anything.
+sha256 before doing anything. Nor are the cartridge ROMs (`war.rom`,
+`war_parche.rom`) that `make rom` builds from it: they are the same game in a
+different case, and everyone builds them from their own tape.
 
 The images produced by `tools/render_graficos.py` are not illustrations brought in
 from outside: they are the game's own video memory, rebuilt by replaying the

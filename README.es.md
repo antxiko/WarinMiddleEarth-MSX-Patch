@@ -26,6 +26,8 @@ No se distribuye ninguna imagen de cinta, solo el trabajo del parche (ver
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make test        # las comprobaciones
+    make rom         # war.rom, el juego como cartucho (tampoco se distribuye)
+    make rom_parche  # war_parche.rom, el cartucho con el parche
 
 `war_parche.tsx` es la cinta parcheada, del mismo tamano que la original, lista
 para un MSX1 real (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx`).
@@ -132,9 +134,25 @@ bufer de pantalla del ZX que el juego lleva en RAM, volcado en un instante fijo.
 Las direcciones, las medidas y la salida de openMSX estan en
 [INVESTIGACION.md](INVESTIGACION.md).
 
+## De cinta a cartucho
+
+El juego no se toca: `make rom` monta de tu cinta **`war.rom`, una MegaROM
+ASCII16 de 64 KB** con un cargador de 77 bytes y un stub de 977 que dejan la RAM
+exactamente como la deja el cargador de la cinta y saltan al mismo sitio
+(0x0190). Con la cinta parcheada, `make rom_parche` saca `war_parche.rom`.
+Tampoco se distribuyen. El juego solo escribe el registro 7 del VDP y hereda
+todo lo demas del `SCREEN 2` del BASIC, asi que el cartucho reproduce lo medido
+en la cinta; y como la pagina 1 es la ROM mientras se carga, los 14.400 bytes
+del bloque medio que caen ahi pasan por la VRAM. Comprobado byte a byte -RAM,
+VRAM, VDP y PSG- en cuatro maquinas (`make verifica_rom`,
+`make verifica_rom_parche`): todo igual que la cinta. Detalle en
+[INVESTIGACION.md](INVESTIGACION.md).
+
 ## Lo que falta
 
 - **Nadie ha jugado una partida entera** con el mapa repintado. Araubi si jugo una con la version de septiembre, y de ahi salio el fallo gordo.
+- **El cartucho solo se ha visto arrancar** (el menu y el mapa); nadie ha jugado
+  una partida entera desde el.
 - La ficha se ha visto en el jefe de una formacion (Gandalf) y en el portador
   (Frodo); **no se han comprobado todos los tipos de unidad** por si el numero
   choca con una etiqueta larga.

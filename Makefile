@@ -202,3 +202,60 @@ web: imagenes
 
 clean:
 	rm -rf extracted build work/*.raw work/*.bin work/*.json work/*.blocks
+
+# ------------------------------------------------------------- el cartucho
+# DE CINTA A CARTUCHO. El juego no se toca: war.rom es una MegaROM ASCII16 de
+# 64 KB con un cargador (src/cartucho/) que deja la RAM exactamente como la
+# deja el cargador de la cinta y salta al mismo sitio (0x0190). Se monta de
+# los cuerpos de TU cinta; con la cinta parcheada sale war_parche.rom. Ninguna
+# de las dos se distribuye (ver AVISO-LEGAL.md). Detalle en INVESTIGACION.md.
+OPENMSX  := /c/Program\ Files/openMSX/openmsx.exe
+MAQUINA  := Philips_VG_8020
+ESPERA   := 150
+
+.PHONY: rom rom_parche estado_cinta verifica_rom verifica_rom_parche captura_rom
+
+rom: war.rom
+war.rom: extract src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc tools/haz_rom.py
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA)
+
+# Los cuerpos de la cinta parcheada salen de war_parche.tsx con las mismas dos
+# herramientas que los de la original: asi la ROM parcheada se monta de la
+# cinta que se reparte, no de una copia intermedia.
+rom_parche: war_parche.rom
+war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc tools/haz_rom.py
+	@mkdir -p work/cuerpos_parche
+	python3 tools/tsx_parse.py war_parche.tsx work/cuerpos_parche/extracted >/dev/null
+	python3 tools/cuerpos.py work/cuerpos_parche/extracted work/cuerpos_parche >/dev/null
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA)
+
+# Lo que deja la cinta al llegar a 0x5E00 (VRAM, VDP, PSG), del estado que
+# guarda omsx_arranque.tcl: es lo que el cartucho tiene que reproducir.
+estado_cinta: work/estado_cinta/vram_5e00.bin
+work/estado_cinta/vram_5e00.bin: tools/omsx_estado_cinta.tcl work/omsx_orig/war_5e00.oms
+	WAR_STATE="$(abspath work/omsx_orig/war_5e00.oms)" WAR_OUT="$(abspath work/estado_cinta)" \
+	  $(OPENMSX) -script tools/omsx_estado_cinta.tcl
+
+# openMSX arranca con el cartucho y vuelca lo mismo que se volco con la cinta,
+# en los mismos dos instantes; coteja_rom.py lo compara byte a byte.
+#   make verifica_rom MAQUINA=Philips_NMS_8250     (otra maquina)
+verifica_rom: war.rom estado_cinta
+	@rm -rf work/rom_$(MAQUINA)
+	WAR_ROM="$(abspath war.rom)" WAR_OUT="$(abspath work/rom_$(MAQUINA))" \
+	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
+	@grep -v volcado work/rom_$(MAQUINA)/verifica_rom.log
+	python3 tools/coteja_rom.py work/rom_$(MAQUINA) work/omsx_orig work/estado_cinta
+
+verifica_rom_parche: war_parche.rom estado_cinta
+	@rm -rf work/rom_parche_$(MAQUINA)
+	WAR_ROM="$(abspath war_parche.rom)" WAR_OUT="$(abspath work/rom_parche_$(MAQUINA))" \
+	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
+	@grep -v volcado work/rom_parche_$(MAQUINA)/verifica_rom.log
+	python3 tools/coteja_rom.py work/rom_parche_$(MAQUINA) work/omsx_v4 work/estado_cinta
+
+# Ver el juego corriendo desde el cartucho: el menu y, tras pulsar 0, el mapa.
+captura_rom: war.rom
+	@rm -rf work/captura
+	WAR_ROM="$(abspath war.rom)" WAR_OUT="$(abspath work/captura)" WAR_CAPTURA=1 \
+	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
+	@grep -v volcado work/captura/verifica_rom.log

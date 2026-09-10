@@ -18,7 +18,9 @@ publica para la **preservación, el estudio y la documentación** de un título 
 
 La imagen de la cinta **no** se distribuye aquí. Quien quiera volver
 a montar el listado tiene que poner la suya, y el `Makefile` comprueba su
-sha256 antes de hacer nada.
+sha256 antes de hacer nada. Tampoco se distribuyen las ROM de cartucho
+(`war.rom`, `war_parche.rom`) que `make rom` monta a partir de ella: son el
+mismo juego en otro envase, y cada cual las hace de su propia cinta.
 
 Las imágenes que produce `tools/render_graficos.py` no son ilustraciones traídas de
 fuera: son la memoria de vídeo del propio juego, reconstruida repitiendo las

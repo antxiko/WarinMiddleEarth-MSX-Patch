@@ -609,10 +609,11 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 | 4 · el Ojo de Sauron | hecho, verificado | 9 casillas marcadas, 12 celdas cambian, 0 atributos tocados |
 | 5 · los textos en espanol | hecho, verificado | leidos de la RAM del emulador: 29 carteles cuadran, las cuatro listas se siguen leyendo |
 | 6 · el mapa repintado | hecho, verificado | 122 de 128 tiles; volcado de la cinta parcheada = previo, 0 pixeles distintos de 196.608 |
+| 7 · de cinta a cartucho | hecho, verificado | RAM, VRAM, VDP y PSG iguales a los de la cinta en cuatro maquinas; nadie ha jugado una partida entera desde el |
 
 **1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
-sacadas de los lienzos (848 de tiles repintados). `make test` = 79 en verde.
+sacadas de los lienzos (848 de tiles repintados). `make test` = 87 en verde: 79 del parche y 8 del cartucho.
 
 ## Como se reparte
 
@@ -620,6 +621,70 @@ sacadas de los lienzos (848 de tiles repintados). `make test` = 79 en verde.
 en 39 registros, 1.718 bytes de fichero- y se aplica sobre tu propia cinta.
 Comprobado: aplicado sobre `war.tsx` da un fichero identico byte a byte al que
 saca `make parche`.
+
+## De cinta a cartucho — HECHO y VERIFICADO
+
+El juego no se toca: `war.rom` es una **MegaROM ASCII16 de 64 KB** que lleva
+dentro los cuerpos de los bloques de la cinta y un cargador que deja la RAM
+**exactamente como la deja el cargador de la cinta** antes de saltar a 0x0190:
+el bloque bajo en 0x0190, el medio en 0x3F4F, el alto en 0x88B8, el buzon de
+POKEs de 0x012C a cero y SP=0xFDE8. Luego salta al mismo 0x0190, y el propio
+juego recoloca los bloques a 0x5E00 y 0x9E00 como hace siempre. Con la cinta
+parcheada sale `war_parche.rom`. **Ninguna de las dos se distribuye**: se
+montan de tu cinta con `make rom` y `make rom_parche` (ver
+[AVISO-LEGAL.md](AVISO-LEGAL.md)).
+
+### Como esta hecha
+
+- **77 bytes de arranque** en la ROM (`src/cartucho/cargador_rom.asm`): la
+  cabecera `AB`, el banco 0, copiar el stub a RAM y saltar a el.
+- **Un stub de 977 bytes** que corre en 0xD800 (`src/cartucho/cargador_ram.asm`):
+  busca RAM en las paginas 2, 1 y 0 e interpreta un **plan de 52 operaciones
+  de 8 bytes** que `tools/haz_rom.py` genera de la disposicion real de la ROM
+  y deja en `work/plan.json`, para que los tests no supongan nada.
+- Los datos van de 0x0800 a 0xF727: quedan 2.264 bytes libres.
+- **El tramo de la pagina 1 pasa por la VRAM.** Con el cartucho puesto la
+  pagina 1 (0x4000-0x7FFF) es la ROM, y ahi caen 14.400 bytes del bloque medio
+  (0x4000-0x783F). Se copian primero a la VRAM, que esta libre durante la
+  carga; se quita el cartucho de la pagina 1, y vuelven. El bufer llega hasta
+  0x383F y pisa la tabla de nombres y las de sprites de SCREEN 2, asi que esas
+  se escriben dos veces.
+- **Lo que el juego hereda del BASIC.** El juego solo escribe el registro 7 del
+  VDP y nunca la tabla de nombres: cuenta con el `COLOR 1,1,1:SCREEN 2` de las
+  dos lineas de BASIC de la cinta. El cartucho reproduce lo MEDIDO en la cinta
+  al llegar a 0x5E00 (`tools/omsx_estado_cinta.tcl`): VDP R0-R7 =
+  `02 E0 06 FF 03 36 07 01`, tabla de nombres identidad, 32 sprites en Y=209,
+  PSG con R7=0x3F leido y R11=0x0B.
+- Ranuras: ENASLT de la BIOS para las paginas 2 y 1 mientras la pagina 0 sigue
+  siendo la BIOS, y un clon propio para la pagina 0 y despues, que no voltea la
+  pagina 3 porque el stub vive ahi. Probado con la RAM en ranura expandida
+  (Philips NMS 8250).
+- La pantalla de carga se ensena 150 cuadros (`--espera N`; `--sin-pantalla` la
+  quita).
+
+### Verificado (openMSX, `make verifica_rom` y `make verifica_rom_parche`)
+
+`tools/omsx_verifica_rom.tcl` arranca la maquina con el cartucho y vuelca lo
+mismo que se volco con la cinta, en los mismos dos instantes;
+`tools/coteja_rom.py` lo compara byte a byte:
+
+- en 0x0190, contra `full_crudo.bin`: bajo + medio (0x0190-0x783F) y alto
+  (0x88B8-0xD12F) tal como caen de la cinta;
+- en 0x5E00, contra `full_5e00.bin`: los tres bloques recolocados
+  (0x0190-0x3F4E, 0x5E00-0x96F0, 0x9E00-0xE677), **la VRAM entera**, los
+  registros 0-7 del VDP y los 0-13 del PSG.
+
+Exit 0 con `war.rom` en Philips VG-8020, Philips NMS 8250, C-BIOS MSX1 y C-BIOS
+MSX2, y con `war_parche.rom` en la VG-8020 contra los volcados de la cinta
+parcheada. En MSX2 el R1 se lee 0x60 porque el V9938 no tiene el bit 4K/16K del
+TMS9918; se acepta con aviso. `make captura_rom` ensena el menu y, tras pulsar
+0, el mapa (PC=0x6A47). Ocho tests mas en `tests/test_cartucho.py`; el fuerte
+es un interprete del plan en Python que lleva la cuenta de la RAM, la VRAM y de
+que hay en la pagina 1 en cada paso, y falla si el plan escribiera en
+0x4000-0x7FFF con el cartucho puesto.
+
+Lo que NO se ha hecho: jugar una partida entera desde el cartucho. Se ha visto
+arrancar, el menu y el mapa.
 
 ## Lo que queda abierto
 
@@ -635,3 +700,6 @@ saca `make parche`.
   es codigo nuevo con mas riesgo, y queda apuntado como ampliacion.
 - **Las unidades 0x16 y 0x17 siguen invisibles**, porque el bucle de siembra las
   salta a proposito y no se ha averiguado por que.
+- **El cartucho solo se ha visto arrancar**: el cotejo dice que la RAM, la VRAM,
+  el VDP y el PSG son los de la cinta al arrancar, y se han visto el menu y el
+  mapa; nadie ha jugado una partida entera desde el.
