@@ -42,13 +42,15 @@ TILES = (0x9E00, 0xA280, 9)          # 128 tiles de 8 lineas + 1 atributo
 SPRITES = (0xA2E8, 0xB8E8, 32)       # 176 sprites de 16x8 con mascara
 FUENTE = (0xC800, 0xCC00, 8)         # 128 caracteres de 8 bytes
 
-# La paleta del ZX Spectrum: primero los ocho normales, luego los ocho con
-# brillo. El orden es el del atributo: negro, azul, rojo, magenta, verde, cian,
-# amarillo, blanco.
-ZX = [(0, 0, 0), (0, 0, 215), (215, 0, 0), (215, 0, 215),
-      (0, 215, 0), (0, 215, 215), (215, 215, 0), (215, 215, 215),
-      (0, 0, 0), (0, 0, 255), (255, 0, 0), (255, 0, 255),
-      (0, 255, 0), (0, 255, 255), (255, 255, 0), (255, 255, 255)]
+# EL ATRIBUTO ES DEL SPECTRUM, PERO EL COLOR QUE SE VE ES DEL MSX. Esta
+# conversion no manda el atributo a la pantalla: ATRIBUTO_A_COLOR (0x049F) lo
+# traduce antes a un byte de color de SCREEN 2 con dos tablas de ocho, la de
+# 0x04CE para el atributo sin brillo y la de 0x04D6 para el que lo lleva. Asi
+# que aqui se dibuja con los colores del MSX, que son los que ve quien juega, y
+# no con los del Spectrum. Las tablas y la paleta salen de tools/lienzos.py,
+# para que las laminas de la web y los lienzos editables dibujen igual.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lienzos import ZX_EN_MSX as ZX          # noqa: E402
 FONDO = (24, 24, 28)                 # el hueco entre dibujos, para verlos
 
 

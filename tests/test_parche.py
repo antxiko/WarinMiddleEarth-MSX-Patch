@@ -57,6 +57,11 @@ def hay_cuerpos():
                for n in parchea.BLOQUES_SPECTRUM)
 
 
+# El motor del altavoz del ZX Spectrum, 0x6600-0x6713: codigo huerfano al que no
+# llama nadie, y de donde el parche saca el sitio que le falta.
+MOTOR_MUERTO = (0x6600, 0x6713)
+
+
 class TestTabla(unittest.TestCase):
     def test_orig_y_nuevo_miden_igual(self):
         """Cada parche cambia bytes SIN desplazar nada: orig y nuevo igual de largos."""
@@ -81,6 +86,20 @@ class TestTabla(unittest.TestCase):
         for p in parchea.PARCHES:
             if p["grupo"] != "textos":
                 continue
+            if p.get("codigo"):
+                # Marcada como codigo: es el operando de un `ld`, no una lista
+                # de cadenas, y contarle bits 7 no significa nada.
+                continue
+            if MOTOR_MUERTO[0] <= p["dir"] <= MOTOR_MUERTO[1]:
+                # Esta no EDITA una lista: escribe una nueva encima del motor de
+                # sonido del ZX, que es codigo muerto. Contar los bits 7 de su
+                # `orig` no dice nada, porque ahi hay instrucciones. Lo que si
+                # se puede exigir es cuantas cadenas deja.
+                nuevo = bytes.fromhex(p["nuevo"])
+                self.assertEqual(sum(1 for b in nuevo if b & 0x80), 4,
+                                 "la lista nueva de 0x%04X no deja cuatro "
+                                 "cadenas" % p["dir"])
+                continue
             orig = bytes.fromhex(p["orig"])
             nuevo = bytes.fromhex(p["nuevo"])
             self.assertEqual(sum(1 for b in orig if b & 0x80),
@@ -91,7 +110,13 @@ class TestTabla(unittest.TestCase):
         """La fuente de 0xC800 solo trae dibujo de 0x21 a 0x7F (el 0x20 esta a
         cero y es el espacio); cualquier otro codigo saldria como un borron."""
         for p in parchea.PARCHES:
-            if p["grupo"] != "textos":
+            if p["grupo"] != "textos" or p.get("codigo") or p.get("registros"):
+                # `codigo`: es el operando de un `ld`. `registros`: son registros
+                # enteros de la tabla de sitios, con sus cabeceras [x][y][salto]
+                # [ancho<<4|filas] por delante de cada texto. En los dos casos
+                # hay bytes que no son letras, y a esos este test no les aplica;
+                # el texto de los registros lo mira
+                # test_los_carteles_del_mapa_siguen_cuadrando, que los recorre.
                 continue
             for b in bytes.fromhex(p["nuevo"]):
                 self.assertTrue(0x20 <= (b & 0x7F) < 0x80,
@@ -262,27 +287,145 @@ class TestAplicacion(unittest.TestCase):
         Los cuatro tiles son los indices 111 a 114, que en la cinta venian a
         cero, y llevan el atributo 0x38 -tinta negra sobre papel blanco-, el
         mismo que usan las unidades aliadas."""
-        g = parchea.parches_de_graficos(self._origs()["alto"])
-        ojo = [p for p in g if p["dir"] == 0xA1E7]
-        self.assertEqual(len(ojo), 1, "el lienzo no dibuja el Ojo en 0xA1E7")
-        self.assertEqual(ojo[0]["bloque"], "alto")
-        self.assertEqual(bytes.fromhex(ojo[0]["orig"]), bytes(36))
-        b = bytes.fromhex(ojo[0]["nuevo"])
-        self.assertEqual(b, parchea.TILES_OJO)
         self.assertEqual(0xA1E7, 0x9E00 + 111 * 9)
-        for i in range(4):
-            self.assertEqual(b[i * 9 + 8], 0x38,
-                             "el atributo del tile %d no es el del aliado" % (111 + i))
-
-    def test_los_lienzos_no_cambian_ningun_otro_dibujo(self):
-        """Hoy el parche solo repinta cuatro casillas de los 432 dibujos que hay
-        entre las tres hojas -128 tiles, 176 sprites y 128 caracteres-. Los
-        demas tienen que salir de los lienzos con los bytes de la cinta, sin
-        recodificar: si aparece una entrada de mas, algun lienzo se ha ensuciado
-        por el camino (lo tipico: guardarlo escalado, o con el color retocado)."""
         g = parchea.parches_de_graficos(self._origs()["alto"])
-        self.assertEqual([p["dir"] for p in g], [0xA1E7])
-        self.assertEqual([p["grupo"] for p in g], ["graficos"])
+        # Ya no es una entrada suelta: el mapa entero esta repintado, asi que el
+        # Ojo cae dentro de un tramo mas largo. Se recompone el bloque alto con
+        # todas las entradas y se miran esos 36 bytes.
+        alto = bytearray(self._origs()["alto"])
+        for p in g:
+            self.assertEqual(p["bloque"], "alto", p)
+            i = p["dir"] - 0x9E00
+            self.assertEqual(bytes(alto[i:i + len(p["orig"]) // 2]),
+                             bytes.fromhex(p["orig"]), p)
+            alto[i:i + len(p["nuevo"]) // 2] = bytes.fromhex(p["nuevo"])
+        i = 0xA1E7 - 0x9E00
+        b = bytes(alto[i:i + 36])
+        self.assertEqual(bytes(self._origs()["alto"][i:i + 36]), bytes(36),
+                         "en la cinta los tiles 111-114 no venian a cero")
+        self.assertEqual(b, parchea.TILES_OJO, "el lienzo ya no dibuja el Ojo")
+        for i in range(4):
+            self.assertIn(b[i * 9 + 8] & 0x3F, (0x3A, 0x17),
+                          "el tile %d no es rojo y blanco" % (111 + i))
+
+    # ---- los adjetivos de la ficha, siguiendo los punteros de verdad -----
+    def _medio_parcheado(self):
+        """El bloque medio con la tabla aplicada encima, y comprobando de paso
+        que cada `orig` es lo que la cinta trae de verdad en esa direccion."""
+        d = bytearray(self._origs()["medio"])
+        for p in parchea.PARCHES:
+            if p["bloque"] != "medio":
+                continue
+            i = p["dir"] - 0x5E00
+            orig = bytes.fromhex(p["orig"])
+            self.assertEqual(bytes(d[i:i + len(orig)]), orig,
+                             "el orig de 0x%04X no es lo que trae la cinta" % p["dir"])
+            d[i:i + len(bytes.fromhex(p["nuevo"]))] = bytes.fromhex(p["nuevo"])
+        return bytes(d)
+
+    @staticmethod
+    def _texto(d, a):
+        """COPIA_TEXTO (0x6E78): letras hasta la que lleva el bit 7, incluida."""
+        s = ""
+        while True:
+            b = d[a - 0x5E00]
+            s += chr(b & 0x7F)
+            if b & 0x80:
+                return s
+            a += 1
+
+    def test_los_seis_adjetivos_salen_de_sus_punteros(self):
+        """Tres de los seis adjetivos viven fuera de su sitio de siempre, en el
+        motor de sonido muerto, y solo se llega a ellos por el operando de un
+        `ld hl`. Este test NO repite la aritmetica del parche: lee el puntero de
+        la cinta parcheada y va a ver que hay alli. Si alguien mueve una cadena
+        y se olvida del puntero, o al reves, aqui se ve."""
+        d = self._medio_parcheado()
+        espera = {0x704B: " Energico", 0x7061: " Decidido ", 0x7006: " Firme   ",
+                  0x6FEF: " Virtuoso", 0x701E: " Valiente", 0x7035: " Fuerte"}
+        for ld, texto in espera.items():
+            self.assertEqual(d[ld - 0x5E00], 0x21,
+                             "en 0x%04X tendria que haber un `ld hl,nn`" % ld)
+            destino = d[ld + 1 - 0x5E00] | (d[ld + 2 - 0x5E00] << 8)
+            self.assertEqual(self._texto(d, destino), texto,
+                             "el `ld hl` de 0x%04X" % ld)
+
+    def test_los_adjetivos_nuevos_caben_en_la_linea_de_la_ficha(self):
+        """La ficha son 24 columnas y MUESTRA_LOS_VALORES escribe el numero en
+        la 20, asi que <adverbio><adjetivo> no puede pasar de ahi. El adverbio
+        mas largo es el peor caso, y lo que se exige es que NINGUN adjetivo
+        nuevo empeore lo que ya hacia el mas largo de la cinta original."""
+        d = self._medio_parcheado()
+        orig = self._origs()["medio"]
+        a, adverbios = 0x7D9A, []
+        for _ in range(8):
+            s = self._texto(d, a)
+            adverbios.append(s)
+            a += len(s)
+        peor = max(len(s) for s in adverbios)
+        antes = max(len(self._texto(orig, orig[ld + 1 - 0x5E00]
+                                    | (orig[ld + 2 - 0x5E00] << 8)))
+                    for ld in (0x704B, 0x7061, 0x7006, 0x6FEF, 0x701E, 0x7035))
+        for ld in (0x704B, 0x7061, 0x7006, 0x6FEF, 0x701E, 0x7035):
+            destino = d[ld + 1 - 0x5E00] | (d[ld + 2 - 0x5E00] << 8)
+            largo = len(self._texto(d, destino))
+            self.assertLessEqual(largo, antes,
+                                 "el adjetivo de 0x%04X mide %d y el mas largo "
+                                 "de la cinta media %d" % (ld, largo, antes))
+            self.assertLessEqual(peor + largo, 24,
+                                 "el adjetivo de 0x%04X se sale de la ficha" % ld)
+
+    def test_la_ultima_linea_de_la_ficha_sale_entera_y_cabe(self):
+        """La fila 9 ya no se compone de plantilla + palabra: la lista mudada
+        trae LA FRASE ENTERA y se escribe desde la columna 0. Se sigue el
+        puntero de la cinta parcheada, se leen las cuatro y se comprueba que
+        ninguna se sale de las 24 columnas de la ficha."""
+        d = self._medio_parcheado()
+        fila9 = 0x7C17 + 9 * 24
+        self.assertEqual(d[0x7073 - 0x5E00], 0x21)     # ld hl,nn
+        self.assertEqual(d[0x7079 - 0x5E00], 0x11)     # ld de,nn
+        destino = d[0x707A - 0x5E00] | (d[0x707B - 0x5E00] << 8)
+        self.assertEqual(destino, fila9,
+                         "la frase ya no se escribe desde la columna 0")
+        a = d[0x7074 - 0x5E00] | (d[0x7075 - 0x5E00] << 8)
+        frases = []
+        for _ in range(4):                             # `and 003h` en 0x7070
+            s = self._texto(d, a)
+            frases.append(s)
+            a += len(s)
+        self.assertEqual(frases[0], "Aliado a la Comunidad")
+        for s in frases:
+            self.assertLessEqual(len(s), 24,
+                                 "%r se sale de la fila de la ficha" % s)
+
+    def test_las_cadenas_nuevas_caen_en_el_motor_de_sonido_muerto(self):
+        """El sitio prestado es 0x6600-0x6713, el motor del altavoz del ZX, que
+        no llama nadie. Ninguna entrada del parche puede salirse de ahi ni
+        pisarse con otra."""
+        usados = []
+        for p in parchea.PARCHES:
+            if p["bloque"] != "medio" or not 0x6600 <= p["dir"] <= 0x6713:
+                continue
+            n = len(bytes.fromhex(p["nuevo"]))
+            self.assertLessEqual(p["dir"] + n - 1, 0x6713,
+                                 "0x%04X se sale del motor muerto" % p["dir"])
+            usados.append((p["dir"], p["dir"] + n - 1))
+        usados.sort()
+        for (_, fin), (ini, _) in zip(usados, usados[1:]):
+            self.assertLess(fin, ini, "dos entradas se pisan en 0x%04X" % ini)
+
+    def test_los_lienzos_solo_tocan_los_tiles(self):
+        """El parche repinta los 128 tiles del mapa, pero NO los 176 sprites de
+        batalla ni los 128 caracteres de la fuente: esos tienen que salir de sus
+        lienzos con los bytes de la cinta, sin recodificar. Si aparece una
+        entrada fuera del tramo de los tiles, algun lienzo se ha ensuciado por el
+        camino (lo tipico: guardarlo escalado, o con el color retocado)."""
+        g = parchea.parches_de_graficos(self._origs()["alto"])
+        self.assertEqual({p["grupo"] for p in g}, {"graficos"})
+        for p in g:
+            fin = p["dir"] + len(p["orig"]) // 2
+            self.assertTrue(0x9E00 <= p["dir"] and fin <= 0xA280,
+                            "la entrada de 0x%04X se sale de los tiles" % p["dir"])
 
     def test_sin_lienzos_el_parche_se_queda_sin_graficos(self):
         """Si los PNG no estan, no hay entradas de graficos y el resto del
@@ -332,12 +475,24 @@ class TestAplicacion(unittest.TestCase):
         parchea.aplica(cuerpos)
         despues = self._sitios(cuerpos["medio"])
         self.assertEqual(len(antes), len(despues), "cambio el numero de sitios")
+        # La tabla va pegada y el juego la recorre sumando saltos, asi que lo
+        # que de verdad no puede moverse es su LARGO TOTAL: si creciera o
+        # menguara se comeria lo que hay detras.
+        self.assertEqual(sum(4 + w * r for _, _, w, r, _ in antes),
+                         sum(4 + w * r for _, _, w, r, _ in despues),
+                         "la tabla de sitios cambia de largo")
+        # DOS carteles cambian de ancho a proposito: "Valle" necesita una
+        # columna mas que "Dale" y se la presta "Rivendel", que perdio el
+        # espacio de relleno. Ningun otro puede moverse.
+        cambian = {(100, 15): (5, 1), (69, 23): (8, 1)}
         for (xa, ya, wa, ra, _), (xd, yd, wd, rd, td) in zip(antes, despues):
-            self.assertEqual((xa, ya, wa, ra), (xd, yd, wd, rd))
+            self.assertEqual((xa, ya), (xd, yd), "un cartel cambia de sitio")
+            self.assertEqual((wd, rd), cambian.get((xa, ya), (wa, ra)),
+                             "el cartel de %r cambia de tamano sin permiso" % td)
             self.assertEqual(len(td), wd * rd, "el cartel de %r no mide %dx%d"
                              % (td, wd, rd))
         nombres = [t for _, _, _, _, t in despues]
-        for esperado in ("Puerta N", "Rivendel ", "Ga. Hierro", "Vale", "LosGamos",
+        for esperado in ("Puerta N", "Rivendel", "Ga. Hierro", "Valle", "LosGamos",
                          "Delagua", "Cavada Grande ", "Quebradas", "AbismHelm ",
                          "Ptos  Grises"):
             self.assertIn(esperado, nombres)
@@ -369,17 +524,20 @@ class TestAplicacion(unittest.TestCase):
                          ["Realmente ", " Muy ", " Es muy", " ", " Es algo ",
                           " No muy  ", " No "])
 
-    def test_los_seis_adjetivos_de_la_ficha(self):
-        """Los seis apartados los apunta el codigo uno a uno (0x7DD3, 0x7DDC,
-        0x7DE6, 0x7DEF, 0x7DF7, 0x7DFC): 'Valioso' pasa a 'Integro' y los otros
-        cinco se quedan como estaban, cada uno en su direccion."""
+    def test_las_cadenas_abandonadas_se_quedan_como_estaban(self):
+        """Tres adjetivos se han mudado al motor de sonido muerto, asi que sus
+        direcciones de siempre -0x7DEF 'Valioso', 0x7DF7 'Duro' y 0x7DFC
+        'Bravo'- ya no las lee nadie. Tienen que quedarse EXACTAMENTE como
+        vienen en la cinta: media cadena editada ahi seria un cabo suelto, y
+        ademas es la senal de que no se ha desplazado nada alrededor."""
         cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        antes = bytes(cuerpos["medio"])
         parchea.aplica(cuerpos)
-        medio = cuerpos["medio"]
-        for base, esperado in ((0x7DD3 - 1, " Energico"), (0x7DDC - 1, " Decidido "),
-                               (0x7DE6 - 1, " Habil   "), (0x7DEF - 1, " Integro"),
-                               (0x7DF7 - 1, " Duro"), (0x7DFC - 1, " Bravo")):
-            self.assertEqual(self._lista(medio, base, 1), [esperado])
+        i, j = 0x7DEF - 0x5E00, 0x7E02 - 0x5E00
+        self.assertEqual(bytes(cuerpos["medio"][i:j]), antes[i:j])
+        for base, esperado in ((0x7DEF - 1, " Valioso"), (0x7DF7 - 1, " Duro"),
+                               (0x7DFC - 1, " Bravo")):
+            self.assertEqual(self._lista(cuerpos["medio"], base, 1), [esperado])
 
     def test_los_24_nombres_siguen_siendo_24(self):
         """La lista de 0x6B46 va separada por 0xB7; 'Brand III' y 'Bardo III'

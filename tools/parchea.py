@@ -110,8 +110,11 @@ ORIG_ICONO = bytes.fromhex(
     "7db4c26e660b79b02806210000c36866210000110000193e00b7")
 
 # Los cuatro tiles del Ojo de Sauron. Nueve bytes cada uno: ocho de dibujo y el
-# atributo del ZX detras, 0x38 = tinta negra sobre papel blanco, el mismo que
-# usan las unidades aliadas.
+# atributo del ZX detras. El Ojo esta REPINTADO desde el 2026-09-10: ya no es
+# negro sobre blanco, es el ojo en llamas en rojo oscuro -atributo 0x3A, tinta
+# roja sobre papel blanco, y 0x17 en el tile 111, donde el rojo es mayoria y se
+# queda de papel-. En pantalla ese rojo del Spectrum sale como el color 6 del
+# MSX, que es el rojo oscuro: ver la nota de las dos tablas en tools/lienzos.py.
 #
 # ESTO YA NO SE ESCRIBE DESDE AQUI. El dibujo vive en src/parche/tiles_del_mapa.png
 # y las entradas del parche salen de compararlo con la cinta. Este hexadecimal se
@@ -119,7 +122,7 @@ ORIG_ICONO = bytes.fromhex(
 # test_el_lienzo_sigue_trayendo_el_ojo lo comprueba. Si alguien rehace el lienzo
 # desde la cinta y se lleva el Ojo por delante, el test se pone rojo.
 TILES_OJO = bytes.fromhex(
-    "011608502041418138806014888482c2c138814140215108060938c1c282040a14609038")
+    "e6cccb861694dc4c1760b8742018ae9d983a7363390d583f0d003a988c363d78d830003a")
 
 # ==========================================================================
 # LA TABLA DE PARCHES
@@ -190,6 +193,91 @@ PARCHES = [
     # a medio traducir. Aqui van con los nombres de la traduccion de Tolkien al
     # castellano. NINGUNA cadena cambia de longitud, que es lo que permite que
     # nada se desplace. Ver "Los tres formatos de texto" arriba.
+    # ---- (5) EL PAPEL DEL TEXTO, DEL BLANCO AL KHAKI DEL MARCO -----------
+    # UN_CARACTER_NORMAL (0x7616) pinta TODOS los caracteres de la fuente con el
+    # mismo atributo fijo, `ld a,078h` en 0x763E: tinta 0 (negra), papel 7
+    # (blanco) y el bit 6, el BRIGHT del Spectrum. En el MSX ese atributo lo
+    # traduce ATRIBUTO_A_COLOR (0x049F) a negro sobre blanco.
+    #
+    # Con 0x70 el papel pasa a ser el 6 (amarillo) CON brillo, que la tabla de
+    # 0x04D6 manda al color 11 del MSX: el amarillo claro. Es EXACTAMENTE el
+    # mismo color con el que estan pintados los marcos en el lienzo nuevo, asi
+    # que el texto y su caja dejan de ser dos cosas distintas.
+    #
+    # OJO, ES GLOBAL: por aqui pasa todo el texto del juego -el menu, los
+    # rotulos, la ficha y los mensajes de batalla-, no solo los paneles. Y se
+    # lleva por delante tambien los ESPACIOS, que es lo que rellena el interior
+    # de los carteles: por eso la caja queda de un khaki entero y no un halo
+    # detras de cada letra.
+    dict(grupo="papel", bloque="medio", dir=0x763F, orig="78", nuevo="70",
+         motivo="atributo del texto: papel blanco -> papel amarillo con brillo "
+                "(color 11 del MSX), el mismo de los marcos"),
+
+    # ---- (6) LOS ADJETIVOS DE LA FICHA -----------------------------------
+    # Los seis atributos se pintan como <adverbio><adjetivo>"," en su fila del
+    # buffer de la ficha (0x7C17, 24 columnas), y cada adjetivo lo carga el
+    # codigo con su PROPIO `ld hl` absoluto: 0x704B, 0x7061, 0x7006, 0x6FEF,
+    # 0x701E y 0x7035. Eso es lo que permite alargarlos: no van por una lista
+    # que haya que recorrer, asi que basta con moverlos y cambiar el puntero.
+    #
+    # EL LIMITE ES LA PANTALLA, no la cinta. El adverbio mas largo de la lista
+    # de 0x7D9A es " No es muy " (11 caracteres) y MUESTRA_LOS_VALORES escribe
+    # el numero en la columna 20, asi que del adverbio al numero quedan nueve
+    # columnas. Un adjetivo de ocho letras (nueve con su espacio de delante)
+    # deja la coma justo en la columna 20 y el numero se la come: es lo que ya
+    # le pasa hoy a "Energico", asi que ninguno de estos lo empeora.
+    #
+    # "Firme" cabe en el hueco de "Habil" -las dos son de cinco letras y el
+    # hueco trae tres espacios de relleno-, asi que ese se cambia en su sitio.
+    dict(grupo="adjetivos", bloque="medio", dir=0x7DE6,
+         orig="20486162696c2020a0", nuevo="204669726d652020a0",
+         motivo="adjetivo 3: 'Habil' -> 'Firme', en su hueco de nueve bytes"),
+
+    # Los otros tres crecen seis bytes en total y no caben donde estaban, asi
+    # que se llevan al motor de sonido del Spectrum, que esta muerto (0x6600 -
+    # 0x6713, no lo llama nadie) y del que el parche ya gasta hasta 0x6688.
+    # Quedan 139 bytes libres; estos ocupan 25, de 0x6689 a 0x66A1.
+    dict(grupo="adjetivos", bloque="medio", dir=0x6689,
+         orig="286d110000ed5219381a0e002a8066ed5b83663effaa573eff",
+         nuevo="2056697274756f73ef2056616c69656e74e5204675657274e5",
+         motivo="las tres cadenas nuevas: ' Virtuoso', ' Valiente' y ' Fuerte'"),
+    # Y sus tres punteros. Cada uno es el operando de un `ld hl`, dos bytes.
+    dict(grupo="adjetivos", bloque="medio", dir=0x6FF0, orig="ef7d", nuevo="8966",
+         motivo="adjetivo 4 (0x6FEF): 'Valioso' -> 'Virtuoso' en 0x6689"),
+    dict(grupo="adjetivos", bloque="medio", dir=0x701F, orig="f77d", nuevo="9266",
+         motivo="adjetivo 5 (0x701E): 'Duro' -> 'Valiente' en 0x6692"),
+    dict(grupo="adjetivos", bloque="medio", dir=0x7036, orig="fc7d", nuevo="9b66",
+         motivo="adjetivo 6 (0x7035): 'Bravo' -> 'Fuerte' en 0x669B"),
+
+    # ---- (7) LA ULTIMA LINEA DE LA FICHA: "Aliado Comunidad" -------------
+    # La fila 9 del buffer (0x7CEF, 24 columnas) trae de la cinta la plantilla
+    # "Forma una alianza" y el codigo le escribe encima, en la COLUMNA 10, una
+    # de cuatro palabras de la lista de 0x7D6B (`and 003h` en 0x7070 elige
+    # cual), rellenando de espacios lo que sobre. De ahi salen hoy
+    # "Forma una  Sociedad", "Forma una -" y dos veces "Forma una  union".
+    #
+    # Para poner "Aliado Comunidad" no basta con cambiar la palabra: "Forma una"
+    # esta en la plantilla y se veria delante. Y no vale cambiar la plantilla,
+    # porque las otras tres opciones la comparten y quedarian en "Aliado union".
+    #
+    # La salida es mover la lista ENTERA a la zona muerta y que cada entrada
+    # traiga LA FRASE COMPLETA, escribiendola desde la columna 0. Asi la primera
+    # dice lo que se quiere y las otras tres se dejan EXACTAMENTE como se ven
+    # hoy, con sus dos espacios y todo. Son dos punteros de dos bytes.
+    dict(grupo="textos", bloque="medio", dir=0x66A2,
+         orig="ab5f13ed538366793287661100007caa677dab6f228066210000110000193e00"
+              "b72840110000ed52381a0e002aba66ed5bbd663effaa573effab5f13ed53bd66",
+         nuevo="416c6961646f2061206c6120436f6d756e696461e4466f726d6120756e6120ad"
+               "466f726d6120756e612020756e696fee466f726d6120756e612020756e696fee",
+         motivo="las cuatro frases enteras de la fila 9: 'Aliado a la Comunidad' y "
+                "las otras tres tal y como se ven hoy"),
+    dict(grupo="textos", bloque="medio", dir=0x7074, orig="6a7d", nuevo="a266",
+         codigo=True,
+         motivo="0x7073: la lista de la fila 9 pasa de 0x7D6A a 0x66A2"),
+    dict(grupo="textos", bloque="medio", dir=0x707A, orig="f97c", nuevo="ef7c",
+         codigo=True,
+         motivo="0x7079: se escribe desde la columna 0 (0x7CEF), no desde la 10"),
+
     #
     # (5a) La tabla de sitios de 0x7A5E. Cada registro es
     #      [x][y][2+ancho*filas][ancho<<4 | filas][texto], y el texto se pinta en
@@ -199,15 +287,33 @@ PARCHES = [
     dict(grupo="textos", bloque="medio", dir=0x7A79,
          orig="4d6f72616e6e6f6e", nuevo="507565727461204e",
          motivo="sitio 8x1: 'Morannon' -> 'Puerta N'"),
-    dict(grupo="textos", bloque="medio", dir=0x7AA5,
-         orig="526976656e64656c6c", nuevo="526976656e64656c20",
-         motivo="sitio 9x1: 'Rivendell' -> 'Rivendel ' (8 letras + un espacio)"),
-    dict(grupo="textos", bloque="medio", dir=0x7AB2,
-         orig="4973656e6d6f75746865", nuevo="47612e2048696572726f",
-         motivo="sitio 10x1: 'Isenmouthe' -> 'Ga. Hierro'"),
-    dict(grupo="textos", bloque="medio", dir=0x7B0D,
-         orig="44616c65", nuevo="56616c65",
-         motivo="sitio 4x1: 'Dale' -> 'Vale'"),
+    # "Dale" -> "Valle" cuesta un byte que en su registro no hay: el sitio es
+    # 4x1 y son cinco letras. El byte se lo presta "Rivendel ", que llevaba un
+    # espacio de relleno de cuando el parche acorto "Rivendell" para que
+    # cupieran nueve; ahora es un cartel de 8x1 y ese espacio sobra.
+    #
+    # Los registros van pegados y el juego los recorre sumando su largo, asi que
+    # encoger uno CORRE todos los de detras. Por eso esto no son dos parches
+    # sueltos sino UNO que reescribe el tramo entero de Rivendel a Dale -nueve
+    # registros, 112 bytes antes y 112 despues-, con los siete de en medio tal y
+    # como estaban. Los parches de "Rivendell" y de "Isenmouthe" se han metido
+    # aqui dentro por la misma razon: sus direcciones se movian.
+    #
+    # SIN COMPROBAR en pantalla: el cartel de Valle pasa de cuatro columnas a
+    # cinco y el de Rivendel de nueve a ocho, y no se ha mirado si el [x][y] del
+    # registro es la esquina del cartel o su centro.
+    dict(grupo="textos", bloque="medio", dir=0x7AA1, registros=True,
+         orig="45170b91526976656e64656c6c643a0ca14973656e6d6f757468656f400b9142"
+              "617261642d44757263410e62436972697468556e676f6c20613c0a8144757274"
+              "68616e6754270e62446f6c20202047756c64757244630751556d626172141e09"
+              "714861726c6f6e64640f064144616c65",
+         nuevo="45170a81526976656e64656c643a0ca147612e2048696572726f6f400b914261"
+               "7261642d44757263410e62436972697468556e676f6c20613c0a814475727468"
+               "616e6754270e62446f6c20202047756c64757244630751556d626172141e0971"
+               "4861726c6f6e64640f075156616c6c65",
+         motivo="el tramo de nueve sitios: 'Rivendell'->'Rivendel' (8x1), "
+                "'Isenmouthe'->'Ga. Hierro' y 'Dale'->'Valle' (5x1)"),
+
     dict(grupo="textos", bloque="medio", dir=0x7B28,
          orig="4275636b6c616e64", nuevo="4c6f7347616d6f73",
          motivo="sitio 8x1: 'Buckland' -> 'LosGamos'"),
@@ -232,9 +338,6 @@ PARCHES = [
          motivo="nombre 9 letras: 'Brand III' -> 'Bardo III'"),
     # (5c) El cuarto adjetivo de la ficha, al que apunta 0x6FEF (0x7DEF, con su
     #      espacio delante); acaba con el bit 7 en la ultima letra.
-    dict(grupo="textos", bloque="medio", dir=0x7DF0,
-         orig="56616c696f73ef", nuevo="496e74656772ef",
-         motivo="adjetivo de la ficha: 'Valioso' -> 'Integro'"),
     # (5d) Las dos tablas de razas. Se escriben ENTERAS de una vez porque las
     #      cadenas van pegadas y se llega a cada una contando bits 7 desde la
     #      base (SALTA_B_TEXTOS, 0x6E98): dentro de la tabla las cadenas pueden
@@ -362,7 +465,15 @@ def main(argv):
     for a in avisos:
         print(a)
     total = 0
-    for grupo in ("visibilidad", "valores", "icono", "anillo", "graficos", "textos"):
+    # El orden en que se cuentan los grupos. Si aparece uno que no esta aqui se
+    # PARA: antes se saltaba en silencio, y una entrada nueva se aplicaba a la
+    # cinta pero no salia en el informe ni entraba en el total.
+    orden = ("visibilidad", "valores", "icono", "anillo", "papel", "adjetivos",
+             "graficos", "textos")
+    sueltos = sorted({p["grupo"] for p in tabla} - set(orden))
+    if sueltos:
+        raise SystemExit("grupos sin sitio en el informe: %s" % ", ".join(sueltos))
+    for grupo in orden:
         gp = [p for p in tabla if p["grupo"] == grupo]
         if not gp:
             continue

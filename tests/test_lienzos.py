@@ -178,12 +178,19 @@ class TestIdaYVuelta(unittest.TestCase):
                 for y in range(hoja.alto):
                     for x in range(hoja.ancho):
                         v = (x * y + n) % len(hoja.paleta)
-                        if hoja.paleta is L.ZX:      # sin saltarse las reglas
+                        if hoja.paleta is L.ZX_EN_MSX:   # sin saltarse las reglas
                             v = 15 if (x * y + n) % 3 else 9
                         ind[oy + y][ox + x] = v
             L.escribe_png(self.png(hoja), hoja.px_ancho, hoja.px_alto, ind, hoja.paleta)
             vuelta, _ = L.lee_lienzo(self.png(hoja), tabla, hoja)
-            self.assertEqual(L.a_indices(vuelta, hoja), ind, hoja.nombre)
+            # Se comparan los COLORES, no los indices: dos indices distintos
+            # pueden ser el mismo color -el blanco del ZX con brillo y sin el
+            # acaban los dos en el blanco del MSX- y lo que se prueba aqui es
+            # que el dibujo que vuelve se VE igual que el que se pinto.
+            def colores(rejilla):
+                return [[hoja.paleta[i] for i in f] for f in rejilla]
+            self.assertEqual(colores(L.a_indices(vuelta, hoja)),
+                             colores(ind), hoja.nombre)
 
     def test_el_parpadeo_se_conserva_al_repintar(self):
         """El bit 7 del atributo no se ve en el PNG, asi que se hereda del tile
@@ -247,7 +254,8 @@ class TestLasReglasDelSpectrum(unittest.TestCase):
         for y in range(8):
             for x in range(8):
                 ind[oy + y][ox + x] = colores[(y * 8 + x) % len(colores)]
-        L.escribe_png(self.png, self.hoja.px_ancho, self.hoja.px_alto, ind, L.ZX)
+        L.escribe_png(self.png, self.hoja.px_ancho, self.hoja.px_alto, ind,
+                     self.hoja.paleta)
 
     def test_tres_colores_en_una_casilla_no_cuelan(self):
         self._pinta(33, [0, 2, 4])
@@ -257,20 +265,31 @@ class TestLasReglasDelSpectrum(unittest.TestCase):
         self.assertIn("DOS", str(e.exception))
 
     def test_mezclar_brillante_y_normal_no_cuela(self):
-        """Rojo normal y blanco brillante en la misma casilla: el bit de brillo
-        es uno solo para los dos colores, asi que no hay atributo que lo diga."""
-        self._pinta(50, [2, 15])
+        """Rojo oscuro (atributo rojo sin brillo) y verde claro (verde CON
+        brillo) en la misma casilla: el bit de brillo es uno solo para los dos
+        colores, asi que no hay atributo que pueda decir eso."""
+        self._pinta(50, [2, 12])
         with self.assertRaises(L.ErrorDeLienzo) as e:
             L.lee_lienzo(self.png, self.tabla, self.hoja)
         self.assertIn("casilla 50", str(e.exception))
-        self.assertIn("brillante", str(e.exception))
+        self.assertIn("brillo", str(e.exception))
 
-    def test_el_negro_se_lleva_bien_con_los_dos_brillos(self):
-        """El negro es #000000 con brillo y sin el, asi que no obliga a nada:
-        negro con blanco brillante es una casilla legal."""
-        self._pinta(51, [0, 15])
-        vuelta, _ = L.lee_lienzo(self.png, self.tabla, self.hoja)
-        self.assertEqual(vuelta[51 * 9 + 8] & 0x40, 0x40)
+    def test_los_cuatro_colores_ciegos_al_brillo_no_obligan_a_nada(self):
+        """El negro, el magenta, el cian y el blanco salen con el MISMO color
+        del MSX lleven brillo o no -las dos tablas de 0x04CE y 0x04D6 les dan lo
+        mismo-, asi que ninguno de los cuatro le impone brillo a su casilla y se
+        llevan bien con cualquier compañero."""
+        self.assertEqual(L.EXIGE_BRILLO, {1, 2, 4, 6})
+        for tile, otro in ((51, 0), (52, 3), (53, 5), (54, 7)):
+            for pareja in (2, 12):        # rojo sin brillo y verde con brillo
+                self._pinta(tile, [otro, pareja])
+                vuelta, _ = L.lee_lienzo(self.png, self.tabla, self.hoja)
+                attr = vuelta[tile * 9 + 8]
+                brillo = 8 if attr & 0x40 else 0
+                visto = {L.ZX_EN_MSX[(attr & 7) + brillo],
+                         L.ZX_EN_MSX[((attr >> 3) & 7) + brillo]}
+                self.assertEqual(visto, {L.ZX_EN_MSX[otro], L.ZX_EN_MSX[pareja]},
+                                 "tile %d con el color %d" % (tile, otro))
 
     def test_los_sprites_y_la_fuente_no_tienen_esa_limitacion(self):
         """No llevan atributo, asi que ni hay dos colores por casilla ni brillo
@@ -412,8 +431,8 @@ class TestElLectorDePng(unittest.TestCase):
         tabla = tabla_de_muestra(hoja)
         L.saca_lienzo(tabla, hoja, self.png)
         ind = indices_de(self.png, hoja)
-        paleta = list(L.ZX)
-        paleta[4] = (10, 200, 10)              # un verde que no es el del ZX
+        paleta = list(hoja.paleta)
+        paleta[4] = (10, 200, 10)              # un verde que no es del MSX
         ox, oy = hoja.sitio(60)
         for y in range(8):
             for x in range(8):
@@ -503,7 +522,7 @@ class TestContraLaCinta(unittest.TestCase):
         import render_graficos as R
         for hoja, saca, color in (
                 (L.POR_NOMBRE["tiles"], R.tiles_del_mapa,
-                 lambda i: L.ZX[i]),
+                 lambda i: L.ZX_EN_MSX[i]),
                 (L.POR_NOMBRE["sprites"], R.sprites_de_batalla,
                  lambda i: None if i == L.TRANSPARENTE
                  else ((255, 255, 255) if i == L.BLANCO else (0, 0, 0))),
@@ -530,16 +549,37 @@ class TestContraLaCinta(unittest.TestCase):
                 self.assertEqual(vuelta, tabla, hoja.nombre)
                 self.assertEqual(avisos, [], hoja.nombre)
 
-    def test_los_lienzos_del_repositorio_solo_traen_el_ojo(self):
-        """Hoy el parche solo repinta cuatro tiles de los 432 dibujos que hay
-        entre las tres hojas. Si aparece uno mas, algun lienzo se ha ensuciado
-        por el camino (lo tipico: guardarlo escalado o con el color retocado)."""
+    # Los 122 tiles que el lienzo del repositorio repinta: TODOS menos los seis
+    # del 97 al 102, que se quedaron con los bytes de la cinta. No es casualidad
+    # ni descuido: de esos seis solo cambio el fondo, y el fondo era ya el mismo
+    # color -el blanco del ZX y el blanco del MSX son el mismo color 15-, asi
+    # que el dibujo que vuelve es identico al de la cinta y la regla de "lo que
+    # no se toca" les devuelve sus bytes de siempre.
+    TILES_REPINTADOS = [n for n in range(128) if not 97 <= n <= 102]
+
+    def test_los_lienzos_del_repositorio_solo_repintan_tiles(self):
+        """El mapa entero esta repintado desde el 2026-09-10, pero los SPRITES y
+        la FUENTE tienen que seguir saliendo con los bytes de la cinta, sin
+        recodificar. Si aparece uno de esos, algun lienzo se ha ensuciado por el
+        camino (lo tipico: guardarlo escalado o con el color retocado)."""
         for hoja in L.HOJAS:
             tabla = L.tabla_del_bloque(self.alto, hoja)
             vuelta, avisos = L.lee_lienzo(os.path.join(PARCHE, hoja.png), tabla, hoja)
-            esperado = [111, 112, 113, 114] if hoja.nombre == "tiles" else []
+            esperado = self.TILES_REPINTADOS if hoja.nombre == "tiles" else []
             self.assertEqual(L.tocados(tabla, vuelta, hoja), esperado, hoja.nombre)
             self.assertEqual(avisos, [], hoja.nombre)
+
+    def test_el_lienzo_de_los_tiles_no_pide_colores_imposibles(self):
+        """Ni un solo pixel de un color que el juego no sepa poner en pantalla.
+        Son doce de los quince del MSX: los otros tres -el verde medio, el rojo
+        medio y el gris- no salen de las tablas de 0x04CE y 0x04D6, asi que no
+        hay atributo del Spectrum capaz de producirlos."""
+        hoja = L.POR_NOMBRE["tiles"]
+        self.assertEqual(L.MSX_ALCANZABLES, [1, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 15])
+        buenos = {L.MSX[c] for c in L.MSX_ALCANZABLES}
+        _, _, filas, _ = L.lee_png(os.path.join(PARCHE, hoja.png))
+        malos = {p for f in filas for p in f} - buenos
+        self.assertEqual(malos, set(), "colores que el juego no puede dar: %s" % malos)
 
 
 if __name__ == "__main__":

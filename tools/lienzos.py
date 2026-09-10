@@ -14,6 +14,8 @@ vuelven a leer.
   tiles     0x9E00-0xA280  LOS 128 TILES DEL MAPA, de 8x8. Nueve bytes cada uno:
                            ocho de dibujo y detras el atributo del ZX Spectrum,
                            que es de donde sale el color. 16 columnas: 128x64.
+                           SE DIBUJAN CON LOS COLORES DEL MSX, que es lo que se
+                           ve jugando; ver mas abajo.
 
   sprites   0xA2E8-0xB8E8  LOS 176 SPRITES DE BATALLA, de 16x8 CON MASCARA. 32
                            bytes: parejas [mascara][dibujo] en el zigzag que
@@ -31,16 +33,29 @@ vuelven a leer.
 EL ATRIBUTO DEL ZX, que solo gastan los tiles: bits 0-2 la TINTA (el color de
 los bits a 1), 3-5 el PAPEL (el de los bits a 0), 6 el BRILLO -que vale para los
 dos colores a la vez- y 7 el parpadeo, que el juego no usa y aqui se conserva
-tal cual. De ahi salen las DOS REGLAS que hay que respetar al pintar un tile,
-que son las del Spectrum y no un capricho de esta herramienta:
+tal cual.
+
+PERO EL COLOR QUE SE VE NO ES EL DEL SPECTRUM. Esta conversion es de MSX: el
+atributo no llega a la pantalla, lo traduce antes ATRIBUTO_A_COLOR (0x049F) con
+dos tablas de ocho colores del MSX -0x04CE para el atributo sin brillo y 0x04D6
+para el que lo lleva-. Asi que el lienzo de los tiles se pinta y se relee con
+LOS COLORES DEL MSX, los que ve quien juega, y no con los del Spectrum. De ahi
+salen las TRES REGLAS que hay que respetar al pintar un tile, que son las de la
+maquina y no un capricho de esta herramienta:
 
     1. DOS COLORES POR CASILLA de 8x8, no mas. Es el famoso "attribute clash".
-    2. LOS DOS DEL MISMO BRILLO. Los ocho colores normales y los ocho brillantes
-       no se mezclan dentro de una casilla. El negro es la excepcion, porque es
-       el mismo con brillo y sin el.
+    2. LOS DOS DEL MISMO BRILLO. El bit de brillo es uno para toda la casilla, y
+       cambia a la vez el azul, el rojo, el verde y el amarillo: no se puede
+       tener azul oscuro y rojo claro juntos. Los otros cuatro -el negro, el
+       magenta, el cian y el blanco- se ven IGUAL con brillo y sin el, porque
+       las dos tablas les dan el mismo color, asi que esos no obligan a nada.
+    3. SOLO DOCE DE LOS QUINCE COLORES DEL MSX. De las dos tablas no salen el
+       verde medio (2), el rojo medio (8) ni el gris (14): no hay atributo del
+       Spectrum capaz de producirlos, por mucho que se pinten. Un pixel de esos
+       se cambia por el mas parecido de los doce y se avisa.
 
-Si una casilla se salta alguna de las dos, la herramienta PARA y dice cual es,
-en vez de elegir por su cuenta. Los sprites y la fuente no tienen atributo, asi
+Si una casilla se salta la primera o la segunda, la herramienta PARA y dice cual
+es, en vez de elegir por su cuenta. Los sprites y la fuente no tienen atributo, asi
 que no tienen esa limitacion: los sprites gastan tres estados -transparente,
 negro y blanco- y la fuente dos. En el lienzo de los sprites el transparente va
 con el FONDO de las laminas de la web, #18181C, y declarado transparente en el
@@ -110,6 +125,49 @@ ZX = [(0, 0, 0), (0, 0, 215), (215, 0, 0), (215, 0, 215),
 NOMBRE_COLOR = ["negro", "azul", "rojo", "magenta",
                 "verde", "cian", "amarillo", "blanco"]
 
+# ---------------------------------------------------------------------------
+# PERO LOS TILES NO SE VEN CON LOS COLORES DEL ZX. Esta conversion es de MSX y
+# los atributos del Spectrum no llegan a la pantalla tal cual: ATRIBUTO_A_COLOR
+# (0x049F) traduce cada uno a un byte de color de SCREEN 2 con dos tablas de
+# ocho, una para el atributo sin brillo y otra para el que lo lleva. Estan en la
+# cinta, en 0x04CE y 0x04D6, declaradas en src/bajo.notes, y son estas.
+TABLA_SIN = [1, 4, 6, 13, 12, 7, 10, 15]      # 0x04CE
+TABLA_CON = [1, 5, 9, 13, 3, 7, 11, 15]       # 0x04D6
+
+# Los quince colores del MSX1 (TMS9918), numerados como los numera el VDP. Son
+# los valores de la paleta MSX1 que reparten Aseprite y Lospec, que es con la
+# que se pintan los lienzos.
+MSX = [
+    (0, 0, 0),                                            # 0 transparente
+    (0x00, 0x00, 0x00), (0x3E, 0xB8, 0x49), (0x74, 0xD0, 0x7D),
+    (0x59, 0x55, 0xE0), (0x80, 0x76, 0xF1), (0xB9, 0x5E, 0x51),
+    (0x65, 0xDB, 0xEF), (0xDB, 0x65, 0x59), (0xFF, 0x89, 0x7D),
+    (0xCC, 0xC3, 0x5E), (0xDE, 0xD0, 0x87), (0x3A, 0xA2, 0x41),
+    (0xB7, 0x66, 0xB5), (0xCC, 0xCC, 0xCC), (0xFF, 0xFF, 0xFF),
+]
+
+NOMBRE_MSX = ["transparente", "negro", "verde medio", "verde claro",
+              "azul oscuro", "azul claro", "rojo oscuro", "cian",
+              "rojo medio", "rojo claro", "amarillo oscuro", "amarillo claro",
+              "verde oscuro", "magenta", "gris", "blanco"]
+
+# La paleta con la que se dibuja y se relee el lienzo de los tiles: el indice
+# sigue siendo el del atributo del ZX -color 0-7 y el bit 3, el brillo-, pero el
+# COLOR que se ve es el que el juego acaba poniendo en la pantalla del MSX. Asi
+# el lienzo enseña lo que se ve jugando y no lo que se veria en un Spectrum.
+ZX_EN_MSX = [MSX[(TABLA_CON if i & 8 else TABLA_SIN)[i & 7]] for i in range(16)]
+
+# TRES DE LOS QUINCE COLORES DEL MSX NO SALEN DE ESAS DOS TABLAS: el verde medio
+# (2), el rojo medio (8) y el gris (14). No hay atributo del Spectrum que los
+# produzca, asi que un tile no los puede llevar por mucho que se pinten.
+MSX_ALCANZABLES = sorted(set(TABLA_SIN) | set(TABLA_CON))
+
+# Y CUATRO DE LOS OCHO COLORES DEL ZX SE VEN IGUAL con brillo y sin el, porque
+# las dos tablas les dan el mismo color del MSX: el negro, el magenta, el cian y
+# el blanco. Esos cuatro no obligan a nada al brillo de su casilla; los otros
+# cuatro -azul, rojo, verde y amarillo- si.
+EXIGE_BRILLO = {i for i in range(8) if TABLA_SIN[i] != TABLA_CON[i]}
+
 # La de los sprites: TRES estados, y los tres hacen falta. No es una eleccion:
 # la rutina que los pinta (0x887B) hace `and` con la mascara y `or` con el
 # dibujo, asi que un pixel puede dejar el fondo como estaba (mascara 1), o
@@ -135,15 +193,16 @@ NOMBRE_MONO = ["negro", "blanco"]
 
 
 def canon_zx(indice):
-    """El indice del ZX, con el negro SIEMPRE en el 0.
+    """El indice del ZX, con el brillo quitado a quien no lo luce.
 
-    La paleta trae el negro dos veces, en el 0 y en el 8, porque el brillo no le
-    hace nada: los dos son #000000. Mirando la imagen no hay forma de
-    distinguirlos, asi que aqui se cuentan como el mismo color. Sin esto, un
-    tile de negro brillante sobre blanco brillante -los hay, el 103 y el 105- no
-    se reconoceria al releerlo y volveria con la tinta y el papel del reves.
+    Cuatro de los ocho colores dan el MISMO color del MSX con brillo y sin el
+    (EXIGE_BRILLO): el negro, el magenta, el cian y el blanco. Mirando la imagen
+    no hay forma de distinguir sus dos versiones, asi que aqui se cuentan como
+    el mismo color y se quedan con el indice bajo. Sin esto, un tile de negro
+    brillante sobre blanco brillante -los hay, el 103 y el 105- no se
+    reconoceria al releerlo y volveria con la tinta y el papel del reves.
     """
-    return 0 if (indice & 7) == 0 else indice
+    return indice if (indice & 7) in EXIGE_BRILLO else indice & 7
 
 
 def sin_canon(indice):
@@ -151,7 +210,11 @@ def sin_canon(indice):
 
 
 def nombra_zx(indice):
-    return "%s%s" % (NOMBRE_COLOR[indice & 7], " brillante" if indice & 8 else "")
+    """Como se llama el color que se VE, que es el del MSX, y de donde sale."""
+    msx = (TABLA_CON if indice & 8 else TABLA_SIN)[indice & 7]
+    return "%s (MSX %d, atributo %s%s)" % (
+        NOMBRE_MSX[msx], msx, NOMBRE_COLOR[indice & 7],
+        " con brillo" if indice & 8 else "")
 
 
 # ===========================================================================
@@ -348,15 +411,16 @@ def codifica_tile(celda, referencia, numero):
             "casilla de 8x8: una tinta y un papel"
             % (numero, len(colores), ", ".join(nombra_zx(c) for c in colores)))
 
-    # El brillo es de la casilla entera. El negro vale para las dos mitades de
-    # la paleta, asi que no obliga a nada; cualquier otro color si.
-    exigen = [c for c in colores if (c & 7) != 0]
+    # El brillo es de la casilla entera. Los cuatro colores que se ven igual con
+    # brillo y sin el no obligan a nada; los otros cuatro si.
+    exigen = [c for c in colores if (c & 7) in EXIGE_BRILLO]
     brillos = {c >> 3 for c in exigen}
     if len(brillos) > 1:
         raise ErrorDeLienzo(
-            "la casilla %d mezcla %s: en una casilla los dos colores tienen que "
-            "ser los dos brillantes o los dos normales (el negro vale para ambos)"
-            % (numero, " y ".join(nombra_zx(c) for c in exigen)))
+            "la casilla %d mezcla %s: el bit de brillo es UNO para toda la "
+            "casilla, asi que sus dos colores tienen que salir los dos de la "
+            "misma tabla (el negro, el magenta, el cian y el blanco valen para "
+            "las dos)" % (numero, " y ".join(nombra_zx(c) for c in exigen)))
     brillo = brillos.pop() if brillos else (1 if referencia[8] & 0x40 else 0)
 
     if len(colores) == 1:
@@ -502,7 +566,7 @@ class Hoja:
 
 HOJAS = [
     Hoja("tiles", "tiles_del_mapa.png", "tile", "tiles",
-         0x9E00, 0xA280, 9, 8, 8, 16, 1, ZX,
+         0x9E00, 0xA280, 9, 8, 8, 16, 1, ZX_EN_MSX,
          dibuja_tile, codifica_tile, "prohibida", canon_zx),
     Hoja("sprites", "sprites_de_batalla.png", "sprite", "sprites",
          0xA2E8, 0xB8E8, 32, 16, 8, 11, 2, SPRITE,
@@ -558,7 +622,7 @@ def _indice_del_color(rgb, hoja):
 
 
 def _nombra(indice, hoja):
-    if hoja.paleta is ZX:
+    if hoja.paleta is ZX_EN_MSX:
         return nombra_zx(indice)
     if hoja.paleta is SPRITE:
         return NOMBRE_SPRITE[indice]
