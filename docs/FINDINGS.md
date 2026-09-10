@@ -133,6 +133,37 @@ in the patch. The addresses now come from the assembler's symbol file, which is
 the only thing that really knows where each routine starts.
 
 
+## A pointer that pointed one letter too far
+
+The sheet's last line (*Aliado a la Comunidad*) is built from a list of four
+sentences that the patch **moved wholesale** into the dead zone, at `0x66A2`.
+The pointer was set to `0x66A2`, which is where the sentence starts. And for a
+week the game displayed **`liado a la Comunidad`**.
+
+`SALTA_B_TEXTOS` (`0x6E98`) does `inc hl` **before looking at anything**:
+
+    SALTA_B_TEXTOS:   inc b
+    SALTA_UNO:        inc hl
+                      djnz BUSCA_EL_FINAL
+                      ret
+
+So it expects the pointer to land on the **byte before** the list. On the tape
+that goes unnoticed, because the lists sit back to back: `0x7D6A` is the last
+letter of `Gollum` and the side list starts at `0x7D6B`. Moving the list broke
+that habit, and the game ate the first letter.
+
+The fix is **one byte**: the pointer now reads `0x66A1`, the last letter of
+` Fuerte`, with its bit 7 set.
+
+What is instructive is why no check caught it. The one watching this list read
+it **from the pointer**, as is, without the `inc hl`: it imitated what we
+thought the code did, not what it does. A helper that gets it right — the one
+used for the other lists — was already in the same file, and went unused. Now
+it is used, and with the old pointer the check fails.
+
+And it was in plain sight: the **three pictures** of the sheet published here
+said `liado` on their last line. No test looks at an image.
+
 ## The canvas was lying: the attribute is the Spectrum's, the colour is the MSX's
 
 The tiles were exported to a PNG and painted with the **ZX Spectrum's** colours,

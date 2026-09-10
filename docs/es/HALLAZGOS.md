@@ -135,6 +135,37 @@ parche. Ahora las direcciones las saca del fichero de símbolos del ensamblador,
 que es el único que sabe de verdad dónde empieza cada rutina.
 
 
+## Un puntero que apuntaba una letra demasiado adelante
+
+La última línea de la ficha (*Aliado a la Comunidad*) se compone de una lista
+de cuatro frases que el parche **mudó entera** a la zona muerta, a `0x66A2`.
+El puntero se cambió a `0x66A2`, que es donde empieza la frase. Y durante una
+semana el juego enseñó **`liado a la Comunidad`**.
+
+`SALTA_B_TEXTOS` (`0x6E98`) hace `inc hl` **antes de mirar nada**:
+
+    SALTA_B_TEXTOS:   inc b
+    SALTA_UNO:        inc hl
+                      djnz BUSCA_EL_FINAL
+                      ret
+
+Es decir, espera que el puntero caiga en el **byte anterior** a la lista. En la
+cinta lo hace sin que se note, porque las listas van pegadas: `0x7D6A` es la
+última letra de `Gollum` y la lista de bando empieza en `0x7D6B`. Al mudarla,
+esa costumbre dejó de cumplirse y el juego se comió la primera letra.
+
+El arreglo es **un byte**: el puntero apunta ahora a `0x66A1`, la última letra
+de ` Fuerte`, con su bit 7 puesto.
+
+Lo instructivo es por qué no saltó ninguna comprobación. La que vigila esta
+lista la leía **desde el puntero**, tal cual, sin el `inc hl`: imitaba lo que
+creíamos que hacía el código, no lo que hace. En el mismo fichero había ya una
+función que lo hacía bien —la que se usa para las otras listas— y no se usó.
+Ahora sí, y con el puntero viejo la comprobación falla.
+
+Y estaba a la vista: las **tres imágenes** de la ficha publicadas aquí decían
+`liado` en su última línea. Ningún test mira una imagen.
+
 ## El lienzo mentía: el atributo es del ZX, el color es del MSX
 
 Los tiles salían al PNG pintados con los colores del **ZX Spectrum**, que es lo

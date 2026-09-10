@@ -98,6 +98,30 @@ The four new adjectives **have** been caught on screen, dumped from the patched
 cassette: `Firme`, `Virtuoso`, `Valiente` and `Fuerte` on Gandalf's sheet and on
 Frodo's, with `Aliado a la Comunidad` closing both.
 
+## Nobody has played a game from the cartridge
+
+The [cartridge](THE-CARTRIDGE.html) leaves RAM, VRAM, the VDP and the PSG just
+as the tape does — compared byte for byte on four machines — and that proves the
+game starts under the same conditions. **It does not prove a game can be
+finished.** The menu and the map have been seen; nothing else.
+
+What is needed is the usual thing: someone playing. If something turned up, it
+would be a loader that gets RAM right and something else wrong, and the place to
+look would be what the comparison does **not** cover: ports other than the VDP
+and the PSG, and the state of the slots after the jump.
+
+## The cartridge has no music
+
+The game is silent on tape and stays silent on cartridge. But a cartridge has
+room: the ROM can grow to 128 KB without touching the loader, and the per-frame
+hook the game leaves empty is identified. What is missing is the player and the
+music, and a decision about where its work area lives: RAM free in every phase
+comes to **about 2.9 KB**, plus **13,824 reclaimable bytes** at
+`0x094F`-`0x3F4E` (the two ZX end screens, read exactly once).
+
+That is an extension, not a doubt: there is nothing to find out, it just has to
+be done.
+
 ## What this patch does not touch
 
 - **Battle.** The board is built on top of the menu's code and has its own

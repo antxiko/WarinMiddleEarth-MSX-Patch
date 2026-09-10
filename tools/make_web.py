@@ -27,13 +27,13 @@ from estilo_web import ESTILO                                   # noqa: E402
 #   `make parche` -> 1396 bytes cambiados en 130 entradas, 0 fuera de la tabla
 #                    (27 escritas a mano, 548 B; 103 de los lienzos, 848 B)
 #   `make ips`    -> war_parche.ips, 1718 bytes en 39 registros
-#   `make test`   -> 79 comprobaciones
+#   `make test`   -> 87 comprobaciones (79 del parche y 8 del cartucho)
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
 BYTES = 1396
 CAMBIOS = 130
 IPS_BYTES = 1718
 IPS_REGISTROS = 39
-TESTS = 79
+TESTS = 87
 #   los 1396 bytes, repartidos: 137 de codigo, 376 de texto, 10 de punteros,
 #   848 de tiles repintados, 23 de ganchos y trampolines y 2 sueltos (el tope
 #   de la siembra y el papel del texto)
@@ -81,6 +81,7 @@ TXT = {
              ("#screens", "Antes y después")],
         docnav=[("EMPEZAR.html", "Empezar"), ("EL-PARCHE.html", "El parche"),
                 ("COMO-FUNCIONA.html", "Cómo funciona"),
+                ("EL-CARTUCHO.html", "El cartucho"),
                 ("LAS-IMAGENES.html", "Las imágenes"),
                 ("HALLAZGOS.html", "Hallazgos"),
                 ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")],
@@ -138,6 +139,7 @@ TXT = {
         docnav=[("GETTING-STARTED.html", "Getting started"),
                 ("THE-PATCH.html", "The patch"),
                 ("HOW-IT-WORKS.html", "How it works"),
+                ("THE-CARTRIDGE.html", "The cartridge"),
                 ("THE-PICTURES.html", "The pictures"),
                 ("FINDINGS.html", "Findings"),
                 ("OPEN-QUESTIONS.html", "Open questions")],

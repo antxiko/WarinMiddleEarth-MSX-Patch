@@ -26,7 +26,7 @@ Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make ips         # y war_parche.ips, el parche a secas
-    make test        # las 79 comprobaciones
+    make test        # las 87 comprobaciones
 
 `make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
 originales son los que espera**, y si al terminar hay un solo byte distinto
@@ -38,6 +38,15 @@ fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.
 
 y en el MSX, `RUN"CAS:"`. La carga entera son unos seis minutos y medio de
 tiempo emulado; con el acelerador del emulador, mucho menos.
+
+## O en cartucho, que tarda nueve segundos
+
+    make rom_parche   # war_parche.rom, de tu cinta ya parcheada
+    openmsx -machine Philips_VG_8020 -carta war_parche.rom -romtype ascii16
+
+El juego no se toca: el cartucho es un cargador que deja la RAM igual que la
+deja la cinta. Está contado en [El cartucho](EL-CARTUCHO.html), y **la ROM
+tampoco se distribuye**: se monta de tu copia, como todo lo demás.
 
 ## Qué vas a ver distinto
 

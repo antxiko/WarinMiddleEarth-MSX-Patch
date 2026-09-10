@@ -22,10 +22,12 @@ from estilo_web import ESTILO  # noqa: E402
 # castellano bajo docs/es/.
 NAV_EN = [("index.html", "Home"), ("GETTING-STARTED.html", "Start"),
           ("THE-PATCH.html", "The patch"), ("HOW-IT-WORKS.html", "How it works"),
+          ("THE-CARTRIDGE.html", "The cartridge"),
           ("THE-PICTURES.html", "The pictures"), ("FINDINGS.html", "Findings"),
           ("OPEN-QUESTIONS.html", "Open questions")]
 NAV_ES = [("index.html", "Portada"), ("EMPEZAR.html", "Empezar"),
           ("EL-PARCHE.html", "El parche"), ("COMO-FUNCIONA.html", "Cómo funciona"),
+          ("EL-CARTUCHO.html", "El cartucho"),
           ("LAS-IMAGENES.html", "Las imágenes"), ("HALLAZGOS.html", "Hallazgos"),
           ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")]
 
@@ -35,6 +37,7 @@ NAV_ES = [("index.html", "Portada"), ("EMPEZAR.html", "Empezar"),
 _PAREJAS = [("GETTING-STARTED.html", "EMPEZAR.html"),
             ("THE-PATCH.html", "EL-PARCHE.html"),
             ("HOW-IT-WORKS.html", "COMO-FUNCIONA.html"),
+            ("THE-CARTRIDGE.html", "EL-CARTUCHO.html"),
             ("THE-PICTURES.html", "LAS-IMAGENES.html"),
             ("FINDINGS.html", "HALLAZGOS.html"),
             ("OPEN-QUESTIONS.html", "PREGUNTAS-ABIERTAS.html")]
@@ -199,10 +202,27 @@ def convierte(texto, titulo, actual, idioma="en"):
             continue
         if not l.strip():
             i += 1; continue
+        # Una linea que empieza por | y no tiene debajo la fila separadora
+        # (|---|) no la consume ningun caso: la tabla de arriba la exige, y el
+        # parrafo excluye las lineas que empiezan por |. Antes eso dejaba el
+        # indice quieto y el generador daba vueltas para siempre, sin escribir
+        # ni un byte y sin decir nada: la web se quedaba a medias y parecia que
+        # el ordenador estaba trabajando. Se para y se dice donde.
+        if re.match(r"^\s*\|", l):
+            raise SystemExit(
+                "%s, linea %d: tabla sin la fila separadora (|---|):\n  %s\n"
+                "Una tabla en Markdown necesita cabecera, separador y filas."
+                % (actual, i + 1, l.strip()))
+        antes = i
         parr = []                                   # parrafo
         while i < len(ln) and ln[i].strip() and not re.match(
                 r"^(#{1,4}\s|```|>|\s*([-*]|\d+\.)\s|---+\s*$|\s*\|)", ln[i]):
             parr.append(ln[i].strip()); i += 1
+        # Red de seguridad para cualquier otro caso que no consuma nada: es
+        # mejor parar con la linea delante que colgarse en silencio.
+        if i == antes:
+            raise SystemExit("%s, linea %d: no se sabe que hacer con:\n  %s"
+                             % (actual, i + 1, ln[i]))
         out.append(f"<p>{enlinea(' '.join(parr))}</p>")
 
     menu = NAV_EN if idioma == "en" else NAV_ES

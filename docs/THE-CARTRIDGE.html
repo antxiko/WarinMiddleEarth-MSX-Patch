@@ -1,0 +1,119 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The cartridge — War in Middle Earth (MSX)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,640px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-CARTRIDGE.html" style=color:var(--tinta)>The cartridge</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html">Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EL-CARTUCHO.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="the-cartridge">The cartridge</h1>
+<p>The game shipped on cassette and takes <b>six and a half minutes</b> to load. This turns it into a cartridge that boots in <b>nine seconds</b>, without changing a single byte of the game.</p>
+<p><b>There is no ROM here either.</b> You build it from your own tape:</p>
+<pre><code>make rom          # war.rom, from the original tape
+make rom_parche   # war_parche.rom, from the patched one</code></pre>
+<p>Both come out at 64 KB, <b>ASCII16</b> type, and neither is distributed: they are the whole game in a different case (see the <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-Patch/blob/main/LEGAL-NOTICE.md">legal notice</a>).</p>
+<pre><code>openmsx -machine Philips_VG_8020 -carta war.rom -romtype ascii16</code></pre>
+<h2 id="the-idea-do-not-touch-the-game-imitate-its-loader">The idea: do not touch the game, imitate its loader</h2>
+<p>The cartridge is not a conversion, it is a <b>loader</b>. It leaves RAM exactly as the tape loader leaves it and jumps to the same place, <code>0x0190</code>, where the game itself relocates its blocks the way it always does.</p>
+<table><tr><th>what it leaves</th><th>where</th></tr><tr><td>low block</td><td><code>0x0190</code></td></tr><tr><td>middle block</td><td><code>0x3F4F</code></td></tr><tr><td>high block</td><td><code>0x88B8</code></td></tr><tr><td>POKE mailbox</td><td><code>0x012C</code>, zeroed</td></tr><tr><td>stack</td><td><code>SP = 0xFDE8</code></td></tr></table>
+<p>That is what makes it checkable: if RAM is the same, the game cannot tell how it got there.</p>
+<h2 id="how-it-is-built">How it is built</h2>
+<p><b>77 bytes of boot code</b> in the ROM (<code>src/cartucho/cargador_rom.asm</code>): the <code>AB</code> header, bank 0, copy the rest into RAM and jump to it.</p>
+<p><b>A 977-byte stub</b> running at <code>0xD800</code> (<code>src/cartucho/cargador_ram.asm</code>): it looks for RAM in pages 2, 1 and 0 and interprets a <b>plan of 52 operations</b> of eight bytes each. The plan is not written by hand: <code>tools/haz_rom.py</code> generates it from the ROM&#x27;s real layout and also writes it to <code>work/plan.json</code>, so the checks never have to assume anything.</p>
+<p>The data runs from <code>0x0800</code> to <code>0xF727</code>. <b>2,264 bytes</b> are left over.</p>
+<h2 id="the-two-hard-parts">The two hard parts</h2>
+<p><b>Page 1 is the ROM while loading.</b> With the cartridge in, <code>0x4000</code>-<code>0x7FFF</code> is the cartridge, and <b>14,400 bytes</b> of the middle block land there (<code>0x4000</code>-<code>0x783F</code>). There is nowhere to put them — except <b>VRAM</b>, which is free during loading: they are copied there, the cartridge is switched out of page 1, and they come back. The buffer reaches <code>0x383F</code> and <b>overwrites the name table and the sprite tables</b>, so those get written twice, before and after.</p>
+<p><b>The game inherits its screen from BASIC.</b> It only ever writes VDP register 7 and <b>never</b> the name table: it relies on the <code>COLOR 1,1,1:SCREEN 2</code> in the two lines of BASIC the tape runs before loading anything. A cartridge boots without that BASIC, so it has to be reproduced. This was not deduced, it was <b>measured</b> on the tape with <code>tools/omsx_estado_cinta.tcl</code>.</p>
+<pre><code>VDP R0-R7   02 E0 06 FF 03 36 07 01
+PSG         R7 reads back 0x3F, R11 = 0x0B
+VRAM        identity name table, 32 sprites at Y=209</code></pre>
+<h2 id="the-slots">The slots</h2>
+<p>The BIOS has <code>ENASLT</code> to change what sits in a page, and it works for pages 2 and 1 as long as page 0 is still the BIOS. Page 0 and everything after it need a clone of our own, with one precaution: it <b>must not flip page 3</b>, which is where the stub lives. It writes <code>0xFFFF</code> only when the destination&#x27;s primary slot is the same as page 3&#x27;s.</p>
+<p>Tested with RAM in an <b>expanded slot</b> (Philips NMS 8250, 3-2), which is the case that breaks loaders that get this wrong.</p>
+<h2 id="what-is-verified">What is verified</h2>
+<p><code>tools/omsx_verifica_rom.tcl</code> boots the machine with the cartridge in and dumps exactly what was dumped when loading the tape, at the same two instants; <code>tools/coteja_rom.py</code> compares them byte for byte.</p>
+<table><tr><th>instant</th><th>what is compared</th></tr><tr><td>at <code>0x0190</code></td><td>the blocks as they fall off the tape, before relocation</td></tr><tr><td>at <code>0x5E00</code></td><td>the three blocks relocated, all 16 KB of VRAM, VDP R0-R7 and PSG R0-R13</td></tr></table>
+<p>Result: <b>everything required matches</b>, with <code>war.rom</code> on a Philips VG-8020, a Philips NMS 8250, C-BIOS MSX1 and C-BIOS MSX2, and with <code>war_parche.rom</code> on the VG-8020 against the patched tape&#x27;s dumps.</p>
+<p>On MSX2, register 1 reads back <code>0x60</code>: the V9938 has no 4K/16K bit of the TMS9918. That is accepted, and said out loud.</p>
+<p>Eight more checks live in <code>tests/test_cartucho.py</code>. The strong one is an <b>interpreter of the plan, written separately in Python</b>, tracking RAM, VRAM and what sits in page 1 at every step: if the plan ever tried to write to <code>0x4000</code>-<code>0x7FFF</code> with the cartridge in, it shows up there without an emulator.</p>
+<h2 id="what-is-not-verified">What is not verified</h2>
+<p><b>Nobody has played a whole game from the cartridge.</b> It has been seen to boot, the menu, and the map after pressing <code>0</code>. That is all.</p>
+<p>And the cartridge has <b>no music</b>: the game is silent on tape and stays silent here. That is the obvious extension, and it is written down in <a href="OPEN-QUESTIONS.html">open questions</a>.</p>
+<footer><p><em>War in Middle Earth</em> was published by Melbourne House and distributed by Dro Soft. Its own loading screen signs it: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> and <b>CONVERSION by ANIMAGIC sa</b>; the menu adds “Programado por C.J.Pink”. All rights in the game remain with their holders. This is preservation, study and documentation work. The patch is <b>unofficial</b> and none of the above endorse it.</p></footer></div>

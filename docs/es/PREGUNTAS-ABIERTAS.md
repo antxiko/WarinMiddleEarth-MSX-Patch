@@ -98,6 +98,29 @@ Los cuatro adjetivos nuevos **sí** se han cazado en pantalla, volcados de la
 cinta parcheada: `Firme`, `Virtuoso`, `Valiente` y `Fuerte` en la ficha de
 Gandalf y en la de Frodo, con `Aliado a la Comunidad` cerrando las dos.
 
+## Nadie ha jugado una partida desde el cartucho
+
+El [cartucho](EL-CARTUCHO.html) deja la RAM, la VRAM, el VDP y el PSG igual que
+la cinta —cotejado byte a byte en cuatro máquinas—, y eso demuestra que el
+juego arranca en las mismas condiciones. **No demuestra que se pueda terminar
+una partida.** Se ha visto el menú y el mapa; nada más.
+
+Lo que haría falta es lo de siempre: que alguien juegue. Si aparece algo, sería
+un cargador que deja bien la RAM y mal alguna otra cosa, y el sitio donde
+mirar sería lo que el cotejo **no** compara: los puertos que no son VDP ni PSG,
+y el estado de las ranuras a partir del salto.
+
+## El cartucho no tiene música
+
+El juego es mudo en cinta y sigue mudo en cartucho. Pero un cartucho tiene
+sitio: la ROM puede crecer a 128 KB sin tocar el cargador, y el gancho por
+cuadro que el juego deja vacío está identificado. Lo que falta es el
+reproductor y la música, y decidir dónde vive su área de trabajo: la RAM libre
+en todas las fases son **unos 2,9 KB**, más **13.824 bytes reclamables** en
+`0x094F`-`0x3F4E` (las dos pantallas finales del ZX, que se leen una sola vez).
+
+Es una ampliación, no una duda: no hay nada que averiguar, hay que hacerlo.
+
 ## Lo que este parche no toca
 
 - **La batalla.** El tablero se monta encima del código del menú y tiene sus

@@ -82,7 +82,7 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html" style=color:var(--tinta)>Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/HALLAZGOS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-PATCH.html">The patch</a><a href="HOW-IT-WORKS.html">How it works</a><a href="THE-CARTRIDGE.html">The cartridge</a><a href="THE-PICTURES.html">The pictures</a><a href="FINDINGS.html" style=color:var(--tinta)>Findings</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/HALLAZGOS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
 <h1 id="findings">Findings</h1>
 <p>What turned up while making the patch, including what went wrong.</p>
 <h2 id="bit-5-of-the-map-byte-was-free">Bit 5 of the map byte was free</h2>
@@ -130,6 +130,17 @@ t=474.471   writes 10 at 6B7B   PC=666D  HL=6B7B  A=10
 <p>So every time the ring-bearer&#x27;s sheet was drawn, a free <code>ld (hl),a</code> ran before the routine proper, with whatever HL and A <code>MARCA_AL_PORTADOR</code> was carrying: HL inside the name table and A holding <code>0x10</code>. The patch was eating its own separators, one at a time, until copying a name no longer found where to stop.</p>
 <p>The fix is <b>one byte</b>: <code>cd 6d 66</code> → <code>cd 6e 66</code>. Measured on that same recording, with the corrected tape and replaying from the start: the routine is called <b>29 times</b> over the stretch where it used to break, there are <b>zero</b> writes into the name table, the separators stay whole and the sheet still reads correctly ten minutes in.</p>
 <p>The galling part is that <b>there was a test for this</b> and it passed: it checked that the hook pointed <code>base + 33</code> bytes in, counted by hand just as wrongly as in the patch. The addresses now come from the assembler&#x27;s symbol file, which is the only thing that really knows where each routine starts.</p>
+<h2 id="a-pointer-that-pointed-one-letter-too-far">A pointer that pointed one letter too far</h2>
+<p>The sheet&#x27;s last line (<em>Aliado a la Comunidad</em>) is built from a list of four sentences that the patch <b>moved wholesale</b> into the dead zone, at <code>0x66A2</code>. The pointer was set to <code>0x66A2</code>, which is where the sentence starts. And for a week the game displayed <b><code>liado a la Comunidad</code></b>.</p>
+<p><code>SALTA_B_TEXTOS</code> (<code>0x6E98</code>) does <code>inc hl</code> <b>before looking at anything</b>:</p>
+<pre><code>SALTA_B_TEXTOS:   inc b
+SALTA_UNO:        inc hl
+                  djnz BUSCA_EL_FINAL
+                  ret</code></pre>
+<p>So it expects the pointer to land on the <b>byte before</b> the list. On the tape that goes unnoticed, because the lists sit back to back: <code>0x7D6A</code> is the last letter of <code>Gollum</code> and the side list starts at <code>0x7D6B</code>. Moving the list broke that habit, and the game ate the first letter.</p>
+<p>The fix is <b>one byte</b>: the pointer now reads <code>0x66A1</code>, the last letter of <code> Fuerte</code>, with its bit 7 set.</p>
+<p>What is instructive is why no check caught it. The one watching this list read it <b>from the pointer</b>, as is, without the <code>inc hl</code>: it imitated what we thought the code did, not what it does. A helper that gets it right — the one used for the other lists — was already in the same file, and went unused. Now it is used, and with the old pointer the check fails.</p>
+<p>And it was in plain sight: the <b>three pictures</b> of the sheet published here said <code>liado</code> on their last line. No test looks at an image.</p>
 <h2 id="the-canvas-was-lying-the-attribute-is-the-spectrum-s-the-colour-is-the-msx-s">The canvas was lying: the attribute is the Spectrum&#x27;s, the colour is the MSX&#x27;s</h2>
 <p>The tiles were exported to a PNG and painted with the <b>ZX Spectrum&#x27;s</b> colours, because that is what the attribute glued behind each tile says. On screen they never look like that. This port does not send the attribute to the VDP: <code>ATRIBUTO_A_COLOR</code> (<code>0x049F</code>) translates it first, with two eight-colour tables — <code>0x04CE</code> without bright, <code>0x04D6</code> with it — and what comes out is an <b>MSX</b> colour byte. The canvas showed the ZX&#x27;s grey where the game paints white.</p>
 <p>Two things follow, and both change what can be drawn:</p>

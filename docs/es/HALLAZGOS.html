@@ -82,7 +82,7 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html" style=color:var(--tinta)>Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../FINDINGS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="EL-CARTUCHO.html">El cartucho</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html" style=color:var(--tinta)>Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../FINDINGS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
 <h1 id="hallazgos">Hallazgos</h1>
 <p>Lo que apareció al hacer el parche, incluido lo que salió mal.</p>
 <h2 id="el-bit-5-del-byte-de-mapa-estaba-libre">El bit 5 del byte de mapa estaba libre</h2>
@@ -130,6 +130,17 @@ t=474,471   escribe 10 en 6B7B   PC=666D  HL=6B7B  A=10
 <p>O sea que cada vez que se pintaba la ficha del portador, antes de entrar en la rutina se ejecutaba un <code>ld (hl),a</code> de propina, con el HL y el A que traía <code>MARCA_AL_PORTADOR</code>: <code>HL</code> en la tabla de nombres y <code>A</code> valiendo <code>0x10</code>. El parche se comía sus propios separadores, uno a uno, hasta que la copia de un nombre ya no encontraba dónde parar.</p>
 <p>El arreglo es <b>un byte</b>: <code>cd 6d 66</code> → <code>cd 6e 66</code>. Medido sobre la misma grabación, con la cinta corregida y reproduciendo desde el principio: la rutina se llama <b>29 veces</b> en el tramo donde antes se rompía, hay <b>cero</b> escrituras en la tabla de nombres, los separadores siguen enteros y la ficha se lee bien a los diez minutos.</p>
 <p>Lo que dolió es que <b>había un test para esto</b> y daba verde: comprobaba que el gancho apuntaba a <code>base + 33</code> bytes, contados a mano igual de mal que en el parche. Ahora las direcciones las saca del fichero de símbolos del ensamblador, que es el único que sabe de verdad dónde empieza cada rutina.</p>
+<h2 id="un-puntero-que-apuntaba-una-letra-demasiado-adelante">Un puntero que apuntaba una letra demasiado adelante</h2>
+<p>La última línea de la ficha (<em>Aliado a la Comunidad</em>) se compone de una lista de cuatro frases que el parche <b>mudó entera</b> a la zona muerta, a <code>0x66A2</code>. El puntero se cambió a <code>0x66A2</code>, que es donde empieza la frase. Y durante una semana el juego enseñó <b><code>liado a la Comunidad</code></b>.</p>
+<p><code>SALTA_B_TEXTOS</code> (<code>0x6E98</code>) hace <code>inc hl</code> <b>antes de mirar nada</b>:</p>
+<pre><code>SALTA_B_TEXTOS:   inc b
+SALTA_UNO:        inc hl
+                  djnz BUSCA_EL_FINAL
+                  ret</code></pre>
+<p>Es decir, espera que el puntero caiga en el <b>byte anterior</b> a la lista. En la cinta lo hace sin que se note, porque las listas van pegadas: <code>0x7D6A</code> es la última letra de <code>Gollum</code> y la lista de bando empieza en <code>0x7D6B</code>. Al mudarla, esa costumbre dejó de cumplirse y el juego se comió la primera letra.</p>
+<p>El arreglo es <b>un byte</b>: el puntero apunta ahora a <code>0x66A1</code>, la última letra de <code> Fuerte</code>, con su bit 7 puesto.</p>
+<p>Lo instructivo es por qué no saltó ninguna comprobación. La que vigila esta lista la leía <b>desde el puntero</b>, tal cual, sin el <code>inc hl</code>: imitaba lo que creíamos que hacía el código, no lo que hace. En el mismo fichero había ya una función que lo hacía bien —la que se usa para las otras listas— y no se usó. Ahora sí, y con el puntero viejo la comprobación falla.</p>
+<p>Y estaba a la vista: las <b>tres imágenes</b> de la ficha publicadas aquí decían <code>liado</code> en su última línea. Ningún test mira una imagen.</p>
 <h2 id="el-lienzo-mentia-el-atributo-es-del-zx-el-color-es-del-msx">El lienzo mentía: el atributo es del ZX, el color es del MSX</h2>
 <p>Los tiles salían al PNG pintados con los colores del <b>ZX Spectrum</b>, que es lo que dice el atributo pegado detrás de cada uno. En pantalla no se ven así nunca. Esta conversión no manda el atributo al VDP: lo traduce antes <code>ATRIBUTO_A_COLOR</code> (<code>0x049F</code>) con dos tablas de ocho colores —<code>0x04CE</code> sin brillo y <code>0x04D6</code> con él— y lo que sale es un byte de color del <b>MSX</b>. El lienzo enseñaba el gris del ZX donde el juego pone blanco.</p>
 <p>De ahí salen dos cosas, y las dos cambian lo que se puede dibujar:</p>

@@ -1,0 +1,119 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>El cartucho — War in Middle Earth (MSX)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,640px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-PARCHE.html">El parche</a><a href="COMO-FUNCIONA.html">Cómo funciona</a><a href="EL-CARTUCHO.html" style=color:var(--tinta)>El cartucho</a><a href="LAS-IMAGENES.html">Las imágenes</a><a href="HALLAZGOS.html">Hallazgos</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../THE-CARTRIDGE.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<h1 id="el-cartucho">El cartucho</h1>
+<p>El juego venía en cinta y tarda <b>seis minutos y medio</b> en cargar. Esto lo convierte en un cartucho que arranca en <b>nueve segundos</b> sin cambiarle un solo byte al juego.</p>
+<p><b>Aquí tampoco hay ninguna ROM.</b> Se monta de tu propia cinta:</p>
+<pre><code>make rom          # war.rom, de la cinta original
+make rom_parche   # war_parche.rom, de la cinta ya parcheada</code></pre>
+<p>Las dos salen de 64 KB, del tipo <b>ASCII16</b>, y ninguna se reparte: son el juego entero en otro envase (ver el <a href="https://github.com/antxiko/WarinMiddleEarth-MSX-Patch/blob/main/AVISO-LEGAL.md">aviso legal</a>).</p>
+<pre><code>openmsx -machine Philips_VG_8020 -carta war.rom -romtype ascii16</code></pre>
+<h2 id="la-idea-no-tocar-el-juego-imitar-al-cargador">La idea: no tocar el juego, imitar al cargador</h2>
+<p>El cartucho no es una conversión: es un <b>cargador</b>. Deja la RAM exactamente como la deja el cargador de la cinta y salta al mismo sitio, <code>0x0190</code>, donde el propio juego recoloca sus bloques como hace siempre.</p>
+<table><tr><th>lo que deja</th><th>dónde</th></tr><tr><td>bloque bajo</td><td><code>0x0190</code></td></tr><tr><td>bloque medio</td><td><code>0x3F4F</code></td></tr><tr><td>bloque alto</td><td><code>0x88B8</code></td></tr><tr><td>buzón de POKEs</td><td><code>0x012C</code>, a cero</td></tr><tr><td>pila</td><td><code>SP = 0xFDE8</code></td></tr></table>
+<p>Eso es lo que permite comprobarlo: si la RAM es la misma, el juego no puede notar por dónde entró.</p>
+<h2 id="como-esta-hecho">Cómo está hecho</h2>
+<p><b>77 bytes de arranque</b> en la ROM (<code>src/cartucho/cargador_rom.asm</code>): la cabecera <code>AB</code>, el banco 0, copiar el resto a RAM y saltar.</p>
+<p><b>Un stub de 977 bytes</b> que corre en <code>0xD800</code> (<code>src/cartucho/cargador_ram.asm</code>): busca RAM en las páginas 2, 1 y 0 e interpreta un <b>plan de 52 operaciones</b> de ocho bytes. El plan no está escrito a mano: lo genera <code>tools/haz_rom.py</code> de la disposición real de la ROM y lo deja también en <code>work/plan.json</code>, para que las comprobaciones no tengan que suponer nada.</p>
+<p>Los datos van de <code>0x0800</code> a <code>0xF727</code>. Sobran <b>2.264 bytes</b>.</p>
+<h2 id="las-dos-cosas-que-costaron">Las dos cosas que costaron</h2>
+<p><b>La página 1 es la ROM mientras se carga.</b> Con el cartucho puesto, <code>0x4000</code>-<code>0x7FFF</code> es el cartucho, y ahí caen <b>14.400 bytes</b> del bloque medio (<code>0x4000</code>-<code>0x783F</code>). No hay dónde ponerlos... salvo en la <b>VRAM</b>, que durante la carga está libre: se copian allí, se quita el cartucho de la página 1 y vuelven. El búfer llega hasta <code>0x383F</code> y <b>pisa la tabla de nombres y las de sprites</b>, así que ésas se escriben dos veces, antes y después.</p>
+<p><b>El juego hereda la pantalla del BASIC.</b> Sólo escribe el registro 7 del VDP y <b>nunca</b> la tabla de nombres: cuenta con el <code>COLOR 1,1,1:SCREEN 2</code> de las dos líneas de BASIC que la cinta ejecuta antes de cargar nada. Un cartucho arranca sin ese BASIC, así que hay que reproducirlo. No se dedujo: se <b>midió</b> en la cinta con <code>tools/omsx_estado_cinta.tcl</code>.</p>
+<pre><code>VDP R0-R7   02 E0 06 FF 03 36 07 01
+PSG         R7 se lee 0x3F, R11 = 0x0B
+VRAM        tabla de nombres identidad, 32 sprites en Y=209</code></pre>
+<h2 id="las-ranuras">Las ranuras</h2>
+<p>La BIOS trae <code>ENASLT</code> para cambiar lo que hay en una página, y sirve para las páginas 2 y 1 mientras la página 0 siga siendo la BIOS. Para la página 0 y a partir de ahí hace falta un clon propio, y con un cuidado: <b>no puede voltear la página 3</b>, que es donde vive el stub. Escribe <code>0xFFFF</code> sólo si la primaria de destino es la misma de la página 3.</p>
+<p>Probado con la RAM en <b>ranura expandida</b> (Philips NMS 8250, 3-2), que es el caso que rompe los cargadores mal hechos.</p>
+<h2 id="que-esta-comprobado">Qué está comprobado</h2>
+<p><code>tools/omsx_verifica_rom.tcl</code> arranca la máquina con el cartucho y vuelca lo mismo que se volcó cargando la cinta, en los mismos dos instantes; <code>tools/coteja_rom.py</code> lo compara byte a byte.</p>
+<table><tr><th>instante</th><th>lo que se compara</th></tr><tr><td>en <code>0x0190</code></td><td>los bloques como caen de la cinta, antes de recolocar</td></tr><tr><td>en <code>0x5E00</code></td><td>los tres bloques recolocados, la VRAM entera (16 KB), VDP R0-R7 y PSG R0-R13</td></tr></table>
+<p>Resultado: <b>todo lo exigido coincide</b>, con <code>war.rom</code> en Philips VG-8020, Philips NMS 8250, C-BIOS MSX1 y C-BIOS MSX2, y con <code>war_parche.rom</code> en la VG-8020 contra los volcados de la cinta parcheada.</p>
+<p>En MSX2 el registro 1 se lee <code>0x60</code>: el V9938 no tiene el bit de 4K/16K del TMS9918. Se acepta, y se dice.</p>
+<p>Ocho comprobaciones más en <code>tests/test_cartucho.py</code>. La fuerte es un <b>intérprete del plan escrito aparte, en Python</b>, que lleva la cuenta de la RAM, de la VRAM y de qué hay en la página 1 en cada paso: si el plan intentara escribir en <code>0x4000</code>-<code>0x7FFF</code> con el cartucho puesto, salta ahí sin necesidad de emulador.</p>
+<h2 id="que-no-esta-comprobado">Qué no está comprobado</h2>
+<p><b>Nadie ha jugado una partida entera desde el cartucho.</b> Se ha visto arrancar, el menú y, tras pulsar <code>0</code>, el mapa. Eso es todo.</p>
+<p>Y el cartucho <b>no tiene música</b>: el juego es mudo en cinta y sigue siéndolo aquí. Es la ampliación evidente y está apuntada en <a href="PREGUNTAS-ABIERTAS.html">preguntas abiertas</a>.</p>
+<footer><p><em>War in Middle Earth</em> lo publicó Melbourne House y lo distribuyó Dro Soft. Su propia pantalla de carga lo firma: <b>MAELSTROM GAMES LTD. PRESENTS</b>, <b>Mike Singleton</b> y <b>CONVERSION by ANIMAGIC sa</b>; el menú añade «Programado por C.J.Pink». Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservación, estudio y documentación. El parche es <b>extraoficial</b> y no lo respalda ninguno de los anteriores.</p></footer></div>

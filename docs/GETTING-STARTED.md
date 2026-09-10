@@ -27,7 +27,7 @@ You need Python 3 and `make`. Put your `war.tsx` in the root and:
     make extract     # pulls the block bodies out of your tape into work/
     make parche      # applies the table and writes war_parche.tsx
     make ips         # and war_parche.ips, the patch on its own
-    make test        # the 79 checks
+    make test        # the 87 checks
 
 `make parche` does not write blind: **each change first checks that the original
 bytes are the ones it expects**, and if a single byte outside the table differs
