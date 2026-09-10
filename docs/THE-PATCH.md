@@ -8,9 +8,9 @@ They come from two places: **27 entries written by hand** — 548 bytes of code,
 pointers and text — and **103 that fall out of the canvases** — 848 bytes, the
 122 repainted map tiles. Byte by byte: 848 of tiles, 376 of text, 137 of new
 code, 23 of hooks and trampolines, 10 of pointers and 2 loose ones — the
-planting loop's limit and the text's paper. The tool draws no distinction between them: every one
-carries the bytes it expects to find, and every one is as long as what it
-replaces.
+planting loop's limit and the text's paper. The tool draws no distinction
+between them: every one carries the bytes it expects to find, and every one is
+as long as what it replaces.
 
 ## The table
 
