@@ -95,7 +95,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # saca los cuerpos de los bloques de tu cinta a work/
 make parche      # aplica la tabla y escribe war_parche.tsx
 make ips         # y war_parche.ips, el parche a secas
-make test        # las 73 comprobaciones</code></pre>
+make test        # las 79 comprobaciones</code></pre>
 <p><code>make parche</code> no escribe a ciegas: <b>cada cambio comprueba antes que los bytes originales son los que espera</b>, y si al terminar hay un solo byte distinto fuera de la tabla, aborta. Por eso es seguro dejarlo correr sobre tu copia.</p>
 <h2 id="jugarlo">Jugarlo</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>

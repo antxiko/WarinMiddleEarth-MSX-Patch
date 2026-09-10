@@ -88,6 +88,43 @@ la unidad que se quiere ver.
 | `tools/lienzos.py` | saca los tiles, los sprites y la fuente a tres PNG editables a tamaño real, y los vuelve a meter |
 | `tools/previo_repinta.py` | repinta una pantalla ya volcada, casilla a casilla, con los tiles del lienzo |
 | `tools/cuerpo_parcheado.py` | el cuerpo de un bloque con el parche aplicado, para dibujar las láminas del «después» |
+| `tools/render_mapa_completo.py` | el mapa entero en un PNG, sacado de la cinta |
+
+## El mapa entero, en una sola imagen
+
+El juego no te enseña nunca más de dieciséis casillas por trece. El mapa es de
+**128 × 100**, y a los dos caracteres por casilla con que se dibuja son 2048 ×
+1600 píxeles: cabe en un PNG.
+
+**No es un mosaico de pantallazos.** El mapa se dibuja repitiendo lo que hace el
+motor del propio juego, leído del desensamblado:
+`DIBUJA_EL_TROZO_DE_MAPA` (`0x7643`) da **tres pasadas** sobre las casillas
+—el terreno, lo que va encima y las unidades— y la del terreno mira a los
+vecinos: `VECINOS_IGUALES` (`0x7366`) devuelve un bit por cada vecino del
+terreno que se le pregunte, y `ELIGE_EL_DIBUJO` (`0x73CA`) recorre una tabla de
+entradas `[umbral][dos bytes de máscara][índices…]` para estampar un **cuadro de
+4 × 4 caracteres** alrededor de la casilla. Por eso las tres pasadas van
+enteras, una detrás de otra: el dibujo de una casilla se mete en las de al lado.
+
+El formato de esas tablas estaba **sin resolver** en el desensamblado, donde el
+bloque de datos de `0x77A0` dice «formato pendiente». Sacar la imagen del mapa es
+lo que lo ha cerrado.
+
+**Y el mapa sale de la cinta**, así que nada de esto necesita el emulador: está
+comprimido en `0xCC00`, `0x16ED` bytes de **parejas cuenta/valor** —la cuenta
+primero, y un cero cuenta 256, que es como se comporta el `djnz`— que
+`DESCOMPRIME_EL_MAPA` (`0x9366`) desempaqueta en `0x33CD` bytes nada más
+arrancar.
+
+Dos comprobaciones, las dos medidas:
+
+- el mapa descomprimido de la cinta contra un volcado de `0xCC00` sacado del
+  emulador en marcha: **19 bytes distintos de 13.260**, y los diecinueve son el
+  bit 7 —las unidades que el juego siembra al empezar la partida—;
+- la misma ventana de dieciséis por trece que estaba enseñando el juego,
+  dibujada aquí y comparada contra el volcado de la pantalla de verdad: **52 de
+  las 768 celdas de carácter cambian**, y esas 52 son el panel de «Posición» que
+  el juego pinta encima del mapa y esta herramienta no dibuja.
 
 ## Ver un repintado antes de tocar la cinta
 

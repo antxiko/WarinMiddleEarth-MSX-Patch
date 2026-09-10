@@ -193,7 +193,7 @@ Se reparte eso, no el juego.
 
 ## Las comprobaciones
 
-`make test` son 73, y no son de adorno. Entre ellas:
+`make test` son 79, y no son de adorno. Entre ellas:
 
 - que **`orig` y `nuevo` miden igual** en las 130 entradas, o sea que nada
   se desplaza;

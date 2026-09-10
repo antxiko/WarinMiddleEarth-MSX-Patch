@@ -129,6 +129,12 @@ imagenes: extracted/.stamp
 	@python3 tools/cuerpo_parcheado.py alto work/alto_parcheado.raw
 	@python3 tools/render_graficos.py work/alto_parcheado.raw work/laminas_parche
 	@cp work/laminas_parche/tiles-del-mapa.png docs/imagenes/tiles-repintados.png
+	@# EL MAPA ENTERO, las dos veces. El mapa viene comprimido en la propia
+	@# cinta (0x16ED bytes de parejas cuenta/valor en 0xCC00), asi que esto no
+	@# necesita el emulador para nada.
+	@python3 tools/cuerpo_parcheado.py medio work/medio_parcheado.raw
+	@python3 tools/render_mapa_completo.py work/alto.raw work/medio.raw 	   docs/imagenes/mapa-completo-original.png
+	@python3 tools/render_mapa_completo.py work/alto_parcheado.raw 	   work/medio_parcheado.raw docs/imagenes/mapa-completo.png
 
 # ------------------------------------------------------------------ el parche
 # EL PARCHE DE ARAUBI. Aplica la tabla de tools/parchea.py sobre los cuerpos de

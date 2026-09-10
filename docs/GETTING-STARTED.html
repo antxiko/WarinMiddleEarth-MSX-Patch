@@ -95,7 +95,7 @@ audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 <pre><code>make extract     # pulls the block bodies out of your tape into work/
 make parche      # applies the table and writes war_parche.tsx
 make ips         # and war_parche.ips, the patch on its own
-make test        # the 73 checks</code></pre>
+make test        # the 79 checks</code></pre>
 <p><code>make parche</code> does not write blind: <b>each change first checks that the original bytes are the ones it expects</b>, and if a single byte outside the table differs when it finishes, it aborts. That is why it is safe to let it run on your copy.</p>
 <h2 id="playing-it">Playing it</h2>
 <pre><code>openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.tsx</code></pre>

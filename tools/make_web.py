@@ -27,13 +27,13 @@ from estilo_web import ESTILO                                   # noqa: E402
 #   `make parche` -> 1396 bytes cambiados en 130 entradas, 0 fuera de la tabla
 #                    (27 escritas a mano, 548 B; 103 de los lienzos, 848 B)
 #   `make ips`    -> war_parche.ips, 1718 bytes en 39 registros
-#   `make test`   -> 73 comprobaciones
+#   `make test`   -> 79 comprobaciones
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
 BYTES = 1396
 CAMBIOS = 130
 IPS_BYTES = 1718
 IPS_REGISTROS = 39
-TESTS = 73
+TESTS = 79
 #   los 1396 bytes, repartidos: 137 de codigo, 376 de texto, 10 de punteros,
 #   848 de tiles repintados, 23 de ganchos y trampolines y 2 sueltos (el tope
 #   de la siembra y el papel del texto)
@@ -431,6 +431,24 @@ GALERIA = [
      "es hueco vacio",
      "THE SAME ONES, REPAINTED: 122 of the 128 make it into the patch. Magenta "
      "is empty space"),
+    ("mapa-completo-original.png",
+     "EL MAPA ENTERO, dibujado desde la cinta: las 128 x 100 casillas con los "
+     "tiles originales. No es un pantallazo ni un mosaico de pantallazos, es el "
+     "motor de dibujo del juego repetido casilla a casilla",
+     "THE WHOLE MAP, drawn from the cassette: all 128 x 100 cells with the "
+     "original tiles. Not a screenshot, nor a mosaic of screenshots: it is the "
+     "game's own drawing engine repeated cell by cell",
+     True),
+    ("mapa-completo.png",
+     "EL MISMO, CON EL PARCHE. El mapa comprimido sale de la cinta (0x16ED "
+     "bytes de parejas cuenta/valor en 0xCC00) y los dibujos, del lienzo "
+     "repintado. Aqui no hay ninguna unidad: es la Tierra Media recien empezada "
+     "la partida",
+     "THE SAME ONE, PATCHED. The compressed map comes off the cassette (0x16ED "
+     "bytes of count/value pairs at 0xCC00) and the artwork from the repainted "
+     "canvas. There is not a single unit here: this is Middle Earth as a game "
+     "starts",
+     True),
 ]
 
 
@@ -461,13 +479,24 @@ def main(argv):
                     for tit, cuerpo in HALLAZGOS[idioma])
     imgs = ""
     faltan = []
-    for fich, es, en in GALERIA:
+    for entrada in GALERIA:
+        fich, es, en = entrada[:3]
         ruta = os.path.join(imgdir, fich)
         if not os.path.exists(ruta):
             faltan.append(fich)
             continue
         pie = es if idioma == "es" else en
-        imgs += (f'<figure><img src="{img64(ruta)}" alt="{pie}">'
+        # El alt va SIN marcado: si se le cuela una comilla del enlace, parte el
+        # atributo y con el la pagina entera.
+        alt = pie
+        # Una imagen mas grande que la columna se enlaza ademas a tamano real,
+        # que en el caso del mapa entero es lo unico que sirve de verdad.
+        if len(entrada) > 3 and entrada[3]:
+            arriba = "../" if idioma == "es" else ""
+            texto = "verlo a tamaño real" if idioma == "es" else "see it full size"
+            pie += (f' &middot; <a href="{arriba}imagenes/{fich}">{texto}</a>'
+                    f' (2048 &times; 1600)')
+        imgs += (f'<figure><img src="{img64(ruta)}" alt="{alt}">'
                  f'<figcaption>{pie}</figcaption></figure>')
     if faltan:
         print("  (faltan %d imagenes: %s)" % (len(faltan), " ".join(faltan)))

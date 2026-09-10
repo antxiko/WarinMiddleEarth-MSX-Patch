@@ -88,6 +88,43 @@ you want to see.
 | `tools/lienzos.py` | exports the tiles, the sprites and the font to three editable 1:1 PNGs, and reads them back |
 | `tools/previo_repinta.py` | repaints an existing screen, cell by cell, with the canvas's tiles |
 | `tools/cuerpo_parcheado.py` | the same block body with the patch applied, for drawing the "after" plates |
+| `tools/render_mapa_completo.py` | the whole map in one PNG, straight off the cassette |
+
+## The whole map, in one picture
+
+The game only ever shows you sixteen cells by thirteen. The map is **128 × 100**,
+and at the two characters per cell it is drawn with that comes to 2048 × 1600
+pixels — which fits in one PNG.
+
+It is **not a mosaic of screenshots**. The map is drawn by repeating what the
+game's own engine does, read out of the disassembly:
+`DIBUJA_EL_TROZO_DE_MAPA` (`0x7643`) makes **three passes** over the cells —
+terrain, then what goes on top, then the units — and the terrain pass is
+neighbour-aware: `VECINOS_IGUALES` (`0x7366`) returns one bit per neighbour of
+the terrain being asked about, and `ELIGE_EL_DIBUJO` (`0x73CA`) walks a table of
+`[threshold][two mask bytes][indices…]` entries to stamp a **4 × 4 block of
+characters** around the cell. That is why the three passes go whole, one after
+the other: a cell's drawing reaches into its neighbours.
+
+The format of those tables was **left unresolved** in the disassembly, where the
+data block at `0x77A0` says "format pending". Working out the map picture is what
+closed it.
+
+**And the map itself comes off the cassette**, so none of this needs the
+emulator: it sits compressed at `0xCC00`, `0x16ED` bytes of **count/value
+pairs** — count first, and a zero counts 256, which is how the `djnz` behaves —
+that `DESCOMPRIME_EL_MAPA` (`0x9366`) unpacks into `0x33CD` bytes as the game
+boots.
+
+Two checks, both measured:
+
+- the map decompressed from the cassette against a dump of `0xCC00` taken from
+  the running emulator: **19 bytes differ out of 13,260**, and all nineteen are
+  bit 7 — the units the game plants when a game starts;
+- the same sixteen-by-thirteen window the game was showing, rendered here and
+  compared against the real screen dump: **52 of the 768 character cells
+  differ**, and those 52 are the "Posición" panel the game paints on top of the
+  map and this tool does not draw.
 
 ## Seeing a repaint before touching the cassette
 

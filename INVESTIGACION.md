@@ -599,7 +599,7 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 
 **1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
-sacadas de los lienzos (848 de tiles repintados). `make test` = 73 en verde.
+sacadas de los lienzos (848 de tiles repintados). `make test` = 79 en verde.
 
 ## Como se reparte
 

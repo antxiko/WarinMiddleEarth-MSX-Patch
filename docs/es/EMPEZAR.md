@@ -26,7 +26,7 @@ Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make ips         # y war_parche.ips, el parche a secas
-    make test        # las 73 comprobaciones
+    make test        # las 79 comprobaciones
 
 `make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
 originales son los que espera**, y si al terminar hay un solo byte distinto

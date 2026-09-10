@@ -195,7 +195,7 @@ That is what gets shared. Not the game.
 
 ## The checks
 
-`make test` is 73 of them, and they are not decoration. Among others:
+`make test` is 79 of them, and they are not decoration. Among others:
 
 - that **`orig` and `nuevo` are the same length** in all 130 entries, i.e.
   nothing shifts;
