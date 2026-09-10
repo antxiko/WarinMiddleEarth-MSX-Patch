@@ -415,7 +415,7 @@ entera a 0x66A2 con la frase completa en cada entrada.
 | 16 | `0x6689` | Valioso | **Virtuoso** | se muda al motor de altavoz muerto |
 | 17 | `0x6692` | Duro | **Valiente** | idem |
 | 18 | `0x669B` | Bravo | **Fuerte** | idem |
-| 19 | `0x66A2` | Aliado a la Sociedad | **Aliado a la Comunidad** | la lista de la fila 9, mudada entera |
+| 19 | `0x66A2` | Aliado a la Sociedad | **Aliado a la Comunidad** | la lista de la fila 9, mudada entera; el puntero cae en 0x66A1, el byte de delante |
 
 Los diez primeros son la tabla de sitios; el 11 es la lista de los 24 nombres
 propios (es el numero 13, entre `Thranduil` y `Theodred`); del 15 al 18 son
@@ -477,11 +477,24 @@ leyendo enteras, que es la prueba de que nada se ha desplazado:
 ```
 RAZAS EN PLURAL   (0x7D06): Magos, Nazgul, Hombres, Elfos, Enanos, Orcs, Hobbits, Mago, Gollum
 RAZAS EN SINGULAR (0x7D39): Mago, Nazgul, Hombre, Elfo, Enano, Orc, Hobbit, Mago, Gollum, Mujer
-FILA 9 DE LA FICHA (0x66A2): Aliado a la Comunidad, Forma una -, Forma una  union, Forma una  union
+FILA 9 DE LA FICHA (0x66A1): Aliado a la Comunidad, Forma una -, Forma una  union, Forma una  union
 ADVERBIOS         (0x7D9A): Realmente ,  Muy ,  Es muy,  ,  Es algo ,  No muy  ,  No
 ADJETIVOS (por sus seis ld hl): Energico, Decidido, Firme, Virtuoso, Valiente, Fuerte
 NOMBRES (0x6B46): ... Thranduil, Bardo III, Theodred ...
 ```
+
+**La A que se comia el juego (arreglado el 2026-09-10).** Esa lectura estaba
+bien y la pantalla no: la ficha ensenaba `liado a la Comunidad`, y asi salio en
+las tres imagenes de la ficha publicadas el 3 de septiembre, hasta que el
+usuario lo vio jugando. `SALTA_B_TEXTOS` (0x6E98) hace `inc hl` ANTES de mirar
+nada, porque espera que el puntero caiga en el byte ANTERIOR a la lista: en la
+cinta, 0x7D6A es la ultima letra de `Gollum` y la lista de bando empieza en
+0x7D6B. El parche apuntaba a 0x66A2, que es la A misma, y el juego se la
+saltaba. Ahora apunta a 0x66A1 -la ultima letra de ` Fuerte`, con su bit 7-, y
+el test de la fila 9 recorre la lista como el Z80, con el salto, en vez de
+leerla desde el puntero tal cual: con el puntero viejo falla y dice
+`liado a la Comunidad`. Entre la cinta parcheada de antes y la de ahora cambia
+**un byte** (y su copia sin recolocar, 0x51C3, en el volcado de 0x0190).
 
 Y en pantalla, la **misma casilla y la misma unidad** con la cinta original y con
 la parcheada -la formacion 0x39, cinco Hombres en Valle-:

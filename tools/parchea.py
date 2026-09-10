@@ -264,6 +264,16 @@ PARCHES = [
     # traiga LA FRASE COMPLETA, escribiendola desde la columna 0. Asi la primera
     # dice lo que se quiere y las otras tres se dejan EXACTAMENTE como se ven
     # hoy, con sus dos espacios y todo. Son dos punteros de dos bytes.
+    #
+    # OJO CON EL PUNTERO. SALTA_B_TEXTOS (0x6E98) hace `inc hl` ANTES de mirar
+    # nada: espera que HL caiga en el byte ANTERIOR a la lista, que en la cinta
+    # es el terminador de la cadena de delante (0x7D6A es la ultima letra de
+    # "Gollum"; la lista empieza en 0x7D6B). Por eso el puntero nuevo es 0x66A1
+    # -la ultima letra de " Fuerte", con su bit 7- y no 0x66A2, donde esta la A.
+    # Con 0x66A2 el juego se comia la A y en la ficha salia "liado a la
+    # Comunidad": asi se publico el 2026-09-03 y asi lo cazo el usuario jugando
+    # el 2026-09-10. El test lo dejo pasar porque leia la lista desde el puntero
+    # tal cual, sin el `inc hl`; ahora la recorre como el Z80.
     dict(grupo="textos", bloque="medio", dir=0x66A2,
          orig="ab5f13ed538366793287661100007caa677dab6f228066210000110000193e00"
               "b72840110000ed52381a0e002aba66ed5bbd663effaa573effab5f13ed53bd66",
@@ -271,9 +281,10 @@ PARCHES = [
                "466f726d6120756e612020756e696fee466f726d6120756e612020756e696fee",
          motivo="las cuatro frases enteras de la fila 9: 'Aliado a la Comunidad' y "
                 "las otras tres tal y como se ven hoy"),
-    dict(grupo="textos", bloque="medio", dir=0x7074, orig="6a7d", nuevo="a266",
+    dict(grupo="textos", bloque="medio", dir=0x7074, orig="6a7d", nuevo="a166",
          codigo=True,
-         motivo="0x7073: la lista de la fila 9 pasa de 0x7D6A a 0x66A2"),
+         motivo="0x7073: la lista de la fila 9 pasa de 0x7D6A a 0x66A1, el byte "
+                "ANTERIOR a la primera frase, porque SALTA_B_TEXTOS lo salta"),
     dict(grupo="textos", bloque="medio", dir=0x707A, orig="f97c", nuevo="ef7c",
          codigo=True,
          motivo="0x7079: se escribe desde la columna 0 (0x7CEF), no desde la 10"),

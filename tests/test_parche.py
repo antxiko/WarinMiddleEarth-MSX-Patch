@@ -388,12 +388,13 @@ class TestAplicacion(unittest.TestCase):
         self.assertEqual(destino, fila9,
                          "la frase ya no se escribe desde la columna 0")
         a = d[0x7074 - 0x5E00] | (d[0x7075 - 0x5E00] << 8)
-        frases = []
-        for _ in range(4):                             # `and 003h` en 0x7070
-            s = self._texto(d, a)
-            frases.append(s)
-            a += len(s)
-        self.assertEqual(frases[0], "Aliado a la Comunidad")
+        # Como las lee el Z80: SALTA_B_TEXTOS hace `inc hl` antes de nada, asi
+        # que el puntero tiene que caer en el byte ANTERIOR a la primera frase.
+        # La version anterior de este test leia desde el puntero tal cual y
+        # dejo pasar un 0x66A2 que en pantalla daba "liado a la Comunidad".
+        frases = self._lista(d, a, 4)                  # `and 003h` en 0x7070
+        self.assertEqual(frases, ["Aliado a la Comunidad", "Forma una -",
+                                  "Forma una  union", "Forma una  union"])
         for s in frases:
             self.assertLessEqual(len(s), 24,
                                  "%r se sale de la fila de la ficha" % s)
