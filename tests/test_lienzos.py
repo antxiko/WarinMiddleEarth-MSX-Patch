@@ -557,16 +557,33 @@ class TestContraLaCinta(unittest.TestCase):
     # no se toca" les devuelve sus bytes de siempre.
     TILES_REPINTADOS = [n for n in range(128) if not 97 <= n <= 102]
 
-    def test_los_lienzos_del_repositorio_solo_repintan_tiles(self):
-        """El mapa entero esta repintado desde el 2026-09-10, pero los SPRITES y
-        la FUENTE tienen que seguir saliendo con los bytes de la cinta, sin
-        recodificar. Si aparece uno de esos, algun lienzo se ha ensuciado por el
-        camino (lo tipico: guardarlo escalado o con el color retocado)."""
+    # Los 47 caracteres que el lienzo de la fuente repinta desde el 2026-09-11.
+    # No es la fuente entera: los otros 81 se quedaron con los bytes de la cinta
+    # porque el dibujo que vuelve es identico al suyo. Los tres primeros -33, 34
+    # y 35- no son letras sino tramas, y van INVERTIDOS: con el papel en
+    # amarillo, lo que antes era tinta pasa a ser fondo.
+    CARACTERES_REPINTADOS = [
+        33, 34, 35, 44, 48, 49, 52, 55, 57,
+        65, 66, 67, 68, 69, 70, 71, 72, 74, 76, 77, 78, 79, 81, 83, 84,
+        94, 95, 97, 98, 99, 101, 102, 103, 104, 105, 106, 107, 108,
+        111, 112, 113, 114, 116, 123, 125, 126, 127,
+    ]
+
+    REPINTADOS = {"tiles": TILES_REPINTADOS, "fuente": CARACTERES_REPINTADOS,
+                  "sprites": []}
+
+    def test_los_lienzos_del_repositorio_repintan_lo_que_tienen_que_repintar(self):
+        """El mapa entero esta repintado desde el 2026-09-10 y 47 caracteres
+        desde el 2026-09-11, pero los SPRITES tienen que seguir saliendo con los
+        bytes de la cinta, sin recodificar, y de las otras dos hojas solo pueden
+        moverse esas entradas y no una mas. Si aparece cualquier otra, algun
+        lienzo se ha ensuciado por el camino (lo tipico: guardarlo escalado o con
+        el color retocado)."""
         for hoja in L.HOJAS:
             tabla = L.tabla_del_bloque(self.alto, hoja)
             vuelta, avisos = L.lee_lienzo(os.path.join(PARCHE, hoja.png), tabla, hoja)
-            esperado = self.TILES_REPINTADOS if hoja.nombre == "tiles" else []
-            self.assertEqual(L.tocados(tabla, vuelta, hoja), esperado, hoja.nombre)
+            self.assertEqual(L.tocados(tabla, vuelta, hoja),
+                             self.REPINTADOS[hoja.nombre], hoja.nombre)
             self.assertEqual(avisos, [], hoja.nombre)
 
     def test_el_lienzo_de_los_tiles_no_pide_colores_imposibles(self):

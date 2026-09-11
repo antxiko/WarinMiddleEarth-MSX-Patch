@@ -187,9 +187,17 @@ FONDO = (24, 24, 28)                 # el mismo de tools/render_graficos.py
 SPRITE = [FONDO, (0, 0, 0), (255, 255, 255)]
 NOMBRE_SPRITE = ["transparente", "negro", "blanco"]
 
-# La de la fuente: un bit, un pixel.
-MONO = [(0, 0, 0), (255, 255, 255)]
-NOMBRE_MONO = ["negro", "blanco"]
+# La de la fuente: un bit, un pixel. El indice ES el bit -0 papel, 1 tinta-, o
+# sea que MONO[0] es el papel y MONO[1] la tinta.
+#
+# Y SE PINTA COMO SE VE JUGANDO, igual que el de los tiles, no como el mapa de
+# bits en crudo. El parche pone el atributo del texto (0x763F) en 0x70 -papel 6
+# con brillo-, que ATRIBUTO_A_COLOR manda al color 11 del MSX: el amarillo claro
+# de los marcos. Asi que el papel es ese amarillo y la tinta es negra. Antes era
+# al reves -tinta blanca sobre papel negro-, que es el crudo y no se parecia a
+# nada de lo que sale en pantalla.
+MONO = [MSX[11], (0, 0, 0)]
+NOMBRE_MONO = ["amarillo claro", "negro"]
 
 
 def canon_zx(indice):

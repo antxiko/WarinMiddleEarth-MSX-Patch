@@ -415,18 +415,27 @@ class TestAplicacion(unittest.TestCase):
         for (_, fin), (ini, _) in zip(usados, usados[1:]):
             self.assertLess(fin, ini, "dos entradas se pisan en 0x%04X" % ini)
 
-    def test_los_lienzos_solo_tocan_los_tiles(self):
-        """El parche repinta los 128 tiles del mapa, pero NO los 176 sprites de
-        batalla ni los 128 caracteres de la fuente: esos tienen que salir de sus
-        lienzos con los bytes de la cinta, sin recodificar. Si aparece una
-        entrada fuera del tramo de los tiles, algun lienzo se ha ensuciado por el
-        camino (lo tipico: guardarlo escalado, o con el color retocado)."""
+    def test_los_lienzos_solo_tocan_los_tiles_y_la_fuente(self):
+        """El parche repinta los 128 tiles del mapa (0x9E00-0xA280) y los
+        caracteres de la fuente (0xC800-0xCC00), pero NO los 176 sprites de
+        batalla: esos tienen que salir de su lienzo con los bytes de la cinta,
+        sin recodificar. Si aparece una entrada fuera de esos dos tramos, algun
+        lienzo se ha ensuciado por el camino (lo tipico: guardarlo escalado, o
+        con el color retocado)."""
+        TRAMOS = ((0x9E00, 0xA280), (0xC800, 0xCC00))
         g = parchea.parches_de_graficos(self._origs()["alto"])
         self.assertEqual({p["grupo"] for p in g}, {"graficos"})
         for p in g:
             fin = p["dir"] + len(p["orig"]) // 2
-            self.assertTrue(0x9E00 <= p["dir"] and fin <= 0xA280,
-                            "la entrada de 0x%04X se sale de los tiles" % p["dir"])
+            self.assertTrue(any(ini <= p["dir"] and fin <= tope
+                                for ini, tope in TRAMOS),
+                            "la entrada de 0x%04X no cae en los tiles ni en la "
+                            "fuente" % p["dir"])
+        # Y las dos hojas aparecen de verdad: si una se quedara fuera, la
+        # comprobacion de arriba pasaria igual sin haber repintado nada.
+        for ini, tope in TRAMOS:
+            self.assertTrue(any(ini <= p["dir"] < tope for p in g),
+                            "ni una entrada en 0x%04X-0x%04X" % (ini, tope))
 
     def test_sin_lienzos_el_parche_se_queda_sin_graficos(self):
         """Si los PNG no estan, no hay entradas de graficos y el resto del
