@@ -26,8 +26,14 @@ RSLREG          equ 00138h
 EXPTBL          equ 0FCC1h
 SLTTBL          equ 0FCC5h
 
-; El registro del mapper ASCII16 para la ventana de 0x4000-0x7FFF
+; Los dos registros del mapper ASCII16. Cada uno manda en una ventana, y son
+; ventanas DISTINTAS: 0x6000 elige lo que se ve en 0x4000-0x7FFF -que es por
+; donde el plan copia los datos- y 0x7000 lo que se ve en 0x8000-0xBFFF, que
+; es por donde se asoma la musica. Los dos registros viven en la pagina 1, asi
+; que solo se pueden escribir mientras el cartucho este puesto ahi; medido en
+; una VG-8020, el banco elegido SOBREVIVE luego a conmutar la ranura.
 BANCO_VENTANA   equ 06000h
+BANCO_VENTANA_2 equ 07000h
 
 ; Cada entrada del plan son 8 bytes:
 ;   +0 op   +1 b (banco, valor o registro)   +2 src   +4 dst   +6 len
@@ -45,3 +51,12 @@ OP_VDP_REG      equ 10  ; registro b del VDP = byte bajo de src
 OP_PSG_REG      equ 11  ; registro b del PSG = byte bajo de src
 OP_ESPERA       equ 12  ; espera b cuadros (barridos del VDP)
 OP_SALTA        equ 13  ; SP = src, jp dst
+OP_BANCO_8000   equ 14  ; deja el banco b puesto en la ventana de 0x8000
+OP_RANURA_PAG2  equ 15  ; escribe en dst los bits de 0xA8 que ponen la pagina 2 en el cartucho
+
+; El ultimo codigo que existe. El interprete rechaza todo lo que pase de aqui y
+; se planta con el borde rojo, asi que esto hay que subirlo al anadir una
+; operacion: cuando se anadieron las dos de la musica se quedo sin tocar y el
+; cargador se colgaba antes de la primera copia, con el sintoma de que el stub
+; arrancaba y no se llegaba a 0x0190.
+OP_ULTIMA       equ OP_RANURA_PAG2

@@ -36,12 +36,26 @@ stub (work/plan.inc). Lo que hace, en orden:
      SCREEN 2, que el bufer piso (llega hasta 0x383F); pagina 1 a RAM.
   6. PSG como lo deja la cinta, pantalla encendida, SP=0xFDE8 y jp 0x0190.
 
+LA MUSICA (--musica <fichero.pt3>)
+
+Detras de los datos queda un hueco hasta el final de la ROM -hoy 2264 bytes-,
+y cae entero en el ultimo banco. Ahi van el reproductor PT3, el modulo y el
+puente, y ese banco se deja FIJADO en la ventana de 0x8000 antes de saltar al
+juego, mientras el registro del mapper todavia se puede escribir. Luego el
+juego corre con las cuatro paginas en RAM y la ROM se asoma solo durante la
+interrupcion, que es lo que hace el puente de 0x003B. Ademas cambia dos sitios
+del bloque medio: el gancho por cuadro y la lectura del nivel del menu, para
+que la musica arranque con el menu y calle al empezar la partida.
+
 Uso: haz_rom.py <work> <salida.rom> [--espera N] [--sin-pantalla]
+                                    [--musica <fichero.pt3>]
 
 `work` es el directorio con los cuerpos: el `work/` del parche para la cinta
 original, o `work/cuerpos_parche/` para la parcheada (los saca el Makefile de
 war_parche.tsx con las mismas dos herramientas). El plan, los binarios del
-cargador y plan.json se escriben en ese mismo directorio.
+cargador y plan.json se escriben en ese mismo directorio, y en `work/musica/`
+cuando se pide musica: las dos ROMs salen de los mismos cuerpos, asi que
+compartiendo directorio la segunda pisaria el plan y el stub de la primera.
 """
 import json
 import os
@@ -79,7 +93,31 @@ PSG_REGS = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xBF,
 # Codigos de operacion, los mismos de src/direcciones.inc
 OP = dict(FIN=0, ROM_RAM=1, ROM_VRAM=2, VRAM_RAM=3, LLENA_RAM=4, LLENA_VRAM=5,
           IDENT_VRAM=6, SPRITES_VRAM=7, PAG1_RAM=8, PAG1_CART=9, VDP_REG=10,
-          PSG_REG=11, ESPERA=12, SALTA=13)
+          PSG_REG=11, ESPERA=12, SALTA=13, BANCO_8000=14)
+
+# LA MUSICA (opcional, --musica). El reproductor y el modulo van en el hueco
+# que queda detras de los datos, que cae en el ultimo banco; ese banco se deja
+# FIJADO en la ventana de 0x8000 antes de saltar al juego, mientras el registro
+# del mapper todavia se puede escribir. Medido en una VG-8020: el banco
+# sobrevive a conmutar la ranura de la pagina 2, que es lo que permite que el
+# juego corra con las cuatro paginas en RAM y la ROM se asome solo durante la
+# interrupcion.
+VENTANA_8000 = 0x8000       # donde se ve el banco elegido con el registro 0x7000
+CABECERA_PT3 = 100          # los 100 bytes de texto (titulo y autor) no se meten
+PUENTE_RAM = 0x003B         # detras del `jp 0x0400` de 0x0038, en tierra de nadie
+# El gancho por cuadro que el juego deja vacio: 0x5E0F es `ld hl,00428h` y
+# 0x5E12 lo guarda en 0x0415. Cambiando su operando -dos bytes del bloque
+# medio- la interrupcion pasa a llamar al puente en vez de a un `ret`.
+GANCHO_RAM = 0x0415         # el operando del `call` de 0x0414, en la INTERRUPCION
+GANCHO_OPERANDO = 0x5E10    # y el `ld hl,nn` del bloque medio que lo rellena
+GANCHO_VACIO = 0x0428
+ORG_MEDIO = 0x5E00          # donde corre el bloque medio, ya recolocado
+# Y donde calla: MENU_TECLA_0 ya ha comprobado que la tecla es el '0' de
+# empezar la partida, y lo primero que hace es recoger el nivel elegido. Ese
+# `ld a,(MENU_NIVEL)` se cambia por un `call` al trozo que avisa al puente y
+# hace luego la carga que se llevo por delante.
+MENU_LEE_NIVEL = 0x5E86     # `3A 70 5E`, tres bytes
+MENU_NIVEL = 0x5E70         # el operando del `ld a,nn` de 0x5E6F, que guarda el nivel
 
 
 class Plan:
@@ -113,6 +151,19 @@ class Plan:
                 for nombre, b, src, dst, n, nota in self.ops]
 
 
+def lee_simbolos(ruta):
+    """Los `ETIQUETA EQU 1234H` que escribe pasmo. Las direcciones de las
+    rutinas salen de aqui y no de contarlas a mano: asi no pueden quedarse
+    viejas cuando el fuente cambia."""
+    simbolos = {}
+    with open(ruta) as f:
+        for linea in f:
+            partes = linea.split()
+            if len(partes) == 3 and partes[1].upper() == "EQU":
+                simbolos[partes[0]] = int(partes[2].rstrip("Hh"), 16)
+    return simbolos
+
+
 def pasmo(fuente, salida, simbolos, equs=()):
     orden = ["pasmo", "--bin"]
     for k, v in equs:
@@ -133,15 +184,26 @@ def main(argv):
     work, salida = argv[1], argv[2]
     espera = 150
     con_pantalla = True
+    musica = None
     i = 3
     while i < len(argv):
         if argv[i] == "--espera":
             espera = int(argv[i + 1]); i += 2
         elif argv[i] == "--sin-pantalla":
             con_pantalla = False; i += 1
+        elif argv[i] == "--musica":
+            musica = argv[i + 1]; i += 2
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
+
+    # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
+    # ensamblado, los .sym- va aparte cuando hay musica: las dos ROMs salen de
+    # los mismos cuerpos y, compartiendo directorio, la segunda pisaba el plan y
+    # el stub de la primera. Los tests cargaban entonces war.rom con el plan de
+    # war_musica.rom y fallaban sin que nada estuviera realmente roto.
+    salidas = os.path.join(work, "musica") if musica else work
+    os.makedirs(salidas, exist_ok=True)
 
     cuerpos = {}
     for nombre in ("bajo", "medio", "alto", "pantalla"):
@@ -154,6 +216,7 @@ def main(argv):
     # 6144 de colores (src/war_pantalla.asm). El codigo no hace falta.
     patrones = pantalla[100:100 + 6144]
     colores = pantalla[100 + 6144:100 + 12288]
+
 
     # ------------------------------------------------------------ disposicion
     datos = []
@@ -173,6 +236,49 @@ def main(argv):
     mete("alto", alto)
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
+    # ---------------------------------------------------------------- musica
+    # El hueco que queda detras de los datos, hasta el final de la ROM. Como va
+    # pegado al final, cae entero dentro del ultimo banco, que es el que se deja
+    # puesto en la ventana de 0x8000. La direccion de ensamblado sale de aqui y
+    # se le pasa a pasmo: asi no puede quedarse vieja si los datos crecen.
+    hueco, libre_hueco = pos, TAM_ROM - pos
+    banco_musica = hueco // TAM_BANCO
+    musica_org = VENTANA_8000 + hueco - banco_musica * TAM_BANCO
+    bloque_musica = None
+    if musica:
+        assert banco_musica == (TAM_ROM - 1) // TAM_BANCO, \
+            "el hueco empieza en el banco %d y no en el ultimo" % banco_musica
+        with open(musica, "rb") as f:
+            pt3 = f.read()
+        assert len(pt3) > CABECERA_PT3, "%s no llega ni a la cabecera" % musica
+        # PT3_INIT quiere la direccion del modulo MENOS 100, que es justo lo que
+        # queda al quitarle la cabecera de texto: la misma cuenta que hace
+        # msx-msxlib con CFG_PT3_HEADERLESS.
+        with open(os.path.join(salidas, "modulo.bin"), "wb") as f:
+            f.write(pt3[CABECERA_PT3:])
+        bloque_musica = pasmo(os.path.join(SRC, "musica.asm"),
+                              os.path.join(salidas, "musica.bin"),
+                              os.path.join(salidas, "musica.sym"),
+                              equs=[("MUSICA_ORG", musica_org)])
+        sim = lee_simbolos(os.path.join(salidas, "musica.sym"))
+        # Y el puente, que corre en la RAM de la pagina 0 pero VIAJA en la ROM,
+        # detras del reproductor, para que el plan lo copie a su sitio. Se
+        # ensambla aparte porque su `org` es otro, y las direcciones de las
+        # rutinas se las damos leidas del .sym de lo que acabamos de ensamblar.
+        puente = pasmo(os.path.join(SRC, "puente.asm"),
+                       os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
+                       equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
+                             ("MENU_NIVEL", MENU_NIVEL)]
+                             + [(k, sim[k]) for k in ("PT3_INIT", "PT3_PLAY", "PT3_ROUT",
+                                                      "PT3_MUTE", "MODULO")])
+        sim_puente = lee_simbolos(os.path.join(salidas, "puente.sym"))
+        puente_rom = hueco + len(bloque_musica)
+        bloque_musica += puente
+        assert len(bloque_musica) <= libre_hueco, \
+            "la musica ocupa %d B y en el hueco caben %d" % (len(bloque_musica), libre_hueco)
+        assert PUENTE_RAM + len(puente) <= BUZON_POKES[0], \
+            "el puente llega a 0x%04X y pisaria el buzon de POKEs" % (PUENTE_RAM + len(puente))
+
     # El bloque medio, cargado en 0x3F4F, cruza a la pagina 1 en 0x4000
     en_pagina0 = 0x4000 - CARGA_MEDIO                  # 177 bytes
     en_pagina1 = len(medio) - en_pagina0               # 14400 bytes
@@ -181,6 +287,13 @@ def main(argv):
 
     # ------------------------------------------------------------------ plan
     p = Plan()
+    if musica:
+        # Lo primero de todo, que es cuando la pagina 1 es el cartucho con toda
+        # seguridad y el registro del mapper se puede escribir. Una vez puesto,
+        # el banco se queda: ni las copias -que mueven la OTRA ventana, la de
+        # 0x4000- ni el conmutar la ranura mas adelante lo tocan.
+        p.op("BANCO_8000", banco_musica,
+             nota="banco %d fijado en la ventana de 0x8000: la musica" % banco_musica)
     p.op("VDP_REG", 1, 0xA0, nota="pantalla apagada mientras se prepara la VRAM")
     for r, v in enumerate(VDP_REGS):
         if r != 1:
@@ -210,6 +323,13 @@ def main(argv):
     p.copia_rom("ROM_RAM", disposicion["bajo"]["rom"], CARGA_BAJO, len(bajo), "bloque bajo a 0x0190, donde corre")
     p.copia_rom("ROM_RAM", disposicion["medio"]["rom"], CARGA_MEDIO, en_pagina0, "bloque medio 0x3F4F-0x3FFF")
     p.op("LLENA_RAM", 0, 0, BUZON_POKES[0], BUZON_POKES[1], "buzon de POKEs de 0x012C a cero: sin POKEs")
+    if musica:
+        # El puente a su sitio, y dentro de el la ranura donde ha resultado
+        # estar el cartucho, que hasta ahora no se sabia.
+        p.copia_rom("ROM_RAM", puente_rom, PUENTE_RAM, len(puente),
+                    "el puente de la musica a 0x%04X, donde lo llama el gancho" % PUENTE_RAM)
+        p.op("RANURA_PAG2", 0, 0, sim_puente["PUENTE_RANURA"] + 1, 0,
+             "y la ranura del cartucho en el `or` de 0x%04X" % (sim_puente["PUENTE_RANURA"] + 1))
     p.copia_rom("ROM_RAM", disposicion["alto"]["rom"], CARGA_ALTO, len(alto), "bloque alto a 0x88B8, como cae de la cinta")
     # y la pagina 1
     p.op("PAG1_RAM", nota="fuera el cartucho de la pagina 1")
@@ -228,16 +348,15 @@ def main(argv):
     p.op("SALTA", 0, PILA, SALTO, nota="SP=0x%04X y a 0x%04X, como el cargador de la cinta" % (PILA, SALTO))
     p.op("FIN")
 
-    os.makedirs(work, exist_ok=True)
-    with open(os.path.join(work, "plan.inc"), "w") as f:
+    with open(os.path.join(salidas, "plan.inc"), "w") as f:
         f.write("; generado por tools/haz_rom.py: no editar\n")
         f.write(p.inc())
 
     # ------------------------------------------------------------ ensamblar
     stub = pasmo(os.path.join(SRC, "cargador_ram.asm"),
-                 os.path.join(work, "cargador_ram.bin"), os.path.join(work, "cargador_ram.sym"))
+                 os.path.join(salidas, "cargador_ram.bin"), os.path.join(salidas, "cargador_ram.sym"))
     arranque = pasmo(os.path.join(SRC, "cargador_rom.asm"),
-                     os.path.join(work, "cargador_rom.bin"), os.path.join(work, "cargador_rom.sym"),
+                     os.path.join(salidas, "cargador_rom.bin"), os.path.join(salidas, "cargador_rom.sym"),
                      equs=[("STUB_LEN", len(stub))])
     assert arranque[:2] == b"AB"
     cabeza = arranque + stub
@@ -249,23 +368,86 @@ def main(argv):
     for cuerpo in datos:
         rom[pos:pos + len(cuerpo)] = cuerpo
         pos += len(cuerpo)
+    assert pos == hueco, "la disposicion no ha salido donde se calculo"
+    if bloque_musica:
+        rom[hueco:hueco + len(bloque_musica)] = bloque_musica
+        # Los CINCO unicos bytes del juego que esta ROM cambia, y la razon de
+        # que la musica vaya en un fichero aparte: en war.rom el gancho sigue
+        # siendo el `ret` de siempre y el menu no llama a nadie.
+        base = disposicion["medio"]["rom"] - ORG_MEDIO
+
+        def parchea(dir_, viejo, nuevo, que):
+            o = base + dir_
+            assert rom[o:o + len(viejo)] == viejo, \
+                "en 0x%04X no esta %s sino %s" % (dir_, viejo.hex(), bytes(rom[o:o + len(viejo)]).hex())
+            rom[o:o + len(nuevo)] = nuevo
+            parches.append(dict(dir=dir_, rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que))
+
+        parches = []
+        parchea(GANCHO_OPERANDO, GANCHO_VACIO.to_bytes(2, "little"),
+                PUENTE_RAM.to_bytes(2, "little"),
+                "el gancho por cuadro pasa del `ret` de 0x%04X al puente" % GANCHO_VACIO)
+        parchea(MENU_LEE_NIVEL, bytes([0x3A]) + MENU_NIVEL.to_bytes(2, "little"),
+                bytes([0xCD]) + sim_puente["PARA_LA_MUSICA"].to_bytes(2, "little"),
+                "al pulsar 0 el menu avisa al puente antes de leer el nivel")
     with open(salida, "wb") as f:
         f.write(rom)
 
+    if bloque_musica:
+        disposicion["musica"] = dict(rom=hueco, bytes=len(bloque_musica),
+                                     banco=banco_musica, org=musica_org,
+                                     pt3=os.path.basename(musica),
+                                     reproductor=len(bloque_musica) - len(puente),
+                                     modulo=sim["MODULO"], init=sim["PT3_INIT"],
+                                     play=sim["PT3_PLAY"], rout=sim["PT3_ROUT"],
+                                     mute=sim["PT3_MUTE"],
+                                     puente=dict(rom=puente_rom, ram=PUENTE_RAM,
+                                                 bytes=len(puente),
+                                                 para=sim_puente["PARA_LA_MUSICA"]),
+                                     parches=parches)
+
     resumen = dict(rom=os.path.basename(salida), bytes=TAM_ROM, mapper="ASCII16",
                    arranque=len(arranque), stub=len(stub), stub_ram=STUB, plan_entradas=len(p.ops),
-                   datos=disposicion, fin_datos=pos, libre=TAM_ROM - pos,
+                   datos=disposicion, fin_datos=pos,
+                   libre=TAM_ROM - pos - (len(bloque_musica) if bloque_musica else 0),
                    carga=dict(bajo=CARGA_BAJO, medio=CARGA_MEDIO, alto=CARGA_ALTO, salto=SALTO, pila=PILA),
                    pantalla_de_carga=con_pantalla, espera_cuadros=espera,
                    vdp_regs=VDP_REGS, psg_regs=PSG_REGS, plan=p.json())
-    with open(os.path.join(work, "plan.json"), "w") as f:
+    with open(os.path.join(salidas, "plan.json"), "w") as f:
         json.dump(resumen, f, indent=1)
+
+    # Las direcciones para las sondas de openMSX, en un fichero que se hace
+    # `source`. Escritas a mano se quedan viejas en cuanto el puente cambia de
+    # tamano: PUENTE_SONANDO se movio de 0x006E a 0x007C al anadirle el parar,
+    # y la sonda siguio leyendo la vieja y dando un valor que no era.
+    if bloque_musica:
+        with open(os.path.join(salidas, "musica.tcl"), "w") as f:
+            f.write("# generado por tools/haz_rom.py: no editar\n")
+            for k, v in (("PUENTE", PUENTE_RAM), ("PUENTE_FIN", PUENTE_RAM + len(puente) - 1),
+                         ("PUENTE_SONANDO", sim_puente["PUENTE_SONANDO"]),
+                         ("PUENTE_RANURA", sim_puente["PUENTE_RANURA"] + 1),
+                         ("PARA_LA_MUSICA", sim_puente["PARA_LA_MUSICA"]),
+                         ("GANCHO", GANCHO_RAM), ("GANCHO_VACIO", GANCHO_VACIO),
+                         ("PT3_SETUP", sim_puente["PT3_SETUP"]),
+                         ("AYREGS", sim_puente["AYREGS"])):
+                f.write("set ::%-15s 0x%04X\n" % (k, v))
 
     print("%s: %d bytes, %s" % (salida, TAM_ROM, resumen["mapper"]))
     print("  arranque %d B + stub %d B (plan de %d entradas) en 0x0000; datos de 0x%04X a 0x%04X; libres %d B"
-          % (len(arranque), len(stub), len(p.ops), INICIO_DATOS, pos - 1, TAM_ROM - pos))
+          % (len(arranque), len(stub), len(p.ops), INICIO_DATOS, pos - 1, resumen["libre"]))
     for nombre, d in disposicion.items():
         print("  %-9s ROM 0x%05X  %5d B" % (nombre, d["rom"], d["bytes"]))
+    if bloque_musica:
+        m = disposicion["musica"]
+        print("  la musica es %s: banco %d, se ve en 0x%04X-0x%04X por la ventana de 0x8000"
+              % (m["pt3"], m["banco"], m["org"], m["org"] + m["bytes"] - 1))
+        print("     PT3_INIT 0x%04X  PT3_PLAY 0x%04X  PT3_ROUT 0x%04X  modulo 0x%04X (a INIT se le pasa 0x%04X)"
+              % (m["init"], m["play"], m["rout"], m["modulo"], m["modulo"] - CABECERA_PT3))
+        print("     el puente: %d B de ROM 0x%05X a RAM 0x%04X; PARA_LA_MUSICA en 0x%04X"
+              % (m["puente"]["bytes"], m["puente"]["rom"], m["puente"]["ram"], m["puente"]["para"]))
+        for q in m["parches"]:
+            print("     0x%04X del bloque medio: %s -> %s, %s"
+                  % (q["dir"], q["orig"], q["nuevo"], q["que"]))
     return 0
 
 

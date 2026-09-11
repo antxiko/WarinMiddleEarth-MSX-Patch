@@ -14,6 +14,16 @@ work/*
 !work/msx.sym
 
 # -----------------------------------------------------------------------------
+# El reproductor PT3
+# -----------------------------------------------------------------------------
+# Tampoco se distribuye: es de Bulba / Dioniso / msxKun / SapphiRe y viaja en
+# msx-msxlib sin licencia escrita. Lo que si va aqui es tools/convierte_pt3.py,
+# que lo traduce de asMSX a pasmo, y `make src/cartucho/pt3_player.asm` lo
+# genera de tu copia. La musica (.pt3) es de su autor y tampoco viaja.
+src/cartucho/pt3_player.asm
+*.pt3
+
+# -----------------------------------------------------------------------------
 # La cinta original
 # -----------------------------------------------------------------------------
 # No se distribuye la imagen de cinta: cada cual pone la suya. Los listados

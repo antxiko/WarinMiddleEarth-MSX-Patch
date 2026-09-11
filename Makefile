@@ -129,6 +129,10 @@ imagenes: extracted/.stamp
 	@python3 tools/cuerpo_parcheado.py alto work/alto_parcheado.raw
 	@python3 tools/render_graficos.py work/alto_parcheado.raw work/laminas_parche
 	@cp work/laminas_parche/tiles-del-mapa.png docs/imagenes/tiles-repintados.png
+	@# Y lo mismo con la fuente, repintada desde el 2026-09-11. Sin esto la web
+	@# ensena solo la de la cinta: regenerar las imagenes no cambiaba un byte
+	@# porque ninguna lamina salia del bloque parcheado.
+	@cp work/laminas_parche/fuente.png docs/imagenes/fuente-repintada.png
 	@# EL MAPA ENTERO, las dos veces. El mapa viene comprimido en la propia
 	@# cinta (0x16ED bytes de parejas cuenta/valor en 0xCC00), asi que esto no
 	@# necesita el emulador para nada.
@@ -213,11 +217,50 @@ OPENMSX  := /c/Program\ Files/openMSX/openmsx.exe
 MAQUINA  := Philips_VG_8020
 ESPERA   := 150
 
-.PHONY: rom rom_parche estado_cinta verifica_rom verifica_rom_parche captura_rom
+# LA MUSICA. El .pt3 NO va en el repositorio: es de su autor, y war_musica.rom
+# tampoco se distribuye. Por defecto se coge el de RUN23, de KNM
+# (twitter.com/DGrijando), que viaja en msx-msxlib (BSD 3-Clause, de Nestor
+# Sancho); con otro modulo basta cambiar esta variable:
+#   make verifica_musica MUSICA=/ruta/a/lo_que_sea.pt3
+# (la ruta va relativa al repositorio y no por $(HOME), que en el make de msys
+# es /home/usuario y no el del usuario de Windows)
+MUSICA   := ../../msx-msxlib/games/examples/pt3music/RUN23_ShuffleOne.pt3
+# El reproductor TAMPOCO va en el repositorio, por lo mismo que no va la cinta:
+# es de sus autores -Bulba / Dioniso / msxKun / SapphiRe- y viaja en msx-msxlib
+# sin una licencia escrita, solo un "hope you find useful this code". Aqui va la
+# herramienta que lo traduce de asMSX a pasmo; el fuente lo pone cada cual.
+PT3SRC   := ../../msx-msxlib/libext/pt3/PT3-ROM.ASM
+CARTUCHO := src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc
+
+.PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica captura_rom
 
 rom: war.rom
-war.rom: extract src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc tools/haz_rom.py
+war.rom: extract $(CARTUCHO) tools/haz_rom.py
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA)
+
+# La misma ROM con el reproductor PT3 y un modulo metidos en el hueco que queda
+# al final del ultimo banco, sonando en el MENU. Cambia dos sitios del bloque
+# medio -el gancho por cuadro y la lectura del nivel-, y por eso es un fichero
+# aparte: war.rom se queda intacta y cotejada.
+rom_musica: war_musica.rom
+war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc
+	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --musica "$(MUSICA)"
+
+# El reproductor, traducido de la sintaxis de asMSX a la de pasmo. La traduccion
+# es mecanica -241 corchetes de indireccion, 46 desplazamientos de IX que hay que
+# calcular, un modulo que pasmo no entiende- y por eso la hace una herramienta:
+# lo que la comprueba no es leerla, es que pasmo la ensamble.
+src/cartucho/pt3_player.asm: tools/convierte_pt3.py
+	@test -f "$(PT3SRC)" || { echo ""; \
+	  echo "  Falta el reproductor PT3: $(PT3SRC)"; \
+	  echo ""; \
+	  echo "  No se distribuye aqui (ver AVISO-LEGAL.md): es de Bulba, Dioniso,"; \
+	  echo "  msxKun y SapphiRe, y viaja en msx-msxlib, de Nestor Sancho:"; \
+	  echo "      https://github.com/theNestruo/msx-msxlib"; \
+	  echo "  Pon la ruta con: make $@ PT3SRC=/ruta/a/PT3-ROM.ASM"; \
+	  echo ""; exit 1; }
+	python3 tools/convierte_pt3.py "$(PT3SRC)" $@
 
 # Los cuerpos de la cinta parcheada salen de war_parche.tsx con las mismas dos
 # herramientas que los de la original: asi la ROM parcheada se monta de la
@@ -252,6 +295,17 @@ verifica_rom_parche: war_parche.rom estado_cinta
 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
 	@grep -v volcado work/rom_parche_$(MAQUINA)/verifica_rom.log
 	python3 tools/coteja_rom.py work/rom_parche_$(MAQUINA) work/omsx_v4 work/estado_cinta
+
+# ¿SUENA? El emulador arranca la ROM con musica, comprueba las cuatro cosas que
+# tienen que cumplirse -gancho, puente, ejecucion y PSG en movimiento-, mide el
+# coste por cuadro, pulsa 0 y comprueba que calla. Sale distinto de cero si
+# alguna falla: mirar un log no es verificar.
+verifica_musica: war_musica.rom
+	@rm -rf work/musica_$(MAQUINA)
+	WAR_ROM="$(abspath war_musica.rom)" WAR_OUT="$(abspath work/musica_$(MAQUINA))" \
+	  WAR_DIRS="$(abspath work/musica/musica.tcl)" \
+	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_musica.tcl
+	@cat work/musica_$(MAQUINA)/musica.log
 
 # Ver el juego corriendo desde el cartucho: el menu y, tras pulsar 0, el mapa.
 captura_rom: war.rom

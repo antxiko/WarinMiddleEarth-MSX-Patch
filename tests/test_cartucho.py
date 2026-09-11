@@ -26,6 +26,8 @@ sys.path.insert(0, os.path.join(RAIZ, "tools"))
 ROM = os.path.join(RAIZ, "war.rom")
 WORK = os.path.join(RAIZ, "work")
 PLAN = os.path.join(WORK, "plan.json")
+ROM_MUSICA = os.path.join(RAIZ, "war_musica.rom")
+WORK_MUSICA = os.path.join(WORK, "musica")
 
 
 def lee(ruta):
@@ -41,11 +43,19 @@ def hace_falta(*rutas):
 
 class TestLaRom(unittest.TestCase):
 
+    # Los mismos requisitos valen para war.rom y para war_musica.rom; lo unico
+    # que cambia es de donde salen. Los derivados de la ROM con musica van a
+    # work/musica/ para que las dos no se pisen el plan ni el stub.
+    ROM = ROM
+    DERIVADOS = WORK
+
     def setUp(self):
-        hace_falta(ROM, PLAN)
-        self.rom = lee(ROM)
-        with open(PLAN) as f:
+        plan = os.path.join(self.DERIVADOS, "plan.json")
+        hace_falta(self.ROM, plan)
+        self.rom = lee(self.ROM)
+        with open(plan) as f:
             self.plan = json.load(f)
+        self.musica = self.plan["datos"].get("musica")
 
     def test_cabecera_ab_y_tamano(self):
         self.assertEqual(len(self.rom), 0x10000)
@@ -58,7 +68,7 @@ class TestLaRom(unittest.TestCase):
         cabeza = self.plan["arranque"] + self.plan["stub"]
         self.assertLessEqual(cabeza, 0x800)
         self.assertEqual(set(self.rom[cabeza:0x800]), {0xFF}, "entre el stub y los datos solo puede haber 0xFF")
-        with open(os.path.join(WORK, "cargador_ram.bin"), "rb") as f:
+        with open(os.path.join(self.DERIVADOS, "cargador_ram.bin"), "rb") as f:
             stub = f.read()
         self.assertEqual(self.rom[self.plan["arranque"]:cabeza], stub, "el stub de la ROM no es el ensamblado")
 
@@ -67,16 +77,27 @@ class TestLaRom(unittest.TestCase):
         esperado = dict(patrones=pantalla[100:100 + 6144], colores=pantalla[100 + 6144:100 + 12288],
                         bajo=lee(os.path.join(WORK, "bajo.raw")), medio=lee(os.path.join(WORK, "medio.raw")),
                         alto=lee(os.path.join(WORK, "alto.raw")))
+        # Con musica, el bloque medio lleva los parches del gancho y del menu:
+        # se aplican sobre lo esperado, que para eso el plan dice cuales son.
+        for q in (self.musica or {}).get("parches", []):
+            o = q["dir"] - 0x5E00
+            viejo, nuevo = bytes.fromhex(q["orig"]), bytes.fromhex(q["nuevo"])
+            self.assertEqual(esperado["medio"][o:o + len(viejo)], viejo,
+                             "el parche de 0x%04X no cae sobre lo que dice" % q["dir"])
+            esperado["medio"] = esperado["medio"][:o] + nuevo + esperado["medio"][o + len(nuevo):]
         for nombre, d in self.plan["datos"].items():
+            if nombre == "musica":
+                continue        # no sale de la cinta; tiene sus propios tests
             self.assertEqual(self.rom[d["rom"]:d["rom"] + d["bytes"]], esperado[nombre], nombre)
-        fin = max(d["rom"] + d["bytes"] for d in self.plan["datos"].values())
+        fin = max(d["rom"] + d["bytes"] for n, d in self.plan["datos"].items() if n != "musica")
         self.assertEqual(fin, self.plan["fin_datos"])
-        self.assertEqual(set(self.rom[fin:]), {0xFF})
+        relleno = self.rom[fin + (self.musica["bytes"] if self.musica else 0):]
+        self.assertEqual(set(relleno), {0xFF})
 
     def test_las_variables_del_stub_estan_donde_dice_direcciones_inc(self):
         simbolos = {}
         for fichero in ("cargador_ram.sym", "cargador_rom.sym"):
-            with open(os.path.join(WORK, fichero)) as f:
+            with open(os.path.join(self.DERIVADOS, fichero)) as f:
                 for linea in f:
                     m = re.match(r"(\w+)\s+EQU\s+0?([0-9A-F]+)H", linea.strip())
                     if m:
@@ -96,6 +117,7 @@ class TestLaRom(unittest.TestCase):
         vdp = [None] * 8
         psg = [None] * 14
         pagina1 = "cart"
+        ventana_8000 = None
         salto = None
         escribe_pagina1_con_cart = []
         lee_rom_sin_cart = []
@@ -138,18 +160,33 @@ class TestLaRom(unittest.TestCase):
                 psg[op["b"]] = op["src"] & 0xFF
             elif nombre == "ESPERA":
                 self.assertGreater(op["b"], 0)
+            elif nombre == "BANCO_8000":
+                # El registro vive en 0x7000, o sea en la pagina 1: solo se
+                # puede escribir con el cartucho puesto ahi.
+                self.assertEqual(pagina1, "cart",
+                                 "la ventana de 0x8000 se fija sin el cartucho en la pagina 1")
+                ventana_8000 = op["b"]
+            elif nombre == "RANURA_PAG2":
+                escribe_ram(op["dst"], b"\x00")   # un byte, el operando del `or` del puente
             elif nombre == "SALTA":
                 salto = (op["src"], op["dst"], pagina1)
                 break
             else:
                 self.fail("op desconocida en el plan: %s" % nombre)
 
+        if "musica" in self.plan["datos"]:
+            self.assertEqual(ventana_8000, self.plan["datos"]["musica"]["banco"],
+                             "la ventana de 0x8000 no se queda en el banco de la musica")
         self.assertEqual(escribe_pagina1_con_cart, [], "el plan escribe en la pagina 1 con el cartucho puesto")
         self.assertEqual(lee_rom_sin_cart, [], "el plan lee la ROM con el cartucho quitado")
         self.assertEqual(salto, (0xFDE8, 0x0190, "ram"), "hay que saltar a 0x0190 con SP=0xFDE8 y las cuatro paginas en RAM")
 
         # la RAM: como la deja el cargador de la cinta en 0xD741
         bajo, medio, alto = (lee(os.path.join(WORK, n + ".raw")) for n in ("bajo", "medio", "alto"))
+        for q in (self.musica or {}).get("parches", []):
+            o = q["dir"] - 0x5E00
+            nuevo = bytes.fromhex(q["nuevo"])
+            medio = medio[:o] + nuevo + medio[o + len(nuevo):]
         self.assertEqual(ram[0x0190:0x0190 + len(bajo)], bajo)
         self.assertEqual(ram[0x3F4F:0x3F4F + len(medio)], medio)
         self.assertEqual(ram[0x88B8:0x88B8 + len(alto)], alto)
@@ -173,6 +210,157 @@ class TestLaRom(unittest.TestCase):
         psg = list(lee(os.path.join(estado, "psgregs_5e00.bin"))[:14])
         psg[7] |= 0x80  # el puerto B del PSG es de salida en el MSX
         self.assertEqual(psg, self.plan["psg_regs"])
+
+
+class TestLaRomConMusica(TestLaRom):
+    """Los MISMOS requisitos de siempre, pero sobre war_musica.rom.
+
+    Heredar en vez de copiar es lo que da valor: la ROM con musica tiene que
+    seguir dejando la RAM y la VRAM como la cinta, saltar a 0x0190 con las
+    cuatro paginas en RAM y no escribir en la pagina 1 con el cartucho puesto.
+    Lo unico que se le permite de mas son los parches que el propio plan
+    declara, y el hueco del final ocupado.
+    """
+    ROM = ROM_MUSICA
+    DERIVADOS = WORK_MUSICA
+
+
+class TestLaMusica(unittest.TestCase):
+    """Lo que solo tiene sentido con musica: donde cae, que cambia y que no."""
+
+    def setUp(self):
+        plan = os.path.join(WORK_MUSICA, "plan.json")
+        hace_falta(ROM_MUSICA, plan)
+        self.rom = lee(ROM_MUSICA)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        self.m = self.plan["datos"]["musica"]
+
+    def test_cabe_en_el_hueco_y_no_se_sale_del_ultimo_banco(self):
+        ini = self.m["rom"]
+        self.assertEqual(ini, self.plan["fin_datos"], "la musica no empieza donde acaban los datos")
+        self.assertEqual(ini // 0x4000, self.m["banco"])
+        fin = ini + self.m["bytes"]
+        self.assertLessEqual(fin, len(self.rom), "la musica se sale de la ROM")
+        self.assertEqual(fin // 0x4000, self.m["banco"] if fin % 0x4000 else self.m["banco"] + 1,
+                         "la musica cruza a otro banco y por la ventana no se veria entera")
+        self.assertGreaterEqual(self.plan["libre"], 0)
+
+    def test_lo_que_se_ve_por_la_ventana_de_0x8000_es_lo_que_hay_en_la_rom(self):
+        """El reproductor se ensambla con un `org` que NO es donde vive en la
+        ROM, sino donde se vera al poner su banco en la ventana de 0x8000. Si
+        esa cuenta estuviera mal, cada `call` del reproductor saltaria a otro
+        sitio. Aqui se comprueba la correspondencia y que las direcciones que
+        el plan publica caen dentro de la ventana."""
+        self.assertEqual(self.m["org"], 0x8000 + self.m["rom"] - self.m["banco"] * 0x4000)
+        for rutina in ("init", "play", "rout", "mute", "modulo"):
+            d = self.m[rutina]
+            self.assertTrue(self.m["org"] <= d < self.m["org"] + self.m["bytes"],
+                            "%s cae en 0x%04X, fuera del bloque" % (rutina, d))
+        with open(os.path.join(WORK_MUSICA, "musica.bin"), "rb") as f:
+            bloque = f.read()
+        self.assertEqual(self.rom[self.m["rom"]:self.m["rom"] + len(bloque)], bloque,
+                         "lo que hay en la ROM no es el reproductor ensamblado")
+
+    def test_el_modulo_va_sin_sus_cien_bytes_de_cabecera(self):
+        """A PT3_INIT se le pasa MODULO-100 porque el modulo viaja sin la
+        cabecera de texto. Si se metiera entero, el reproductor leeria el
+        titulo como si fueran punteros."""
+        with open(os.path.join(WORK_MUSICA, "modulo.bin"), "rb") as f:
+            modulo = f.read()
+        ini = self.m["rom"] + self.m["modulo"] - self.m["org"]
+        self.assertEqual(self.rom[ini:ini + len(modulo)], modulo)
+        # El byte 0 del modulo recortado es el que el reproductor lee como
+        # Delay, o sea el byte 100 del fichero: si alguien quitara el recorte,
+        # aqui saldria una letra del titulo.
+        self.assertLess(modulo[0], 0x20, "el primer byte no parece el Delay del PT3 sino texto")
+
+    def test_el_puente_cabe_donde_dice_y_no_pisa_el_buzon_de_pokes(self):
+        p = self.m["puente"]
+        self.assertEqual(p["ram"], 0x003B, "el puente tiene que ir detras del `jp 0x0400` de 0x0038")
+        self.assertLessEqual(p["ram"] + p["bytes"], 0x012C,
+                             "el puente llega al buzon de POKEs de 0x012C")
+        self.assertTrue(p["ram"] <= p["para"] < p["ram"] + p["bytes"],
+                        "PARA_LA_MUSICA cae fuera del puente")
+        with open(os.path.join(WORK_MUSICA, "puente.bin"), "rb") as f:
+            puente = f.read()
+        self.assertEqual(len(puente), p["bytes"])
+        self.assertEqual(self.rom[p["rom"]:p["rom"] + len(puente)], puente)
+
+    def test_el_puente_solo_conmuta_la_pagina_2(self):
+        """LO QUE NO PUEDE PASAR NUNCA: que el puente toque la pagina de la
+        pila.
+
+        La pila del juego esta en 0x5BFF y el area de trabajo del reproductor en
+        0x5C00, las dos en la pagina 1; el propio puente y el gancho que lo llama
+        estan en la 0, y la pila del sistema y el mapa en la 3. Si al asomar la
+        ROM se cambiara cualquiera de esas tres, el `ret` de vuelta leeria de
+        una pagina distinta de la que empujo la llamada y la maquina se iria.
+
+        En 0xA8 cada pagina son dos bits: 0-1 la pagina 0, 2-3 la 1, 4-5 la 2 y
+        6-7 la 3. La mascara 0xCF -11001111- borra SOLO los bits de la pagina 2
+        y conserva las otras tres tal y como estaban, que es justo lo exigido.
+        """
+        with open(os.path.join(WORK_MUSICA, "puente.bin"), "rb") as f:
+            puente = f.read()
+        escrituras = [i for i in range(len(puente) - 1) if puente[i:i + 2] == b"\xD3\xA8"]
+        self.assertEqual(len(escrituras), 2,
+                         "el puente tiene que escribir 0xA8 dos veces: al asomar la ROM y al devolverla")
+        # La primera escritura va precedida de `in a,(0A8h)` (DB A8), el `and`
+        # de la mascara y el `or` de la ranura: se parte de lo que HAY, no de un
+        # valor inventado, que es lo que hace que las otras tres paginas queden
+        # como estuvieran.
+        cabeza = puente[:escrituras[0]]
+        self.assertIn(b"\xDB\xA8", cabeza, "el puente no lee 0xA8 antes de escribirlo")
+        self.assertIn(b"\xE6\xCF", cabeza,
+                      "el puente no enmascara con 0xCF: estaria tocando paginas que no son la 2")
+        self.assertNotIn(b"\xE6", cabeza[cabeza.index(b"\xE6\xCF") + 2:],
+                         "hay un segundo `and` antes de conmutar")
+        # Y la segunda devuelve exactamente lo leido, que viajo por la pila.
+        self.assertEqual(puente[escrituras[1] - 1], 0xF1, "antes de devolver 0xA8 falta el `pop af`")
+        self.assertIn(b"\xF5", puente[:escrituras[0]], "falta el `push af` que guarda como estaba")
+
+    def test_el_plan_copia_el_puente_a_su_sitio_y_le_da_la_ranura(self):
+        p = self.m["puente"]
+        copias = [o for o in self.plan["plan"] if o["op"] == "ROM_RAM" and o["dst"] == p["ram"]]
+        self.assertEqual(len(copias), 1, "el puente no se copia exactamente una vez")
+        self.assertEqual(copias[0]["len"], p["bytes"])
+        ranura = [o for o in self.plan["plan"] if o["op"] == "RANURA_PAG2"]
+        self.assertEqual(len(ranura), 1, "nadie rellena la ranura del puente, o la rellenan dos veces")
+        self.assertTrue(p["ram"] <= ranura[0]["dst"] < p["ram"] + p["bytes"],
+                        "la ranura se escribe fuera del puente")
+
+    def test_la_musica_solo_cambia_cinco_bytes_del_juego(self):
+        """La prueba de que la musica no toca el juego: war.rom y
+        war_musica.rom, montadas de los mismos cuerpos, solo pueden diferir en
+        el cargador -que lleva dos operaciones mas-, en el hueco del final y en
+        los bytes que el plan declara como parches."""
+        hace_falta(ROM, PLAN)
+        sin = lee(ROM)
+        self.assertEqual(len(sin), len(self.rom))
+        cabeza = 0x0800                      # arranque + stub + plan
+        hueco = self.plan["fin_datos"]
+        permitidos = set()
+        for q in self.m["parches"]:
+            permitidos.update(range(q["rom"], q["rom"] + len(bytes.fromhex(q["nuevo"]))))
+        fuera = [i for i in range(cabeza, hueco)
+                 if sin[i] != self.rom[i] and i not in permitidos]
+        self.assertEqual(fuera, [], "la musica cambia bytes del juego que no declara")
+        self.assertEqual(len(permitidos), 5, "los parches del juego tienen que ser cinco bytes")
+        for q in self.m["parches"]:
+            self.assertEqual(bytes(sin[q["rom"]:q["rom"] + len(bytes.fromhex(q["orig"]))]),
+                             bytes.fromhex(q["orig"]),
+                             "en 0x%04X, war.rom no tiene lo que el parche dice sustituir" % q["dir"])
+
+    def test_el_gancho_y_el_menu_quedan_apuntando_al_puente(self):
+        p = self.m["puente"]
+        porque = {q["dir"]: q for q in self.m["parches"]}
+        self.assertEqual(bytes.fromhex(porque[0x5E10]["nuevo"]),
+                         p["ram"].to_bytes(2, "little"),
+                         "el gancho por cuadro no apunta al puente")
+        self.assertEqual(bytes.fromhex(porque[0x5E86]["nuevo"]),
+                         bytes([0xCD]) + p["para"].to_bytes(2, "little"),
+                         "el menu no llama a PARA_LA_MUSICA")
 
 
 class TestElCotejoConLaCinta(unittest.TestCase):

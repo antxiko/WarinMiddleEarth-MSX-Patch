@@ -80,7 +80,7 @@ PAGINA0_LISTA:
         ld      ix,PLAN
 PLAN_BUCLE:
         ld      a,(ix+0)
-        cp      OP_SALTA+1
+        cp      OP_ULTIMA+1
         jr      nc,SIN_RAM              ; un op que no existe: parar
         add     a,a
         ld      e,a
@@ -103,7 +103,7 @@ TABLA_OPS:
         defw    OP_FIN_,OP_ROM_RAM_,OP_ROM_VRAM_,OP_VRAM_RAM_
         defw    OP_LLENA_RAM_,OP_LLENA_VRAM_,OP_IDENT_VRAM_,OP_SPRITES_VRAM_
         defw    OP_PAG1_RAM_,OP_PAG1_CART_,OP_VDP_REG_,OP_PSG_REG_
-        defw    OP_ESPERA_,OP_SALTA_
+        defw    OP_ESPERA_,OP_SALTA_,OP_BANCO_8000_,OP_RANURA_PAG2_
 
 ; --------------------------------------------------------------------------
 ; Sin RAM en alguna pagina, o un plan roto: borde rojo y a esperar.
@@ -215,6 +215,30 @@ SPRITES_BUCLE:
         out     (098h),a
         inc     c
         djnz    SPRITES_BUCLE
+        ret
+
+; La ventana de 0x8000 se deja apuntando al banco b y ahi se queda para todo el
+; resto de la partida: es por donde se asoma la musica. Tiene que correr con el
+; cartucho todavia en la pagina 1, que es donde vive el registro.
+OP_BANCO_8000_:
+        ld      a,(ix+1)
+        ld      (BANCO_VENTANA_2),a
+        ret
+
+; El puente de la musica necesita saber que valor poner en los bits 4-5 de
+; 0xA8 -los de la pagina 2- para que ahi se vea el cartucho. Eso no se sabe
+; hasta el arranque, asi que se calcula aqui de la ranura ya averiguada y se
+; escribe dentro del propio puente, en el operando de su `or`.
+OP_RANURA_PAG2_:
+        ld      a,(V_ID_CART)
+        and     003h                    ; la primaria; el subslot no se toca
+        rlca
+        rlca
+        rlca
+        rlca                            ; a los bits 4-5
+        ld      l,(ix+4)
+        ld      h,(ix+5)
+        ld      (hl),a
         ret
 
 OP_PAG1_RAM_:
