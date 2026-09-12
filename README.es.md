@@ -152,6 +152,13 @@ El cartucho **usa ZX0**, de Einar Saukas, para las imagenes: 26.112 bytes de
 pantallas en 12.600. Su licencia pide que se diga, y queda dicho aqui y en
 [AVISO-LEGAL.md](AVISO-LEGAL.md); el compresor no se distribuye.
 
+Y en `war_musica.rom` **la vista de cerca va por tabla de nombres**: en vez de
+expandir la pantalla de caracteres a bitmap y subir 12.288 bytes a la VRAM en
+cada vuelta, sube los 768 de la tabla de nombres, porque el byte de cada celda
+ya es el indice de patron. Medido en un NMS 8250: de 3,2 a 9,8 vueltas por
+segundo, con la imagen identica pixel a pixel (`make verifica_vista`). Detalle
+en [INVESTIGACION.md](INVESTIGACION.md).
+
 ## Lo que falta
 
 - **Nadie ha jugado una partida entera** con el mapa repintado. Araubi si jugo una con la version de septiembre, y de ahi salio el fallo gordo.

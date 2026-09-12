@@ -56,8 +56,19 @@ ya estaban comprimidas, y una rutina de la pagina 0 (src/cartucho/finales.asm)
 las descomprime a 0x4000 cuando el juego las pide. Son ocho bytes mas del
 bloque medio, los de 0x83E7, donde los cuatro finales convergen.
 
+LA VISTA DE CERCA POR TABLA DE NOMBRES (--vista)
+
+La vista de cerca expandia su pantalla de caracteres a bitmap y subia 12.288
+bytes a la VRAM en cada vuelta. Con esta opcion una rutina de la pagina 0
+(src/cartucho/nombres.asm) sube solo la tabla de nombres -768 bytes-, porque
+el byte de cada celda YA es el indice de patron. Son siete bytes mas del juego:
+tres en 0x75A5 (un `jp` a la rutina) y cuatro en 0x044B, en el bloque BAJO,
+donde un guardian devuelve la tabla de nombres a la identidad en cuanto alguien
+vuelve a pintar en bitmap. Pide --comprime: vive en la RAM que liberan las
+finales, detras de los bufers de ZX0.
+
 Uso: haz_rom.py <work> <salida.rom> [--espera N] [--sin-pantalla]
-                                    [--comprime] [--finales-rom]
+                                    [--comprime] [--finales-rom] [--vista]
                                     [--musica <fichero.pt3>] [--salidas <dir>]
 
 `--salidas` manda donde van los derivados (plan, stub, .sym, plan.json). Hace
@@ -173,6 +184,24 @@ BUFER_D = BUFER_Z + TAM_BUFER_Z         # y el descomprimido, camino de la VRAM
 TAM_BUFER_D = 6144                      # lo mayor que va a la VRAM: media pantalla
 PINTA_LA_FINAL_ORIG = bytes.fromhex("110040 01001b edb0")
 
+# LA VISTA DE CERCA POR TABLA DE NOMBRES (--vista). Dos sitios del juego:
+#
+#   0x75A5, PANTALLA_DE_CARACTERES_A_LA_ZX, bloque medio: sus tres primeros
+#     bytes (`ld hl,04000h`) pasan a ser `jp CARACTERES_A_NOMBRES`. Sustituir
+#     la rutina entera cubre a sus tres llamadores (0x7218, 0x7560 y 0x779A).
+#   0x044B, VRAM_A_ESCRIBIR, bloque BAJO: `di / ld a,l / out (099h),a` pasan a
+#     ser `call GUARDIAN / nop`. Es la unica rutina del juego que pone una
+#     direccion de VRAM, y ahi se devuelve la tabla de nombres a la identidad
+#     antes de que nadie pinte en bitmap.
+#
+# La rutina corre detras de los dos bufers de ZX0, que solo se usan mientras
+# carga: la direccion sale de la cuenta de arriba, no se escribe a mano.
+PANTALLA_A_ZX = 0x75A5
+PANTALLA_A_ZX_ORIG = bytes.fromhex("210040")
+VRAM_A_ESCRIBIR = 0x044B
+VRAM_A_ESCRIBIR_ORIG = bytes.fromhex("f37dd399")
+NOMBRES_RAM = BUFER_D + TAM_BUFER_D
+
 
 class Plan:
     def __init__(self):
@@ -261,6 +290,7 @@ def main(argv):
     musica = None
     comprimir = False
     finales_rom = False
+    vista = False
     salidas_pedidas = None
     i = 3
     while i < len(argv):
@@ -274,6 +304,8 @@ def main(argv):
             comprimir = True; i += 1
         elif argv[i] == "--finales-rom":
             finales_rom = True; i += 1
+        elif argv[i] == "--vista":
+            vista = True; i += 1
         elif argv[i] == "--salidas":
             salidas_pedidas = argv[i + 1]; i += 2
         else:
@@ -285,6 +317,8 @@ def main(argv):
     if comprimir:
         finales_rom = True
     assert not finales_rom or comprimir, "--finales-rom necesita --comprime"
+    # Y la vista vive en esa misma RAM liberada, detras de los bufers.
+    assert not vista or comprimir, "--vista necesita --comprime"
 
     # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
     # ensamblado, los .sym- va aparte cuando hay musica: las dos ROMs salen de
@@ -439,6 +473,26 @@ def main(argv):
             "la rutina de las finales ocupa %d B y solo se le reservan %d antes del bufer"
             % (len(bloque_finales), SITIO_RUTINA))
 
+    # LA VISTA POR TABLA DE NOMBRES. Como las finales: corre en la RAM de la
+    # pagina 0 y viaja en el hueco de la ROM, detras de lo que haya. Su sitio
+    # empieza donde acaba el segundo bufer de ZX0, que es lo ultimo que el
+    # cargador escribe ahi, y tiene que acabar antes del bloque medio.
+    bloque_nombres = None
+    if vista:
+        bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
+                               os.path.join(salidas, "nombres.bin"),
+                               os.path.join(salidas, "nombres.sym"),
+                               equs=[("NOMBRES_ORG", NOMBRES_RAM)])
+        sim_nombres = lee_simbolos(os.path.join(salidas, "nombres.sym"))
+        nombres_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
+        bloque_musica = (bloque_musica or b"") + bloque_nombres
+        assert len(bloque_musica) <= libre_hueco, \
+            "con la vista, el hueco necesita %d B y tiene %d" % (len(bloque_musica), libre_hueco)
+        assert NOMBRES_RAM + len(bloque_nombres) <= CARGA_MEDIO, (
+            "la rutina de la vista llega a 0x%04X y pisa el bloque medio de 0x%04X"
+            % (NOMBRES_RAM + len(bloque_nombres), CARGA_MEDIO))
+        assert sim_nombres["NOMBRES_FIN"] - sim_nombres["CARACTERES_A_NOMBRES"] == len(bloque_nombres)
+
     # Los dos bufers de ZX0, comprobados contra lo que de verdad va a caer en
     # ellos: si un bloque creciera, aqui se ve, y no en una pantalla con basura.
     if comprimir:
@@ -529,6 +583,10 @@ def main(argv):
              "la ranura del cartucho para la pagina 2 de las finales")
         p.op("RANURA_PAG1", 0, 0, sim_finales["F_RANURA1"] + 1, 0,
              "... y para la pagina 1, que conmuta al escribir el registro")
+    if vista:
+        # La rutina de la vista, a su sitio. No conmuta nada: no pide ranuras.
+        p.copia_rom("ROM_RAM", nombres_rom_pos, NOMBRES_RAM, len(bloque_nombres),
+                    "la vista por tabla de nombres a 0x%04X" % NOMBRES_RAM)
     p.copia_rom("ROM_RAM", disposicion["alto"]["rom"], CARGA_ALTO, len(alto), "bloque alto a 0x88B8, como cae de la cinta")
     # y la pagina 1
     p.op("PAG1_RAM", nota="fuera el cartucho de la pagina 1")
@@ -572,20 +630,29 @@ def main(argv):
     # musica y las finales vayan en un fichero aparte: en war.rom el gancho
     # sigue siendo el `ret` de siempre, el menu no llama a nadie y las
     # pantallas finales se copian de la RAM con su `ldir`.
-    base = disposicion["medio"]["rom"] - ORG_MEDIO
     parches = []
     parches_musica = []
 
-    def parchea(dir_, viejo, nuevo, que):
-        o = base + dir_
+    def parchea(dir_, viejo, nuevo, que, bloque="medio"):
+        # `dir` es donde el juego lo EJECUTA y `carga` donde cae al cargarlo.
+        # El bloque medio se carga en 0x3F4F y 0x0190 lo recoloca en 0x5E00;
+        # el bajo corre donde cae, asi que las dos direcciones coinciden. Los
+        # tests que miran la RAM recien cargada necesitan `carga`.
+        if bloque == "medio":
+            o = disposicion["medio"]["rom"] + dir_ - ORG_MEDIO
+            carga = CARGA_MEDIO + dir_ - ORG_MEDIO
+        else:
+            assert bloque == "bajo"
+            o = disposicion["bajo"]["rom"] + dir_ - CARGA_BAJO
+            carga = dir_
+        d = disposicion[bloque]
+        assert d["rom"] <= o and o + len(viejo) <= d["rom"] + d["bytes"], \
+            "el parche de 0x%04X cae fuera del bloque %s tal como va en la ROM" % (dir_, bloque)
         assert rom[o:o + len(viejo)] == viejo, \
             "en 0x%04X no esta %s sino %s" % (dir_, viejo.hex(), bytes(rom[o:o + len(viejo)]).hex())
         assert len(nuevo) == len(viejo), "un parche del juego no puede cambiar de tamano"
         rom[o:o + len(nuevo)] = nuevo
-        # `dir` es donde el juego lo EJECUTA (0x5E00 y arriba) y `carga`
-        # donde cae al cargarlo, antes de que 0x0190 recoloque el bloque.
-        # Los tests que miran la RAM recien cargada necesitan la segunda.
-        q = dict(dir=dir_, carga=CARGA_MEDIO + dir_ - ORG_MEDIO,
+        q = dict(bloque=bloque, dir=dir_, carga=carga,
                  rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que)
         parches.append(q)
         return q
@@ -610,14 +677,31 @@ def main(argv):
             PINTA_LA_FINAL, PINTA_LA_FINAL_ORIG,
             bytes([0xCD]) + sim_finales["FINALES"].to_bytes(2, "little") + bytes(5),
             "los cuatro finales llaman a la rutina en vez de copiar de la RAM")
+    parches_vista = []
+    if vista:
+        # El `ld hl,04000h` con el que arranca 0x75A5, por un `jp` a la rutina:
+        # el resto de la rutina vieja se queda, sin que nadie pase por ella.
+        parches_vista.append(parchea(
+            PANTALLA_A_ZX, PANTALLA_A_ZX_ORIG,
+            bytes([0xC3]) + sim_nombres["CARACTERES_A_NOMBRES"].to_bytes(2, "little"),
+            "0x75A5 salta a la rutina de la vista: 768 bytes a la VRAM en vez de 12.288"))
+        # Y `di / ld a,l / out (099h),a` de VRAM_A_ESCRIBIR por `call GUARDIAN /
+        # nop`: el guardian hace esas tres cosas y, antes, devuelve la tabla de
+        # nombres a la identidad si la vista la habia cambiado.
+        parches_vista.append(parchea(
+            VRAM_A_ESCRIBIR, VRAM_A_ESCRIBIR_ORIG,
+            bytes([0xCD]) + sim_nombres["GUARDIAN"].to_bytes(2, "little") + bytes(1),
+            "VRAM_A_ESCRIBIR pasa por el guardian, que devuelve la tabla de nombres a la identidad",
+            bloque="bajo"))
     with open(salida, "wb") as f:
         f.write(rom)
 
     if musica:
         # `bytes` es lo que ocupa la MUSICA: el reproductor, el modulo y el
-        # puente. Si ademas van las finales, su rutina viaja detras y se cuenta
-        # aparte, en resumen["finales"].
-        musica_bytes = len(bloque_musica) - (len(bloque_finales) if bloque_finales else 0)
+        # puente. Si ademas van las finales o la vista, sus rutinas viajan
+        # detras y se cuentan aparte, en resumen["finales"] y resumen["vista"].
+        musica_bytes = (len(bloque_musica) - (len(bloque_finales) if bloque_finales else 0)
+                        - (len(bloque_nombres) if bloque_nombres else 0))
         disposicion["musica"] = dict(rom=hueco, bytes=musica_bytes,
                                      banco=banco_musica, org=musica_org,
                                      pt3=os.path.basename(musica),
@@ -646,6 +730,21 @@ def main(argv):
             rutina=dict(ram=finales_ram, bytes=len(bloque_finales) if bloque_finales else 0),
             bufer_z=dict(ram=BUFER_Z, bytes=TAM_BUFER_Z, que="el bloque comprimido, tal cual sale de la ROM"),
             bufer_d=dict(ram=BUFER_D, bytes=TAM_BUFER_D, que="y el descomprimido, camino de la VRAM"))
+        if vista:
+            resumen["zona_libre"]["nombres"] = dict(
+                ram=NOMBRES_RAM, bytes=len(bloque_nombres),
+                que="la vista de cerca por tabla de nombres, detras de los bufers")
+    if vista:
+        # Donde viaja, donde corre, sus entradas y los dos parches. Las
+        # direcciones salen del .sym, no de contarlas.
+        resumen["vista"] = dict(
+            rom=nombres_rom_pos, ram=NOMBRES_RAM, bytes=len(bloque_nombres),
+            entrada=sim_nombres["CARACTERES_A_NOMBRES"],
+            guardian=sim_nombres["GUARDIAN"],
+            patrones=sim_nombres["PONE_LOS_PATRONES"],
+            identidad=sim_nombres["TABLA_IDENTIDAD"],
+            modo=sim_nombres["MODO_NOMBRES"],
+            parches=parches_vista)
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
         # la rutina, donde corre, de donde lee cada pantalla y el parche que la
@@ -680,6 +779,12 @@ def main(argv):
                          ("PT3_SETUP", sim_puente["PT3_SETUP"]),
                          ("AYREGS", sim_puente["AYREGS"])):
                 f.write("set ::%-15s 0x%04X\n" % (k, v))
+    if vista:
+        with open(os.path.join(salidas, "vista.tcl"), "w") as f:
+            f.write("# generado por tools/haz_rom.py: no editar\n")
+            for k in ("CARACTERES_A_NOMBRES", "PONE_LOS_PATRONES", "GUARDIAN",
+                      "TABLA_IDENTIDAD", "MODO_NOMBRES", "NOMBRES_FIN"):
+                f.write("set ::%-22s 0x%04X\n" % (k, sim_nombres[k]))
 
     print("%s: %d bytes, %s" % (salida, TAM_ROM, resumen["mapper"]))
     print("  arranque %d B + stub %d B (plan de %d entradas) en 0x0000; datos de 0x%04X a 0x%04X; libres %d B"
@@ -708,6 +813,15 @@ def main(argv):
         print("     0x%04X del bloque medio: %s -> %s, %s"
               % (q["dir"], q["orig"], q["nuevo"], q["que"]))
         print("     RAM liberada: %d bytes" % sum(q["crudo"] for q in f["pantallas"]))
+    if vista:
+        v = resumen["vista"]
+        print("  la vista de cerca va por tabla de nombres: %d B de rutina de ROM 0x%05X a RAM 0x%04X"
+              % (v["bytes"], v["rom"], v["ram"]))
+        print("     entrada 0x%04X  patrones 0x%04X  guardian 0x%04X  modo 0x%04X"
+              % (v["entrada"], v["patrones"], v["guardian"], v["modo"]))
+        for q in v["parches"]:
+            print("     0x%04X del bloque %s: %s -> %s, %s"
+                  % (q["dir"], q["bloque"], q["orig"], q["nuevo"], q["que"]))
     return 0
 
 

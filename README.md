@@ -153,6 +153,13 @@ The cartridge **uses ZX0**, by Einar Saukas, for the images: 26,112 bytes of
 screens in 12,600. Its licence asks that you say so, and it is said here and in
 [LEGAL-NOTICE.md](LEGAL-NOTICE.md); the compressor itself is not distributed.
 
+And in `war_musica.rom` **the close-up view goes through the name table**:
+instead of expanding the character screen into a bitmap and pushing 12,288 bytes
+to VRAM on every loop, it pushes the 768 bytes of the name table, because each
+cell's byte already is the pattern index. Measured on an NMS 8250: from 3.2 to
+9.8 loops per second, with the picture identical pixel for pixel
+(`make verifica_vista`). Details in [INVESTIGACION.md](INVESTIGACION.md).
+
 ## What is still missing
 
 - **Nobody has played a full game** with the map repainted. Araubi did play one with the September build, and that is where the big bug turned up.

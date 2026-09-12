@@ -101,6 +101,11 @@ def lee_musica(work):
     if f_:
         ocupa.append((f_["ram"], f_["ram"] + f_["bytes"],
                       "LA RUTINA de las pantallas finales (%d B)" % f_["bytes"]))
+    # Y la de la vista por tabla de nombres, detras de los bufers de ZX0.
+    v = d.get("vista")
+    if v:
+        ocupa.append((v["ram"], v["ram"] + v["bytes"],
+                      "LA RUTINA de la vista por tabla de nombres (%d B)" % v["bytes"]))
     return ocupa
 
 

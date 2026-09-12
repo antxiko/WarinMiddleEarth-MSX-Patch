@@ -157,11 +157,13 @@ class TestLaRom(unittest.TestCase):
 
     def parches(self):
         """Todos los bytes del juego que esta ROM declara cambiar: los dos de
-        la musica y el de las pantallas finales. Vienen del plan, no de una
-        lista escrita aqui, para que no puedan quedarse viejos."""
+        la musica, el de las pantallas finales y los dos de la vista. Vienen
+        del plan, no de una lista escrita aqui, para que no puedan quedarse
+        viejos."""
         todos = list((self.musica or {}).get("parches", []))
         if self.plan.get("finales"):
             todos.append(self.plan["finales"]["parche"])
+        todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
     def test_cabecera_ab_y_tamano(self):
@@ -184,15 +186,16 @@ class TestLaRom(unittest.TestCase):
         esperado = dict(patrones=pantalla[100:100 + 6144], colores=pantalla[100 + 6144:100 + 12288],
                         bajo=lee(os.path.join(WORK, "bajo.raw")), medio=lee(os.path.join(WORK, "medio.raw")),
                         alto=lee(os.path.join(WORK, "alto.raw")))
-        # Con musica y con las finales en la ROM, el bloque medio lleva sus
-        # parches: se aplican sobre lo esperado, que para eso el plan dice
-        # cuales son y donde caen.
+        # Con musica, con las finales en la ROM y con la vista, los bloques
+        # llevan sus parches -el medio, y el bajo desde la vista-: se aplican
+        # sobre lo esperado, que para eso el plan dice cuales son y donde caen.
         for q in self.parches():
-            o = q["dir"] - 0x5E00
+            bloque = q.get("bloque", "medio")
+            o = q["dir"] - {"medio": 0x5E00, "bajo": 0x0190}[bloque]
             viejo, nuevo = bytes.fromhex(q["orig"]), bytes.fromhex(q["nuevo"])
-            self.assertEqual(esperado["medio"][o:o + len(viejo)], viejo,
+            self.assertEqual(esperado[bloque][o:o + len(viejo)], viejo,
                              "el parche de 0x%04X no cae sobre lo que dice" % q["dir"])
-            esperado["medio"] = esperado["medio"][:o] + nuevo + esperado["medio"][o + len(nuevo):]
+            esperado[bloque] = esperado[bloque][:o] + nuevo + esperado[bloque][o + len(nuevo):]
         # Con --comprime, el bloque bajo se parte: su codigo crudo y detras las
         # dos pantallas finales comprimidas, cada una en su entrada.
         corte = len(esperado["bajo"])
@@ -222,6 +225,8 @@ class TestLaRom(unittest.TestCase):
         extra = (self.musica["bytes"] if self.musica else 0)
         if self.plan.get("finales"):
             extra += self.plan["finales"]["bytes"]
+        if self.plan.get("vista"):
+            extra += self.plan["vista"]["bytes"]
         relleno = self.rom[fin + extra:]
         self.assertEqual(set(relleno), {0xFF})
 
@@ -249,11 +254,17 @@ class TestLaRom(unittest.TestCase):
     def _comprueba_la_ram(self, ram, vram, vdp, psg, salto):
         """Lo que el cargador tiene que dejar, venga de la ROM que venga."""
         bajo, medio, alto = (lee(os.path.join(WORK, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
-        # la RAM: como la deja el cargador de la cinta en 0xD741
+        # la RAM: como la deja el cargador de la cinta en 0xD741, con los
+        # parches que el plan declara puestos en su bloque: el medio (que aqui
+        # aun esta en 0x3F4F, sin recolocar) o el bajo (0x044B, la vista).
         for q in self.parches():
-            o = q["dir"] - 0x5E00
             nuevo = bytes.fromhex(q["nuevo"])
-            medio = medio[:o] + nuevo + medio[o + len(nuevo):]
+            if q.get("bloque", "medio") == "medio":
+                o = q["dir"] - 0x5E00
+                medio = medio[:o] + nuevo + medio[o + len(nuevo):]
+            else:
+                o = q["dir"] - 0x0190
+                bajo = bajo[:o] + nuevo + bajo[o + len(nuevo):]
         # Con las finales en la ROM, del bloque bajo solo viaja el codigo: las
         # dos pantallas se quedan donde estan y se descomprimen al acabar la
         # partida. Esos 13.824 bytes de RAM tienen que quedar SIN TOCAR, que es
@@ -325,6 +336,7 @@ class TestLaMusica(unittest.TestCase):
         todos = list(self.m["parches"])
         if self.plan.get("finales"):
             todos.append(self.plan["finales"]["parche"])
+        todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
     def test_cabe_en_el_hueco_y_no_se_sale_del_ultimo_banco(self):
@@ -468,6 +480,16 @@ class TestLaMusica(unittest.TestCase):
                 tramo = slice(pantalla["dir"], pantalla["dir"] + pantalla["crudo"])
                 self.assertNotEqual(bytes(ram_con[tramo]), bytes(ram_sin[tramo]),
                                     "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
+        vista = self.plan.get("vista")
+        if vista:
+            # La rutina de la vista, en la misma zona liberada, y sus dos
+            # parches: siete bytes, tres del bloque medio y cuatro del bajo.
+            permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
+            de_la_vista = set()
+            for q in vista["parches"]:
+                de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
+            self.assertEqual(len(de_la_vista), 7, "los parches de la vista tienen que ser siete bytes")
+            permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
         self.assertEqual(fuera, [], "la ROM cambia la RAM fuera de lo que declara")
@@ -532,6 +554,9 @@ class TestLasPantallasFinales(unittest.TestCase):
         tramos = [(z["rutina"]["ram"], z["rutina"]["bytes"], "la rutina"),
                   (z["bufer_z"]["ram"], z["bufer_z"]["bytes"], "el bufer del comprimido"),
                   (z["bufer_d"]["ram"], z["bufer_d"]["bytes"], "el bufer del descomprimido")]
+        if "nombres" in z:
+            # y la vista por tabla de nombres, que va detras de los bufers
+            tramos.append((z["nombres"]["ram"], z["nombres"]["bytes"], "la rutina de la vista"))
         anterior = z["ini"]
         for ini, tam, que in tramos:
             self.assertGreaterEqual(ini, anterior, "%s empieza dentro de lo anterior" % que)
@@ -575,6 +600,8 @@ class TestLasPantallasFinales(unittest.TestCase):
         permitido = [(z["rutina"]["ram"], z["rutina"]["bytes"]),
                      (z["bufer_z"]["ram"], z["bufer_z"]["bytes"]),
                      (z["bufer_d"]["ram"], z["bufer_d"]["bytes"])]
+        if "nombres" in z:
+            permitido.append((z["nombres"]["ram"], z["nombres"]["bytes"]))
 
         def declarado(dst, n):
             return any(a <= dst and dst + n <= a + t for a, t in permitido)
@@ -684,6 +711,178 @@ class TestLasPantallasFinales(unittest.TestCase):
             # de lo que escribe al final de la pantalla hasta la pila, nada
             self.assertEqual(set(m.ram[0x4000 + pantalla["crudo"]:0x5BF0]), {0},
                              "la rutina se ha pasado del sitio de la pantalla")
+
+
+class TestLaVistaPorNombres(unittest.TestCase):
+    """La vista de cerca por tabla de nombres (--vista): src/cartucho/nombres.asm.
+
+    Como con las finales, lo fuerte es que la rutina se EJECUTA, en
+    tools/corre_nombres.py: el mismo interprete de Z80 con el VDP modelado
+    detras de los puertos 0x98 y 0x99. Asi se comprueba sin emulador lo que de
+    otro modo solo se veria mirando una pantalla: que lo que llega a la tabla
+    de nombres es la pantalla de caracteres, que los 256 patrones y colores son
+    los de la fuente, los dibujos y la tabla del juego -replicados en los tres
+    tercios-, y que el guardian devuelve la identidad cuando toca y no toca
+    nada cuando no toca. El cotejo por pixel contra la ROM de antes lo hace
+    `make verifica_vista`, con openMSX.
+    """
+
+    def setUp(self):
+        plan = os.path.join(WORK_MUSICA, "plan.json")
+        hace_falta(ROM_MUSICA, plan)
+        self.rom = lee(ROM_MUSICA)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        if "vista" not in self.plan:
+            raise unittest.SkipTest("esta ROM no lleva la vista por tabla de nombres (--vista)")
+        self.v = self.plan["vista"]
+        self.bajo = lee(os.path.join(WORK, "bajo.raw"))
+        self.medio = lee(os.path.join(WORK, "medio.raw"))
+        self.alto = lee(os.path.join(WORK, "alto.raw"))
+
+    def monta(self):
+        import corre_nombres
+        return corre_nombres.monta(self.rom, self.plan, self.bajo, self.alto)
+
+    # ---------------------------------------------------------- la colocacion
+    def test_el_bloque_esta_en_la_rom_y_es_el_ensamblado(self):
+        v = self.v
+        with open(os.path.join(WORK_MUSICA, "nombres.bin"), "rb") as fh:
+            binario = fh.read()
+        self.assertEqual(len(binario), v["bytes"])
+        self.assertEqual(self.rom[v["rom"]:v["rom"] + len(binario)], binario,
+                         "lo que hay en la ROM no es la rutina ensamblada")
+        for nombre in ("entrada", "patrones", "guardian", "identidad", "modo"):
+            self.assertTrue(v["ram"] <= v[nombre] < v["ram"] + v["bytes"],
+                            "%s cae en 0x%04X, fuera del bloque" % (nombre, v[nombre]))
+
+    def test_vive_detras_de_los_bufers_de_zx0_y_antes_del_bloque_medio(self):
+        """El sitio no se elige a mano: es donde acaba el segundo bufer de ZX0,
+        que es lo ultimo que el cargador escribe en la zona liberada. Y tiene
+        que acabar antes de 0x3F4F, donde cae el bloque medio."""
+        z = self.plan["zona_libre"]
+        self.assertIn("nombres", z, "la zona libre no declara la rutina de la vista")
+        self.assertEqual(z["nombres"]["ram"], self.v["ram"])
+        self.assertEqual(z["nombres"]["bytes"], self.v["bytes"])
+        self.assertGreaterEqual(self.v["ram"], z["bufer_d"]["ram"] + z["bufer_d"]["bytes"],
+                                "la rutina de la vista se solapa con el bufer de ZX0")
+        self.assertLessEqual(self.v["ram"] + self.v["bytes"], self.plan["carga"]["medio"],
+                             "la rutina de la vista pisa el bloque medio")
+        self.assertLess(self.v["ram"] + self.v["bytes"], 0x4000,
+                        "la rutina de la vista tiene que estar entera en la pagina 0")
+
+    def test_el_plan_la_copia_exactamente_una_vez(self):
+        copias = [o for o in self.plan["plan"] if o["op"] == "ROM_RAM" and o["dst"] == self.v["ram"]]
+        self.assertEqual(len(copias), 1, "la rutina no se copia exactamente una vez")
+        self.assertEqual(copias[0]["len"], self.v["bytes"])
+        # y despues de nada que la pise: los bufers de ZX0 se usan tambien
+        # DESPUES de esa copia (al repintar la imagen de carga) y acaban justo
+        # donde ella empieza, asi que lo que se comprueba es que no se solapan
+        z = self.plan["zona_libre"]
+        for cual in ("bufer_z", "bufer_d"):
+            self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
+
+    def test_los_dos_parches_son_los_que_dice(self):
+        """Tres bytes en 0x75A5 (bloque medio) y cuatro en 0x044B (bloque bajo),
+        y los dos caen sobre lo que la cinta trae."""
+        porque = {q["dir"]: q for q in self.v["parches"]}
+        self.assertEqual(sorted(porque), [0x044B, 0x75A5])
+        q = porque[0x75A5]
+        self.assertEqual(q["bloque"], "medio")
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("210040"),
+                         "0x75A5 tiene que empezar por `ld hl,04000h`")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xC3]) + self.v["entrada"].to_bytes(2, "little"),
+                         "el parche de 0x75A5 no es un `jp` a la entrada")
+        self.assertEqual(self.medio[0x75A5 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
+        q = porque[0x044B]
+        self.assertEqual(q["bloque"], "bajo")
+        self.assertEqual(q["carga"], 0x044B, "el bloque bajo corre donde cae")
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("f37dd399"),
+                         "0x044B tiene que ser `di / ld a,l / out (099h),a`")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xCD]) + self.v["guardian"].to_bytes(2, "little") + bytes(1),
+                         "el parche de 0x044B no es `call GUARDIAN / nop`")
+        self.assertEqual(self.bajo[0x044B - 0x0190:][:4], bytes.fromhex(q["orig"]))
+        for q in self.v["parches"]:
+            self.assertEqual(self.rom[q["rom"]:q["rom"] + len(bytes.fromhex(q["nuevo"]))],
+                             bytes.fromhex(q["nuevo"]), "el parche de 0x%04X no esta en la ROM" % q["dir"])
+
+    def test_0x044b_es_la_unica_direccion_de_vram_del_juego(self):
+        """La razon de que el guardian valga: en el bloque bajo, las unicas
+        `out (099h),a` que escriben una DIRECCION son las dos de 0x044B y las
+        dos de VRAM_A_LEER (0x045A), que nadie llama. Las otras dos (0x0467)
+        escriben el registro 7. Y los bloques medio y alto no tocan el puerto."""
+        outs = [0x0190 + i for i in range(len(self.bajo) - 1) if self.bajo[i:i + 2] == b"\xD3\x99"]
+        self.assertEqual(outs, [0x044D, 0x0454, 0x045C, 0x0461, 0x0467, 0x046B])
+        for bloque in (self.medio, self.alto):
+            self.assertNotIn(b"\xD3\x99", bloque)
+            self.assertNotIn(b"\xD3\x98", bloque)
+
+    # ------------------------------------------------ y la rutina, EJECUTADA
+    def pantalla_de_prueba(self):
+        """25 filas de 34 con los 256 valores repartidos: 850 celdas por un
+        numero primo con 256 pasan por todos los codigos."""
+        return bytes((i * 7 + 3) & 0xFF for i in range(850))
+
+    def test_la_rutina_deja_la_tabla_de_nombres_y_solo_eso(self):
+        import corre_nombres
+        m = self.monta()
+        pantalla = self.pantalla_de_prueba()
+        vdp, z = corre_nombres.corre_vista(m, self.plan, pantalla, modo=1)
+        self.assertEqual(vdp.escritos, 768, "con los patrones ya puestos solo van los 768 nombres")
+        self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(pantalla),
+                         "la tabla de nombres no es la pantalla de caracteres, 32 de cada 34")
+        self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B00:]), {0},
+                         "la rutina ha escrito fuera de la tabla de nombres")
+        self.assertEqual(m.ram[self.v["modo"]], 1)
+        self.assertIs(z.di, False, "la rutina se deja las interrupciones cerradas")
+
+    def test_la_primera_vez_sube_los_patrones_y_los_colores_replicados(self):
+        """MODO_NOMBRES a 0: antes de los nombres van los 256 patrones y sus
+        colores, tres veces cada uno. Lo esperado se calcula aparte, en Python,
+        de la fuente, los dibujos y la tabla de color de la cinta."""
+        import corre_nombres
+        m = self.monta()
+        pantalla = self.pantalla_de_prueba()
+        vdp, _z = corre_nombres.corre_vista(m, self.plan, pantalla, modo=0)
+        self.assertEqual(vdp.escritos, 3 * 2048 + 3 * 2048 + 768)
+        esperado_p = corre_nombres.patrones_esperados(m.ram)
+        esperado_c = corre_nombres.colores_esperados(m.ram)
+        self.assertEqual(len(esperado_p), 0x1800)
+        self.assertEqual(bytes(vdp.vram[:0x1800]), esperado_p, "los patrones no son los de la fuente y los dibujos")
+        self.assertEqual(bytes(vdp.vram[0x2000:0x3800]), esperado_c, "los colores no son los de la tabla de 0x0200")
+        self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(pantalla))
+        self.assertEqual(set(vdp.vram[0x1B00:0x2000]) | set(vdp.vram[0x3800:]), {0})
+        self.assertEqual(m.ram[self.v["modo"]], 1, "la rutina no apunta que los patrones ya estan")
+        # y los tres tercios son de verdad iguales: el nombre n ensena lo mismo este donde este
+        self.assertEqual(esperado_p[:0x800], esperado_p[0x800:0x1000])
+        self.assertEqual(esperado_p[:0x800], esperado_p[0x1000:])
+        # y la fuente va en los 128 primeros y los dibujos, sin atributo, en los otros 128
+        self.assertEqual(esperado_p[:1024], bytes(m.ram[0xC800:0xCC00]))
+        self.assertEqual(esperado_p[1024:1024 + 8], bytes(m.ram[0x9E00:0x9E08]))
+
+    def test_el_guardian_devuelve_la_identidad_y_no_toca_nada_mas(self):
+        """Lo que hace posible que el resto del juego no se entere. Con
+        MODO_NOMBRES a 1, una llamada a 0x044B -la de siempre, con la direccion
+        en HL- deja la tabla de nombres identidad, el modo a 0 y la direccion
+        que le pidieron; con el modo a 0 no escribe ni un byte. Y en los dos
+        casos BC, DE y HL salen como entraron, que sus llamadores cuentan con
+        ello."""
+        import corre_nombres
+        for modo, escribe in ((1, 768), (0, 0)):
+            m = self.monta()
+            vdp, z = corre_nombres.corre_guardian(m, self.plan, hl=0x2345, modo=modo)
+            self.assertEqual(vdp.escritos, escribe, "con el modo a %d el guardian escribe %d bytes" % (modo, vdp.escritos))
+            if modo:
+                self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), bytes(range(256)) * 3,
+                                 "el guardian no devuelve la identidad")
+                self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B00:]), {0})
+            self.assertEqual(m.ram[self.v["modo"]], 0)
+            self.assertEqual(vdp.direcciones[-1], (0x2345, True),
+                             "0x044B no deja puesta la direccion de escritura que le pidieron")
+            self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x2345), "el guardian pisa BC, DE o HL")
+            self.assertIs(z.di, False, "0x044B tiene que salir con las interrupciones abiertas, como siempre")
 
 
 class TestZX0(unittest.TestCase):

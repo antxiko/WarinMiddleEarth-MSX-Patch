@@ -836,6 +836,75 @@ final del juego original ya sale con bytes perdidos, y no siempre los mismos.**
 Por eso la sonda apaga la pantalla antes de pintar: para que el cotejo compare
 lo que el juego ESCRIBE, que es lo unico que este cambio podria alterar.
 
+### La vista de cerca, por tabla de nombres — HECHO y VERIFICADO
+
+La vista de cerca (`BUCLE_DE_LA_VISTA`, 0x71F9) es lo que mas se repinta del
+juego, y lo hacia a lo bruto: `PANTALLA_DE_CARACTERES_A_LA_ZX` (0x75A5)
+expandia las 768 celdas de la pantalla de caracteres de 0x5E00 a 6.144 bytes de
+bitmap y 768 de atributos en RAM, y subia los 12.288 bytes a la VRAM **en cada
+vuelta del bucle**. Medido en un NMS 8250 (`tools/omsx_vista.tcl`): 800.857
+ciclos de los 1.132.000 de una vuelta.
+
+Y no hacia falta, porque **esa pantalla ya es una tabla de nombres**: un byte
+por celda; con el bit 7 a 1 es uno de los 128 dibujos de 0x9E00 y con el bit 7
+a 0 uno de los 128 caracteres de la fuente de 0xC800, siempre con el atributo
+0x78. 128 + 128 = 256 patrones justos, y el color es funcion del codigo. O sea:
+el byte de 0x5E00 ES el indice de patron del SCREEN 2, sin traducir.
+
+`src/cartucho/nombres.asm` (218 bytes en 0x3250, detras de los bufers de ZX0)
+hace tres cosas:
+
+- **`CARACTERES_A_NOMBRES`** sustituye a 0x75A5 entera -sus tres primeros bytes
+  pasan a ser un `jp`, y asi cubre a sus tres llamadores- y sube a 0x1800 los
+  32 primeros bytes de cada una de las 24 filas de 34: **768 bytes por vuelta en
+  vez de 12.288**, y ni un byte de RAM que expandir. Sin sombra de lo ya subido:
+  comparar una celda cuesta lo mismo que subirla.
+- **`PONE_LOS_PATRONES`**, la primera vez tras un pintado en bitmap, sube los 256
+  patrones y sus colores **replicados en los tres tercios** (0x0000/0x0800/0x1000
+  y 0x2000/0x2800/0x3000). Asi no se toca ni R3 ni R4 y cualquier tercio con el
+  nombre *n* ensena el mismo dibujo. Cuesta una vuelta de las de antes, una vez.
+- **El guardian**, en `VRAM_A_ESCRIBIR` (0x044B, bloque bajo): es la UNICA
+  rutina del juego que pone una direccion de VRAM (las `out (099h)` de 0x044D y
+  0x0454; los bloques medio y alto no tocan el puerto), y por ahi pasan el mapa,
+  los menus de `LISTA_*` -que se abren DESDE la vista-, la batalla y los finales.
+  Sus cuatro primeros bytes pasan a `call GUARDIAN / nop`, y si la tabla de
+  nombres es la de la vista, la devuelve a la identidad antes de dejar escribir.
+  Asi no hay que enumerar caminos. Medido antes con `tools/omsx_fronteras.tcl`:
+  en la vista solo escribe la VRAM 0x074E desde 0x7610, y nadie mas lee ni
+  escribe 0x4000-0x5AFF.
+
+Son siete bytes mas del juego: veinte en total con los de la musica y los de
+las finales.
+
+**Medido, antes y despues, en el NMS 8250** (`make mide_vista MAQUINA=Philips_NMS_8250`):
+
+    antes     1.132.000 ciclos por vuelta    3,2 vueltas por segundo
+    despues     363.884 ciclos por vuelta    9,8 vueltas por segundo
+
+Lo que queda son los 330.031 ciclos de `DIBUJA_EL_TROZO_DE_MAPA`, que es el
+siguiente objetivo.
+
+**Verificado** (`make verifica_vista`, exit 0 en la VG-8020 y en el NMS 8250):
+la VRAM ya no se parece byte a byte a la de antes, asi que el cotejo es **por
+pixel**. Las dos ROMs -la nueva y la misma sin `--vista`, que difieren en 353
+bytes- se llevan a los mismos instantes de la vista, contados **por vueltas del
+bucle** y no por reloj (van a distinta velocidad y el cursor parpadea por
+vuelta), y se dibuja lo que el VDP ensena con `tools/render_vram.py`: cinco
+instantes -tres de la vista, el menu de la R y el mapa al salir- **identicos
+pixel a pixel**, y en los dos de bitmap la VRAM entera identica byte a byte, que
+es la prueba del guardian. Con la pantalla encendida, que es cuando el VDP
+pierde bytes, a la rutina nueva no se le cae ninguno: sus bucles van a 36 ciclos
+por byte o mas. Y sin emulador, `tools/corre_nombres.py` ejecuta la rutina en el
+interprete de Z80 con el VDP modelado: los patrones, los colores y los nombres
+son los que salen de la cinta, y el guardian deja BC, DE y HL como entraron.
+
+De paso, una cosa del juego original que el cotejo puso delante: al cerrar el
+menu de la R eligiendo a quien ya lleva el Anillo, `MENU_DE_ENTREGA` vuelve con
+el numero de ese personaje en A y 0x7224 se lo pasa a `MUEVE_POR_EL_MAPA` como
+si fuera el mando. Con Frodo, que es el 5 (bits 0 y 2: arriba e izquierda), el
+cursor sube una casilla y va otra a la izquierda. Sale igual en la ROM sin el
+cambio, que ahi corre el codigo de la cinta tal cual.
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo
