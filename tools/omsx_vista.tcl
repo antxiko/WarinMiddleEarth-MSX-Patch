@@ -88,6 +88,13 @@ proc informe {} {
     say [format "  los tres tramos suman %.0f ciclos" $total]
 }
 
+# Con WAR_MUEVE=1 se mide MOVIENDO el cursor: cinco segundos con la derecha
+# pulsada y cinco con la izquierda, que es cuando el trozo cambia entero en
+# cada vuelta. Sin ella se mide en reposo, que es cuando solo parpadea el cursor.
+set ::MUEVE [expr {[info exists ::env(WAR_MUEVE)] && $::env(WAR_MUEVE) ne "0"}]
+set ::DERECHA 0x80
+set ::IZQUIERDA 0x10
+
 set ::bp_mapa 0
 proc en_el_mapa {} {
     say "en el mapa; se dispara con ESPACIO para entrar a la VISTA DE CERCA"
@@ -96,10 +103,17 @@ proc en_el_mapa {} {
         keymatrixup 8 $::ESPACIO
         after time 2 {
             set ::midiendo 1
-            say "midiendo..."
+            if {$::MUEVE} {
+                say "midiendo MOVIENDO el cursor: 5 s a la derecha y 5 a la izquierda..."
+                keymatrixdown 8 $::DERECHA
+                after time 5 { keymatrixup 8 $::DERECHA; keymatrixdown 8 $::IZQUIERDA }
+            } else {
+                say "midiendo en reposo..."
+            }
             after time 10 {
                 set ::midiendo 0
-                say "=== VISTA DE CERCA, diez segundos ==="
+                catch { keymatrixup 8 $::IZQUIERDA }
+                say [expr {$::MUEVE ? "=== VISTA DE CERCA, diez segundos MOVIENDO ===" : "=== VISTA DE CERCA, diez segundos en reposo ==="}]
                 informe
                 say "FIN"
                 exit 0

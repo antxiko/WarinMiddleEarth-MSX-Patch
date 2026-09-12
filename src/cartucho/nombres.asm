@@ -91,7 +91,91 @@ FILAS           equ 24
 
 ; --------------------------------------------------------------------------
 ; La vista: 768 bytes a la tabla de nombres. Sustituye a 0x75A5.
+;
+; Hay DOS versiones, y se elige al ensamblar con `--equ SOMBRA=1` (o 0; el
+; simbolo tiene que existir siempre, que pasmo no tiene IFDEF):
+;
+;   SIN sombra: se suben las 768 celdas siempre, a 37 ciclos por byte.
+;   CON sombra: se guarda una copia de lo ultimo subido (SOMBRA_BUF, 768 B) y
+;     cada fila se compara con ella; solo se suben las filas que cambian. La
+;     comparacion son ~32 ciclos por byte -ld a,(de) / cp (hl) / jr nz / inc de
+;     / inc l, desenrollado-, o sea casi lo que cuesta subir un byte, que es lo
+;     que dice si la sombra paga o no. Se midio: ver INVESTIGACION.md.
 ; --------------------------------------------------------------------------
+                IF SOMBRA
+CARACTERES_A_NOMBRES:
+                ld a,(MODO_NOMBRES)
+                or a
+                jr nz,CON_SOMBRA
+                ; La primera vez tras un pintado en bitmap: patrones, y las 768
+                ; celdas enteras, que de paso se copian a la sombra.
+                call PONE_LOS_PATRONES
+                ld hl,VRAM_NOMBRES
+                call DIRECCION_VRAM
+                ld de,PANTALLA
+                ld hl,SOMBRA_BUF
+                ld c,FILAS
+T_FILA:         ld b,32
+T_CELDA:        ld a,(de)               ; 7
+                out (098h),a            ; 11
+                ld (hl),a               ; 7   a la sombra
+                inc de                  ; 6
+                inc hl                  ; 6
+                djnz T_CELDA            ; 13 = 50 ciclos por byte, solo esta vez
+                inc de
+                inc de
+                dec c
+                jr nz,T_FILA
+                ret
+
+; La sombra vale: fila a fila, 32 celdas contra la copia. DE recorre la
+; pantalla (filas de 34, cruza paginas: `inc de`) y HL la sombra (filas de 32
+; en un bufer alineado a 256: `inc l` no da la vuelta dentro de una fila). Los
+; dos punteros al principio de la fila van a la pila por si hay que subirla.
+CON_SOMBRA:     ld de,PANTALLA
+                ld hl,SOMBRA_BUF
+                ld c,FILAS
+S_FILA:         push hl
+                push de
+                ld b,2                  ; dos mitades de 16 celdas desenrolladas
+S_MITAD:
+                REPT 16
+                ld a,(de)               ; 7
+                cp (hl)                 ; 7
+                jr nz,S_CAMBIO          ; 7
+                inc de                  ; 6
+                inc l                   ; 4 = 31 ciclos por celda igual
+                ENDM
+                djnz S_MITAD
+                pop af                  ; la fila era igual: fuera los punteros
+                pop af
+S_SIGUIENTE:    inc de                  ; los dos bytes que sobran de la fila de 34
+                inc de
+                ld a,l                  ; la sombra pasa de pagina cada 8 filas
+                or a
+                jr nz,S_MISMA_PAGINA
+                inc h
+S_MISMA_PAGINA: dec c
+                jr nz,S_FILA
+                ret
+S_CAMBIO:       pop de                  ; los punteros al principio de la fila
+                pop hl
+                push hl
+                push de
+                ld de,VRAM_NOMBRES - SOMBRA_BUF
+                add hl,de               ; la sombra y la tabla de nombres van paralelas
+                call DIRECCION_VRAM
+                pop de
+                pop hl
+                REPT 32
+                ld a,(de)               ; 7
+                out (098h),a            ; 11
+                ld (hl),a               ; 7   y a la sombra
+                inc de                  ; 6
+                inc l                   ; 4 = 35 ciclos por celda
+                ENDM
+                jp S_SIGUIENTE          ; las 32 celdas desenrolladas no caben en un jr
+                ELSE
 CARACTERES_A_NOMBRES:
                 ld a,(MODO_NOMBRES)
                 or a
@@ -110,6 +194,7 @@ N_CELDA:        ld a,(hl)               ; 7
                 dec c
                 jr nz,N_FILA
                 ret
+                ENDIF
 
 ; --------------------------------------------------------------------------
 ; Los 256 patrones y sus colores, replicados en los tres tercios. Una vez
@@ -246,5 +331,13 @@ PON_DIRECCION:  ld a,l
                 ret
 
 MODO_NOMBRES:   defb 0                  ; 0 = la VRAM esta como siempre; 1 = como la deja la vista
+
+                IF SOMBRA
+; La sombra: 24 filas de 32, alineadas a 256 para que `inc l` recorra una fila
+; sin dar la vuelta. Viaja en la ROM como ceros y no importa lo que traiga:
+; MODO_NOMBRES a 0 la invalida.
+ALINEA:         defs (256 - (ALINEA and 255)) and 255
+SOMBRA_BUF:     defs 768
+                ENDIF
 
 NOMBRES_FIN:

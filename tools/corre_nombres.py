@@ -110,6 +110,20 @@ class Z80(corre_finales.Z80):
             self.n(); self.push(self.de)
         elif op == 0xD1:                                # pop de
             self.n(); self.de = self.pop()
+        # --- y las de la variante CON SOMBRA (`--vista-sombra`)
+        elif op == 0x1A:                                # ld a,(de)
+            self.n(); self.a = self.m.lee(self.de)
+        elif op == 0x77:                                # ld (hl),a
+            self.n(); self.m.escribe(self.hl, self.a)
+        elif op == 0xBE:                                # cp (hl)
+            self.n()
+            v = self.m.lee(self.hl); self.z = self.a == v; self.cy = self.a < v
+        elif op == 0x2C:                                # inc l (toca Z, no C)
+            self.n(); self.l = (self.l + 1) & 0xFF; self.z = self.l == 0
+        elif op == 0x24:                                # inc h
+            self.n(); self.h = (self.h + 1) & 0xFF; self.z = self.h == 0
+        elif op == 0xC3:                                # jp nn
+            self.n(); self.pc = self.nn()
         else:
             super().paso()
 
@@ -166,13 +180,17 @@ def monta(rom, plan, bajo, alto, ranura_cart=1, ranura_ram=3):
     return m
 
 
-def corre_vista(m, plan, pantalla, modo, sp=0x5BFF):
+def corre_vista(m, plan, pantalla, modo, sp=0x5BFF, vdp=None):
     """CARACTERES_A_NOMBRES con esa pantalla de caracteres en 0x5E00 y ese
-    MODO_NOMBRES. Devuelve el VDP y la CPU al volver."""
+    MODO_NOMBRES. Devuelve el VDP y la CPU al volver. Con `vdp` se sigue sobre
+    la VRAM de una llamada anterior -lo que necesita la variante con sombra-,
+    con la cuenta de escrituras a cero."""
     v = plan["vista"]
     m.ram[PANTALLA:PANTALLA + len(pantalla)] = pantalla
     m.ram[v["modo"]] = modo
-    vdp = Vdp()
+    if vdp is None:
+        vdp = Vdp()
+    vdp.escritos, vdp.direcciones = 0, []
     z = Z80(m, vdp, v["entrada"], sp)
     z.push(CENTINELA)
     z.corre()

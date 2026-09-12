@@ -291,6 +291,7 @@ def main(argv):
     comprimir = False
     finales_rom = False
     vista = False
+    sombra = False
     salidas_pedidas = None
     i = 3
     while i < len(argv):
@@ -306,6 +307,10 @@ def main(argv):
             finales_rom = True; i += 1
         elif argv[i] == "--vista":
             vista = True; i += 1
+        elif argv[i] == "--vista-sombra":
+            # La misma vista pero con la sombra de 768 B: solo se suben las
+            # filas que cambian. Es la variante que se monta para MEDIR.
+            vista = True; sombra = True; i += 1
         elif argv[i] == "--salidas":
             salidas_pedidas = argv[i + 1]; i += 2
         else:
@@ -482,7 +487,7 @@ def main(argv):
         bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
                                os.path.join(salidas, "nombres.bin"),
                                os.path.join(salidas, "nombres.sym"),
-                               equs=[("NOMBRES_ORG", NOMBRES_RAM)])
+                               equs=[("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0)])
         sim_nombres = lee_simbolos(os.path.join(salidas, "nombres.sym"))
         nombres_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
         bloque_musica = (bloque_musica or b"") + bloque_nombres
@@ -744,6 +749,7 @@ def main(argv):
             patrones=sim_nombres["PONE_LOS_PATRONES"],
             identidad=sim_nombres["TABLA_IDENTIDAD"],
             modo=sim_nombres["MODO_NOMBRES"],
+            sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
             parches=parches_vista)
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja

@@ -898,6 +898,23 @@ por byte o mas. Y sin emulador, `tools/corre_nombres.py` ejecuta la rutina en el
 interprete de Z80 con el VDP modelado: los patrones, los colores y los nombres
 son los que salen de la cinta, y el guardian deja BC, DE y HL como entraron.
 
+**La sombra, medida y descartada.** El plan traia una sombra de 768 bytes para
+subir solo las filas que cambian, y la intuicion dice que en reposo solo
+cambian las dos filas del cursor. Se monto como variante de ensamblado
+(`--vista-sombra`, `make mide_sombra MAQUINA=Philips_NMS_8250`; el codigo sigue
+en `nombres.asm` bajo `IF SOMBRA`) y se midio en el NMS 8250, con la ROM
+pintando lo mismo pixel a pixel:
+
+    ciclos por vuelta        sin sombra    con sombra
+    en reposo                   363.884       363.968
+    moviendo el cursor          623.715       645.979
+
+No gana en reposo y pierde un 3,6 % moviendo. La razon es de reloj: comparar
+una celda con la sombra son 31 ciclos (`ld a,(de) / cp (hl) / jr nz / inc de /
+inc l`) y subirla 37, porque el VDP no admite dos bytes a menos de ~29 ciclos
+con la pantalla encendida. Ahorrar la subida cuesta lo mismo que hacerla. Donde
+SI paga "no pintar lo que no cambia" es en el trozo: ver abajo.
+
 De paso, una cosa del juego original que el cotejo puso delante: al cerrar el
 menu de la R eligiendo a quien ya lleva el Anillo, `MENU_DE_ENTREGA` vuelve con
 el numero de ese personaje en A y 0x7224 se lo pasa a `MUEVE_POR_EL_MAPA` como

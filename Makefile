@@ -394,6 +394,27 @@ mide_vista: war_musica.rom work/war_sin_vista.rom
 	@echo "DESPUES, con ella:"
 	@grep -E "ciclos|vueltas por segundo" work/vista_despues/vista.log
 
+# LA SOMBRA, MEDIDA. La misma ROM con la sombra de 768 B (solo se suben las
+# filas que cambian) contra la que sube las 768 celdas siempre, en REPOSO -solo
+# parpadea el cursor- y MOVIENDO el cursor -cambia el trozo entero-. Y el cotejo
+# por pixel de la de sombra contra la referencia, que ahorrar no vale si pinta
+# otra cosa.
+work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista-sombra --salidas work/sombra
+
+.PHONY: mide_sombra
+mide_sombra: war_musica.rom work/war_sombra.rom work/war_sin_vista.rom
+	@cmp -s war_musica.rom work/war_sombra.rom && { echo "la ROM con sombra es IDENTICA a la de sin sombra"; exit 1; } || true
+	@rm -rf work/sombra_reposo work/sombra_mueve work/sinsombra_reposo work/sinsombra_mueve work/vista_sombra work/vista_ref_sombra work/sombra_png
+	WAR_OUT="$(abspath work/sinsombra_reposo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
+	WAR_OUT="$(abspath work/sombra_reposo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
+	WAR_OUT="$(abspath work/sinsombra_mueve)" WAR_MUEVE=1 $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
+	WAR_OUT="$(abspath work/sombra_mueve)" WAR_MUEVE=1 $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
+	WAR_OUT="$(abspath work/vista_ref_sombra)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sin_vista.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vista_sombra)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	python3 tools/coteja_vista.py work/vista_sombra work/vista_ref_sombra work/sombra_png --roms work/war_sombra.rom work/war_sin_vista.rom
+	@for d in sinsombra_reposo sombra_reposo sinsombra_mueve sombra_mueve; do echo "--- $$d ($(MAQUINA)):"; grep -E "VUELTA|vueltas por segundo" work/$$d/vista.log; done
+
 # PARA MIRARLO TU. Arranca la ROM con musica en el emulador, sin scripts ni
 # volcados, y te deja jugar:
 #   make juega

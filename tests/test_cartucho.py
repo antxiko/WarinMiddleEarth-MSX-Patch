@@ -862,6 +862,36 @@ class TestLaVistaPorNombres(unittest.TestCase):
         self.assertEqual(esperado_p[:1024], bytes(m.ram[0xC800:0xCC00]))
         self.assertEqual(esperado_p[1024:1024 + 8], bytes(m.ram[0x9E00:0x9E08]))
 
+    def test_la_variante_con_sombra_sube_solo_las_filas_que_cambian(self):
+        """La sombra de 768 B (`--vista-sombra`, work/war_sombra.rom) se monta
+        solo para MEDIR -no gana: ver INVESTIGACION.md-, pero si esta montada
+        tiene que hacer lo que dice: la segunda vez con la misma pantalla no
+        sube nada, y al cambiar cuatro celdas de dos filas sube esas dos filas
+        y deja la tabla de nombres bien."""
+        import corre_nombres
+        rom = os.path.join(WORK, "war_sombra.rom")
+        plan = os.path.join(WORK, "sombra", "plan.json")
+        if not (os.path.exists(rom) and os.path.exists(plan)):
+            raise unittest.SkipTest("la ROM con sombra no esta montada (make work/war_sombra.rom)")
+        with open(plan) as f:
+            plan = json.load(f)
+        self.assertTrue(plan["vista"].get("sombra"), "ese plan no lleva la sombra")
+        m = corre_nombres.monta(lee(rom), plan, self.bajo, self.alto)
+        pantalla = bytearray(self.pantalla_de_prueba())
+        vdp, _z = corre_nombres.corre_vista(m, plan, bytes(pantalla), modo=0)
+        self.assertEqual(vdp.escritos, 3 * 2048 + 3 * 2048 + 768)
+        self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(bytes(pantalla)))
+        # la misma pantalla otra vez, sobre la MISMA VRAM: ni un byte
+        vdp, _z = corre_nombres.corre_vista(m, plan, bytes(pantalla), modo=1, vdp=vdp)
+        self.assertEqual(vdp.escritos, 0, "con la pantalla igual la sombra no deberia subir nada")
+        # el cursor: cuatro celdas en las filas 10 y 11 (0x5F62 y 0x5F62+0x22)
+        for o in (0x162, 0x163, 0x184, 0x185):
+            pantalla[o] ^= 0x55
+        vdp, _z = corre_nombres.corre_vista(m, plan, bytes(pantalla), modo=1, vdp=vdp)
+        self.assertEqual(vdp.escritos, 64, "cuatro celdas en dos filas son dos filas de 32")
+        self.assertEqual(sorted(d for d, _e in vdp.direcciones), [0x1800 + 10 * 32, 0x1800 + 11 * 32])
+        self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(bytes(pantalla)))
+
     def test_el_guardian_devuelve_la_identidad_y_no_toca_nada_mas(self):
         """Lo que hace posible que el resto del juego no se entere. Con
         MODO_NOMBRES a 1, una llamada a 0x044B -la de siempre, con la direccion
