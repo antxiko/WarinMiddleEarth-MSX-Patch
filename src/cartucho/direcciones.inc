@@ -53,13 +53,13 @@ OP_ESPERA       equ 12  ; espera b cuadros (barridos del VDP)
 OP_SALTA        equ 13  ; SP = src, jp dst
 OP_BANCO_8000   equ 14  ; deja el banco b puesto en la ventana de 0x8000
 OP_RANURA_PAG2  equ 15  ; escribe en dst los bits de 0xA8 que ponen la pagina 2 en el cartucho
-OP_ROM_RAM_RLE  equ 16  ; banco b: descomprime de ROM src a RAM dst, con la marca en len
-OP_ROM_VRAM_RLE equ 17  ; banco b: descomprime de ROM src a VRAM dst, con la marca en len
-OP_RANURA_PAG1  equ 18  ; lo mismo que RANURA_PAG2 pero para la pagina 1 (bits 2-3)
+OP_RANURA_PAG1  equ 16  ; lo mismo que RANURA_PAG2 pero para la pagina 1 (bits 2-3)
+OP_ZX0_RAM      equ 17  ; descomprime ZX0 de RAM src a RAM dst (el destino TIENE que ser RAM)
+OP_RAM_VRAM     equ 18  ; copia len bytes de RAM src a VRAM dst
 
 ; El ultimo codigo que existe. El interprete rechaza todo lo que pase de aqui y
 ; se planta con el borde rojo, asi que esto hay que subirlo al anadir una
 ; operacion: cuando se anadieron las dos de la musica se quedo sin tocar y el
 ; cargador se colgaba antes de la primera copia, con el sintoma de que el stub
 ; arrancaba y no se llegaba a 0x0190.
-OP_ULTIMA       equ OP_RANURA_PAG1
+OP_ULTIMA       equ OP_RAM_VRAM

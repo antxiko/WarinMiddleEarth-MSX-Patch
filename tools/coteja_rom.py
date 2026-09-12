@@ -16,6 +16,8 @@ Fuera de esas regiones la RAM es lo que cada cargador dejo (la pila, el buzon
 de POKEs, el propio cargador) y no se exige que coincida; se informa.
 
 Uso: coteja_rom.py <dir volcados del cartucho> <dir volcados de la cinta> <dir estado_cinta>
+     [--sin-finales <plan.json>]  si la ROM lleva las pantallas finales en el
+                                  cartucho: el tramo y el parche salen de ese plan
 Sale con 1 si algo de lo exigido no cuadra.
 """
 import os
@@ -26,6 +28,48 @@ REGIONES_0190 = [(0x0190, 0x783F, "bajo + medio, como caen de la cinta"),
 REGIONES_5E00 = [(0x0190, 0x3F4E, "bloque bajo"),
                  (0x5E00, 0x96F0, "bloque medio, recolocado"),
                  (0x9E00, 0xE677, "bloque alto, recolocado")]
+
+# Con --sin-finales, las dos pantallas del final no viajan a la RAM: se quedan
+# en la ROM y se descomprimen a 0x4000 al acabar la partida. Su tramo se recorta
+# de las regiones exigidas, porque alli ya no hay nada que comparar.
+#
+# OJO: un cotejo NO VE LO QUE EXCLUYE. Que esas pantallas siguen siendo las de
+# la cinta lo dice `make verifica_finales`, que las fuerza y compara los 6.912
+# bytes que quedan en 0x4000 con los del bloque bajo. Sin ese, esto seria un
+# agujero.
+
+
+def lo_que_no_se_exige(plan):
+    """El tramo de las pantallas y los bytes del parche, LEIDOS DEL PLAN.
+
+    Escritos a mano se quedarian viejos en cuanto la rutina cambie de sitio o el
+    parche de tamano, y el cotejo empezaria a exigir una direccion que ya no es
+    -o, peor, a perdonar una que si.- El plan lo genera tools/haz_rom.py de la
+    disposicion real."""
+    f = plan["finales"]
+    ini = min(q["dir"] for q in f["pantallas"])
+    fin = max(q["dir"] + q["crudo"] for q in f["pantallas"]) - 1
+    q = f["parche"]
+    n = len(bytes.fromhex(q["nuevo"]))
+    # `dir` es donde el juego lo ejecuta (0x5E00 arriba) y `carga` donde cae
+    # antes de que 0x0190 recoloque el bloque: hacen falta los dos, uno por
+    # cada volcado.
+    return (ini, fin), (range(q["carga"], q["carga"] + n), range(q["dir"], q["dir"] + n))
+
+
+def recorta(regiones, fuera):
+    """Las mismas regiones sin el tramo `fuera`, partiendolas si hace falta."""
+    ini_f, fin_f = fuera
+    out = []
+    for ini, fin, que in regiones:
+        if fin < ini_f or ini > fin_f:
+            out.append((ini, fin, que))
+            continue
+        if ini < ini_f:
+            out.append((ini, ini_f - 1, que + " (hasta las pantallas finales)"))
+        if fin > fin_f:
+            out.append((fin_f + 1, fin, que + " (desde el final de las pantallas)"))
+    return out
 
 
 def lee(ruta):
@@ -43,11 +87,14 @@ def tramos(diferentes):
     return out
 
 
-def coteja(nombre, a, b, regiones):
-    """Compara a (cartucho) con b (cinta). Devuelve cuantos bytes fallan en lo exigido."""
+def coteja(nombre, a, b, regiones, perdonados=()):
+    """Compara a (cartucho) con b (cinta). Devuelve cuantos bytes fallan en lo
+    exigido. `perdonados` son los bytes que la ROM declara cambiar a proposito:
+    salen del plan, no de una lista escrita aqui."""
+    perdonados = set(perdonados)
     malos = 0
     for ini, fin, que in regiones:
-        d = [i for i in range(ini, fin + 1) if a[i] != b[i]]
+        d = [i for i in range(ini, fin + 1) if a[i] != b[i] and i not in perdonados]
         estado = "OK" if not d else "%d bytes distintos, p.ej. 0x%04X" % (len(d), d[0])
         print("  %s 0x%04X-0x%04X %-36s %s" % (nombre, ini, fin, que, estado))
         malos += len(d)
@@ -69,15 +116,29 @@ def main(argv):
         print(__doc__)
         return 2
     cart, cinta, estado = argv[1:4]
+    regiones_0190, regiones_5e00 = REGIONES_0190, REGIONES_5E00
+    perdonados_0190 = perdonados_5e00 = ()
+    if "--sin-finales" in argv:
+        import json
+        ruta = argv[argv.index("--sin-finales") + 1]
+        with open(ruta) as f:
+            plan = json.load(f)
+        fuera, (perdonados_0190, perdonados_5e00) = lo_que_no_se_exige(plan)
+        regiones_0190 = recorta(regiones_0190, fuera)
+        regiones_5e00 = recorta(regiones_5e00, fuera)
+        print("Las dos pantallas finales van en la ROM: 0x%04X-0x%04X no se exige,"
+              % fuera)
+        print("y el `call` que las pide, %d bytes en 0x%04X, tampoco."
+              % (len(perdonados_5e00), perdonados_5e00[0]))
     fallos = 0
 
     print("En 0x0190 (contra %s/full_crudo.bin):" % cinta)
     fallos += coteja("RAM", lee(os.path.join(cart, "ram_0190.bin")),
-                     lee(os.path.join(cinta, "full_crudo.bin")), REGIONES_0190)
+                     lee(os.path.join(cinta, "full_crudo.bin")), regiones_0190, perdonados_0190)
 
     print("En 0x5E00 (contra %s/full_5e00.bin):" % cinta)
     fallos += coteja("RAM", lee(os.path.join(cart, "ram_5e00.bin")),
-                     lee(os.path.join(cinta, "full_5e00.bin")), REGIONES_5E00)
+                     lee(os.path.join(cinta, "full_5e00.bin")), regiones_5e00, perdonados_5e00)
 
     v_cart = lee(os.path.join(cart, "vram_5e00.bin"))[:0x4000]
     v_cinta = lee(os.path.join(estado, "vram_5e00.bin"))[:0x4000]

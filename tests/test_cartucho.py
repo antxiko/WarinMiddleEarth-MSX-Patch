@@ -35,25 +35,16 @@ def lee(ruta):
         return f.read()
 
 
-def descomprime_desde(rom, ini, marca):
-    """El RLE de marca de tools/comprime.py, leido de la ROM tal y como lo lee
-    el descompresor del stub: hasta el `marca 0` que cierra el bloque. Escrito
-    aparte a proposito, para que un fallo del compresor no se cuele por usar su
-    propia funcion en los dos lados."""
-    out = bytearray()
-    i = ini
-    while True:
-        b = rom[i]
-        i += 1
-        if b != marca:
-            out.append(b)
-            continue
-        n = rom[i]
-        i += 1
-        if n == 0:
-            return bytes(out)
-        out += bytes([rom[i]]) * n
-        i += 1
+def descomprime_desde(rom, ini):
+    """Lo que sale de descomprimir el bloque que empieza en `ini`.
+
+    No reimplementa el formato: ejecuta el descompresor DE VERDAD
+    (src/cartucho/dzx0.asm) en el interprete de Z80 de tools/corre_finales.py.
+    Asi lo que se comprueba es el codigo que va a correr en el MSX, y la pareja
+    sigue siendo independiente: el compresor es el C de Einar Saukas y esto su
+    ensamblador, que son dos implementaciones distintas del mismo formato."""
+    import zx0
+    return zx0.descomprime(rom[ini:])
 
 
 def hace_falta(*rutas):
@@ -124,18 +115,12 @@ def ejecuta_plan(test, rom, plan):
             self.assertEqual(pagina1, "cart",
                              "la ventana de 0x8000 se fija sin el cartucho en la pagina 1")
             ventana_8000 = op["b"]
-        elif nombre in ("ROM_RAM_RLE", "ROM_VRAM_RLE"):
-            # El descompresor cruza de banco solo, y en la ROM los bancos
-            # van seguidos, asi que aqui basta con leer de corrido desde
-            # donde empieza. La marca viaja en el campo `len`.
-            if pagina1 != "cart":
-                lee_rom_sin_cart.append(op)
-            ini = op["b"] * 0x4000 + op["src"] - 0x4000
-            salido = descomprime_desde(rom, ini, op["len"] & 0xFF)
-            if nombre == "ROM_RAM_RLE":
-                escribe_ram(op["dst"], salido)
-            else:
-                vram[op["dst"]:op["dst"] + len(salido)] = salido
+        elif nombre == "ZX0_RAM":
+            # ZX0 lee de la RAM y escribe en la RAM: ni toca la ROM ni el banco.
+            # El bloque comprimido lo trajo un ROM_RAM antes.
+            escribe_ram(op["dst"], descomprime_desde(bytes(ram), op["src"]))
+        elif nombre == "RAM_VRAM":
+            vram[op["dst"]:op["dst"] + op["len"]] = ram[op["src"]:op["src"] + op["len"]]
         elif nombre in ("RANURA_PAG1", "RANURA_PAG2"):
             # un byte: el operando del `or` que lleva la ranura del cartucho
             escribe_ram(op["dst"], b"\x00")
@@ -222,11 +207,11 @@ class TestLaRom(unittest.TestCase):
             if nombre == "musica":
                 continue        # no sale de la cinta; tiene sus propios tests
             en_rom = self.rom[d["rom"]:d["rom"] + d["bytes"]]
-            if d.get("rle"):
+            if d.get("zx0"):
                 # Lo que cuenta no es lo que hay en la ROM sino lo que sale al
                 # descomprimirlo: es la unica forma de que este test siga
                 # comprobando la cinta y no el formato.
-                salido = descomprime_desde(self.rom, d["rom"], d["marca"])
+                salido = descomprime_desde(self.rom, d["rom"])
                 self.assertEqual(salido, esperado[nombre], "%s, descomprimido" % nombre)
                 self.assertEqual(len(salido), d["crudo"], nombre)
                 self.assertLess(d["bytes"], d["crudo"], "%s no encoge" % nombre)
@@ -277,9 +262,14 @@ class TestLaRom(unittest.TestCase):
         if finales:
             corte = min(q["dir"] for q in finales["pantallas"]) - 0x0190
             self.assertEqual(ram[0x0190:0x0190 + corte], bajo[:corte])
+            # Ya no se puede exigir que ese tramo quede a CERO: los dos bufers
+            # de ZX0 viven ahi y dejan restos de la imagen de carga. Lo que se
+            # exige es lo que de verdad importa: que la pantalla final no este.
             for q in finales["pantallas"]:
-                self.assertEqual(set(ram[q["dir"]:q["dir"] + q["crudo"]]), {0},
-                                 "la pantalla de 0x%04X sigue viajando a la RAM" % q["dir"])
+                o = q["dir"] - 0x0190
+                self.assertNotEqual(bytes(ram[q["dir"]:q["dir"] + q["crudo"]]),
+                                    bajo[o:o + q["crudo"]],
+                                    "la pantalla de 0x%04X sigue viajando a la RAM" % q["dir"])
         else:
             self.assertEqual(ram[0x0190:0x0190 + len(bajo)], bajo)
         self.assertEqual(ram[0x3F4F:0x3F4F + len(medio)], medio)
@@ -468,14 +458,16 @@ class TestLaMusica(unittest.TestCase):
             permitidos.update(range(finales["ram"], finales["ram"] + finales["bytes"]))
             for pantalla in finales["pantallas"]:
                 permitidos.update(range(pantalla["dir"], pantalla["dir"] + pantalla["crudo"]))
+            # y los bufers de ZX0, que viven en ese mismo tramo
+            z = self.plan["zona_libre"]
+            for cual in ("bufer_z", "bufer_d"):
+                permitidos.update(range(z[cual]["ram"], z[cual]["ram"] + z[cual]["bytes"]))
                 # Y que la diferencia sea la que se dice: war.rom SI las lleva a
                 # la RAM y esta NO. Sin esto, el tramo permitido taparia
                 # cualquier cosa que pasara ahi.
                 tramo = slice(pantalla["dir"], pantalla["dir"] + pantalla["crudo"])
-                self.assertNotEqual(set(ram_sin[tramo]), {0},
-                                    "war.rom tampoco lleva la pantalla de 0x%04X a la RAM" % pantalla["dir"])
-                self.assertEqual(set(ram_con[tramo]), {0},
-                                 "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
+                self.assertNotEqual(bytes(ram_con[tramo]), bytes(ram_sin[tramo]),
+                                    "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
         self.assertEqual(fuera, [], "la ROM cambia la RAM fuera de lo que declara")
@@ -527,15 +519,28 @@ class TestLasPantallasFinales(unittest.TestCase):
         return self.bajo[o:o + pantalla["crudo"]]
 
     # ---------------------------------------------------------- la colocacion
-    def test_la_rutina_cabe_donde_dice_y_no_pisa_el_buzon_de_pokes(self):
+    def test_la_rutina_y_los_bufers_caben_en_la_zona_que_ella_libera(self):
+        """La rutina ya no cabe detras del puente: con el descompresor ZX0
+        dentro pasa de los 166 bytes que hay hasta el buzon de POKEs. Vive en la
+        RAM que ella misma libera, junto a los dos bufers, y los tres tienen que
+        caber ahi sin pisarse ni salirse."""
         f = self.f
-        self.assertGreaterEqual(f["ram"], 0x003B, "la rutina se mete debajo del `jp 0x0400` de 0x0038")
-        self.assertLessEqual(f["ram"] + f["bytes"], 0x012C,
-                             "la rutina llega a 0x%04X y pisa el buzon de POKEs de 0x012C"
-                             % (f["ram"] + f["bytes"]))
-        # y no se solapa con el puente, que vive justo delante
-        p = self.plan["datos"]["musica"]["puente"]
-        self.assertGreaterEqual(f["ram"], p["ram"] + p["bytes"], "la rutina pisa el puente de la musica")
+        z = self.plan["zona_libre"]
+        self.assertEqual(z["rutina"]["ram"], f["ram"])
+        self.assertEqual(z["rutina"]["bytes"], f["bytes"])
+        # los tres, en orden y sin solaparse
+        tramos = [(z["rutina"]["ram"], z["rutina"]["bytes"], "la rutina"),
+                  (z["bufer_z"]["ram"], z["bufer_z"]["bytes"], "el bufer del comprimido"),
+                  (z["bufer_d"]["ram"], z["bufer_d"]["bytes"], "el bufer del descomprimido")]
+        anterior = z["ini"]
+        for ini, tam, que in tramos:
+            self.assertGreaterEqual(ini, anterior, "%s empieza dentro de lo anterior" % que)
+            anterior = ini + tam
+        self.assertLessEqual(anterior, z["fin"] + 1,
+                             "los bufers llegan a 0x%04X y se salen de la zona libre" % anterior)
+        # y la zona libre es de verdad lo que las pantallas dejaron
+        self.assertGreaterEqual(z["ini"], min(q["dir"] for q in f["pantallas"]))
+        self.assertLessEqual(z["fin"], max(q["dir"] + q["crudo"] for q in f["pantallas"]) - 1)
         self.assertTrue(f["ram"] <= f["entrada"] < f["ram"] + f["bytes"])
         with open(os.path.join(WORK_MUSICA, "finales.bin"), "rb") as fh:
             binario = fh.read()
@@ -564,13 +569,26 @@ class TestLasPantallasFinales(unittest.TestCase):
         ini = min(q["dir"] for q in self.f["pantallas"])
         fin = max(q["dir"] + q["crudo"] for q in self.f["pantallas"])
         self.assertEqual(fin - ini, 13824)
+        # En el tramo liberado ahora vive gente: la rutina y los dos bufers de
+        # ZX0. Lo que NO puede haber es una pantalla entera.
+        z = self.plan["zona_libre"]
+        permitido = [(z["rutina"]["ram"], z["rutina"]["bytes"]),
+                     (z["bufer_z"]["ram"], z["bufer_z"]["bytes"]),
+                     (z["bufer_d"]["ram"], z["bufer_d"]["bytes"])]
+
+        def declarado(dst, n):
+            return any(a <= dst and dst + n <= a + t for a, t in permitido)
+
         for o in self.plan["plan"]:
-            if o["op"] in ("ROM_RAM", "LLENA_RAM", "VRAM_RAM"):
-                self.assertFalse(o["dst"] < fin and o["dst"] + o["len"] > ini,
-                                 "la op %s escribe en el tramo liberado: 0x%04X +%d"
-                                 % (o["op"], o["dst"], o["len"]))
-            if o["op"] == "ROM_RAM_RLE":
-                self.assertFalse(ini <= o["dst"] < fin,
+            if o["op"] in ("ROM_RAM", "LLENA_RAM", "VRAM_RAM", "ZX0_RAM"):
+                # ZX0_RAM no dice cuanto escribe: se mira solo donde empieza
+                n = 1 if o["op"] == "ZX0_RAM" else o["len"]
+                if o["dst"] < fin and o["dst"] + n > ini:
+                    self.assertTrue(declarado(o["dst"], n),
+                                    "la op %s escribe en el tramo liberado sin declararlo: 0x%04X +%d"
+                                    % (o["op"], o["dst"], n))
+            if o["op"] == "ZX0_RAM":
+                self.assertNotIn(o["dst"], [q["dir"] for q in self.f["pantallas"]],
                                  "una pantalla final sigue descomprimiendose a la RAM en 0x%04X" % o["dst"])
 
     def test_el_parche_sustituye_exactamente_el_ldir_de_0x83e7(self):
@@ -666,6 +684,92 @@ class TestLasPantallasFinales(unittest.TestCase):
             # de lo que escribe al final de la pantalla hasta la pila, nada
             self.assertEqual(set(m.ram[0x4000 + pantalla["crudo"]:0x5BF0]), {0},
                              "la rutina se ha pasado del sitio de la pantalla")
+
+
+class TestZX0(unittest.TestCase):
+    """El compresor, que es de donde sale el hueco de la ROM.
+
+    Lo que se comprueba aqui no es el formato -ese es de Einar Saukas y esta
+    probado por media escena- sino las dos cosas que SI pueden salir mal aqui:
+    que la traduccion de su ensamblador a la sintaxis de pasmo sigue siendo el
+    mismo programa, y que cada bloque de la ROM devuelve exactamente lo que
+    venia en la cinta.
+    """
+
+    def setUp(self):
+        plan = os.path.join(WORK_MUSICA, "plan.json")
+        hace_falta(ROM_MUSICA, plan)
+        self.rom = lee(ROM_MUSICA)
+        with open(plan) as f:
+            self.plan = json.load(f)
+
+    def test_el_descompresor_son_los_68_bytes_del_original(self):
+        """La version "Standard" de dzx0 son 68 bytes y asi lo dice su cabecera.
+        Si la traduccion a pasmo hubiera cambiado una instruccion, esto cantaria
+        antes de que nadie tuviera que mirar una pantalla."""
+        import zx0
+        self.assertEqual(len(zx0.dzx0_binario()), 68)
+
+    def test_cada_bloque_de_la_rom_devuelve_lo_que_traia_la_cinta(self):
+        """La ida y vuelta, bloque a bloque, contra los cuerpos de la cinta.
+
+        Comprime el C de Einar Saukas y descomprime su ensamblador, ejecutado en
+        el interprete: dos implementaciones distintas del mismo formato, que es
+        lo que hace que esto valga como comprobacion y no como tautologia."""
+        pantalla = lee(os.path.join(WORK, "pantalla.raw"))
+        bajo = lee(os.path.join(WORK, "bajo.raw"))
+        esperado = {"patrones": pantalla[100:100 + 6144],
+                    "colores": pantalla[100 + 6144:100 + 12288],
+                    "final0": bajo[0x094F - 0x0190:][:6912],
+                    "final1": bajo[0x244F - 0x0190:][:6912]}
+        comprimidos = [n for n, d in self.plan["datos"].items() if d.get("zx0")]
+        self.assertEqual(sorted(comprimidos), sorted(esperado),
+                         "no estan comprimidos los cuatro bloques que se esperaba")
+        for nombre in comprimidos:
+            d = self.plan["datos"][nombre]
+            salido = descomprime_desde(self.rom, d["rom"])
+            self.assertEqual(len(salido), d["crudo"], "%s: sale otro tamano" % nombre)
+            self.assertEqual(salido, esperado[nombre], "%s: no devuelve lo de la cinta" % nombre)
+
+    def test_zx0_encoge_mas_que_el_rle_que_habia_antes(self):
+        """La razon del cambio, comprobada y no supuesta. Si algun dia dejara de
+        ser cierto para algun bloque, aqui se veria: el RLE de marca sigue en
+        tools/comprime.py precisamente para poder medirlo."""
+        from comprime import comprime as rle
+        pantalla = lee(os.path.join(WORK, "pantalla.raw"))
+        crudos = {"patrones": pantalla[100:100 + 6144],
+                  "colores": pantalla[100 + 6144:100 + 12288]}
+        for nombre, datos in crudos.items():
+            con_rle = len(rle(datos)[0])
+            con_zx0 = self.plan["datos"][nombre]["bytes"]
+            self.assertLess(con_zx0, con_rle,
+                            "%s: ZX0 da %d y el RLE %d" % (nombre, con_zx0, con_rle))
+
+    def test_el_stub_y_la_rutina_llevan_cada_uno_su_copia_del_descompresor(self):
+        """Y tiene que ser asi: el stub de 0xD800 descomprime al cargar, pero en
+        tiempo de juego puede estar pisado, asi que la rutina de las finales no
+        puede llamarlo y lleva la suya. Son 68 bytes repetidos a proposito."""
+        import zx0
+        # OJO: dzx0 NO es reubicable -sus dos `call dzx0s_elias` llevan la
+        # direccion absoluta dentro-, asi que las dos copias NO son iguales byte
+        # a byte. Hay que ensamblarlo en el org de cada una, y ese org sale del
+        # .sym, no de contarlo a mano.
+        for fichero in ("cargador_ram", "finales"):
+            simbolos = {}
+            with open(os.path.join(WORK_MUSICA, fichero + ".sym")) as f:
+                for linea in f:
+                    m = re.match(r"(\w+)\s+EQU\s+0?([0-9A-Fa-f]+)H", linea.strip())
+                    if m:
+                        simbolos[m.group(1)] = int(m.group(2), 16)
+            self.assertIn("dzx0_standard", simbolos,
+                          "%s no lleva el descompresor dentro" % fichero)
+            copia = zx0.dzx0_binario(simbolos["dzx0_standard"])
+            self.assertEqual(len(copia), 68)
+            with open(os.path.join(WORK_MUSICA, fichero + ".bin"), "rb") as f:
+                binario = f.read()
+            self.assertIn(copia, binario,
+                          "el descompresor de %s no es el de src/cartucho/dzx0.asm" % fichero)
+            self.assertIn(copia, self.rom, "esa copia no ha llegado a la ROM")
 
 
 class TestElCotejoConLaCinta(unittest.TestCase):

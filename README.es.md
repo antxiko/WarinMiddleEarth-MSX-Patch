@@ -137,7 +137,7 @@ Las direcciones, las medidas y la salida de openMSX estan en
 ## De cinta a cartucho
 
 El juego no se toca: `make rom` monta de tu cinta **`war.rom`, una MegaROM
-ASCII16 de 64 KB** con un cargador de 77 bytes y un stub de 1.114 que dejan la RAM
+ASCII16 de 64 KB** con un cargador de 77 bytes y un stub de 1.105 que dejan la RAM
 exactamente como la deja el cargador de la cinta y saltan al mismo sitio
 (0x0190). Con la cinta parcheada, `make rom_parche` saca `war_parche.rom`.
 Tampoco se distribuyen. El juego solo escribe el registro 7 del VDP y hereda
@@ -147,6 +147,10 @@ del bloque medio que caen ahi pasan por la VRAM. Comprobado byte a byte -RAM,
 VRAM, VDP y PSG- en cuatro maquinas (`make verifica_rom`,
 `make verifica_rom_parche`): todo igual que la cinta. Detalle en
 [INVESTIGACION.md](INVESTIGACION.md).
+
+El cartucho **usa ZX0**, de Einar Saukas, para las imagenes: 26.112 bytes de
+pantallas en 12.600. Su licencia pide que se diga, y queda dicho aqui y en
+[AVISO-LEGAL.md](AVISO-LEGAL.md); el compresor no se distribuye.
 
 ## Lo que falta
 

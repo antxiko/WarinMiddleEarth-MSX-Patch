@@ -79,7 +79,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from comprime import comprime           # noqa: E402
+import zx0                              # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -157,6 +157,20 @@ FINALES = ((0x094F, 6912, "victoria: Gandalf y THE FORCES OF EVIL HAVE BEEN DEST
 # se cambian por una llamada a la rutina, que hace lo mismo leyendo de la ROM.
 # HL llega con 0x094F o 0x244F, asi que no hay que tocar VICTORIA ni DERROTA.
 PINTA_LA_FINAL = 0x83E7
+
+# LA RAM QUE LIBERARON LAS PANTALLAS FINALES: 0x094F-0x3F4E, 13.824 bytes
+# seguidos y enteros en la pagina 0, que es la que nunca hay que conmutar.
+# Ahi viven la rutina de las finales y los dos bufers que ZX0 necesita.
+#
+# Es lo que hace posible ZX0: sus dos bufers piden ~9.800 bytes contiguos en el
+# momento de repintar la imagen de carga, y antes de sacar las finales de la RAM
+# ahi no habia sitio.
+ZONA_LIBRE = 0x0950         # redondeado, justo detras del bloque bajo recortado
+SITIO_RUTINA = 256          # lo que se le reserva a finales.asm; sobra
+BUFER_Z = ZONA_LIBRE + SITIO_RUTINA     # el bloque comprimido, tal cual sale de la ROM
+TAM_BUFER_Z = 4096
+BUFER_D = BUFER_Z + TAM_BUFER_Z         # y el descomprimido, camino de la VRAM
+TAM_BUFER_D = 6144                      # lo mayor que va a la VRAM: media pantalla
 PINTA_LA_FINAL_ORIG = bytes.fromhex("110040 01001b edb0")
 
 
@@ -179,13 +193,25 @@ class Plan:
             dst += trozo
             n -= trozo
 
-    # Un bloque comprimido: basta el banco donde EMPIEZA, porque el
-    # descompresor cruza al siguiente solo. La marca viaja en el campo `len`,
-    # que en estas dos operaciones no hace falta para nada mas.
-    def rle(self, a_vram, d, dst, nota):
-        banco = d["rom"] // TAM_BANCO
-        self.op("ROM_VRAM_RLE" if a_vram else "ROM_RAM_RLE", banco,
-                0x4000 + d["rom"] % TAM_BANCO, dst, d["marca"], nota)
+    # Un bloque ZX0, en TRES pasos. ZX0 copia trozos de lo que ya escribio, asi
+    # que el destino tiene que ser RAM legible: contra la VRAM no vale, y por eso
+    # no puede ir en una sola operacion como iba el RLE de marca.
+    #
+    #   1. el bloque comprimido, de la ROM a un bufer (`copia_rom` ya sabe
+    #      partirlo si cruza de banco, que es lo que ZX0 no sabe hacer)
+    #   2. se descomprime a otro bufer
+    #   3. y se vuelca de corrido a donde iba
+    #
+    # Si el destino ya es RAM, los pasos 2 y 3 se funden en uno.
+    def zx0(self, a_vram, d, dst, nota, bufer_z, bufer_d):
+        self.copia_rom("ROM_RAM", d["rom"], bufer_z, d["bytes"],
+                       "%s: %d B comprimidos a 0x%04X" % (nota, d["bytes"], bufer_z))
+        destino = bufer_d if a_vram else dst
+        self.op("ZX0_RAM", 0, bufer_z, destino, 0,
+                "%s: ZX0 a 0x%04X (%d B)" % (nota, destino, d["crudo"]))
+        if a_vram:
+            self.op("RAM_VRAM", 0, bufer_d, dst, d["crudo"],
+                    "%s: y a la VRAM 0x%04X" % (nota, dst))
 
     def inc(self):
         lineas = []
@@ -253,8 +279,11 @@ def main(argv):
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
-    # La rutina de las finales lleva un descompresor y nada mas: si los bloques
-    # viajaran crudos no sabria copiarlos.
+    # Los dos van juntos, y no es por comodidad: los bufers que ZX0 necesita
+    # caen justo en la RAM que liberan las pantallas finales. Comprimiendo sin
+    # sacarlas, el bufer y el destino de las propias pantallas se pisarian.
+    if comprimir:
+        finales_rom = True
     assert not finales_rom or comprimir, "--finales-rom necesita --comprime"
 
     # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
@@ -299,15 +328,15 @@ def main(argv):
         pos += len(cuerpo)
 
     def mete_z(nombre, cuerpo, que):
-        """Comprimido, con su marca y el tamano original apuntados: el plan los
-        necesita y el test los usa para comprobar la ida y vuelta. Si el
-        resultado fuera mas grande que el original -puede pasar, comprimir no
-        siempre encoge- se mete crudo y se dice."""
-        z, marca = comprime(cuerpo)
+        """Comprimido con ZX0, con el tamano original apuntado: el plan lo
+        necesita y los tests lo usan para comprobar la ida y vuelta. Si el
+        resultado fuera mas grande que el original -comprimir no siempre
+        encoge- se mete crudo y se dice."""
+        z = zx0.comprime(cuerpo)
         if len(z) >= len(cuerpo):
-            mete(nombre, cuerpo, crudo=len(cuerpo), rle=False, que=que)
+            mete(nombre, cuerpo, crudo=len(cuerpo), zx0=False, que=que)
             return False
-        mete(nombre, z, crudo=len(cuerpo), rle=True, marca=marca, que=que)
+        mete(nombre, z, crudo=len(cuerpo), zx0=True, que=que)
         return True
 
     if comprimir:
@@ -319,17 +348,19 @@ def main(argv):
         assert FINALES[0][0] + FINALES[0][1] == FINALES[1][0], "las dos finales no van seguidas"
         assert FINALES[1][0] + FINALES[1][1] - CARGA_BAJO == len(bajo), \
             "las dos pantallas finales no acaban donde acaba el bloque bajo"
-        mete("bajo", bajo[:corte], crudo=corte, rle=False,
+        mete("bajo", bajo[:corte], crudo=corte, zx0=False,
              que="bloque bajo: el codigo, hasta donde empiezan las pantallas finales")
         for n, (dir_, tam, que) in enumerate(FINALES):
             o = dir_ - CARGA_BAJO
             mete_z("final%d" % n, bajo[o:o + tam], que)
     else:
-        mete("patrones", patrones, crudo=len(patrones), rle=False)
-        mete("colores", colores, crudo=len(colores), rle=False)
-        mete("bajo", bajo, crudo=len(bajo), rle=False)
-    mete("medio", medio, crudo=len(medio), rle=False)
-    mete("alto", alto, crudo=len(alto), rle=False)
+        mete("patrones", patrones, crudo=len(patrones), zx0=False)
+        mete("colores", colores, crudo=len(colores), zx0=False)
+        mete("bajo", bajo, crudo=len(bajo), zx0=False)
+    mete("medio", medio, crudo=len(medio), zx0=False,
+         que="bloque medio: EL JUEGO (menu, mapa, batalla, textos)")
+    mete("alto", alto, crudo=len(alto), zx0=False,
+         que="bloque alto: graficos, mapa comprimido y tablas")
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
     # ---------------------------------------------------------------- musica
@@ -381,17 +412,21 @@ def main(argv):
     # ventana de 0x8000 y marca del RLE- se lo damos ya calculado, que es lo
     # que hay en la disposicion y aqui no hay que volver a deducirlo.
     bloque_finales = None
-    finales_ram = PUENTE_RAM + (len(puente) if musica else 0)
+    # La rutina ya no cabe detras del puente: con el descompresor ZX0 dentro pasa
+    # de los 166 bytes que hay hasta el buzon de POKEs. Se va a la RAM que ella
+    # misma libera, donde hay 13.824 y nadie la va a pisar en toda la partida.
+    finales_ram = ZONA_LIBRE
     if finales_rom:
         equs = [("FINALES_ORG", finales_ram),
-                ("BANCO_VUELVE", banco_musica if musica else 0)]
+                ("BANCO_VUELVE", banco_musica if musica else 0),
+                ("BUFER_ZX0", BUFER_Z)]
         for n, (dir_, _tam, _que) in enumerate(FINALES):
             d = disposicion["final%d" % n]
-            assert d.get("rle"), "la pantalla final %d no esta comprimida" % n
+            assert d.get("zx0"), "la pantalla final %d no esta comprimida" % n
             equs += [("F%d_DIR" % n, dir_),
                      ("F%d_BANCO" % n, d["rom"] // TAM_BANCO),
                      ("F%d_SRC" % n, VENTANA_8000 + d["rom"] % TAM_BANCO),
-                     ("F%d_MARCA" % n, d["marca"])]
+                     ("F%d_TAM" % n, d["bytes"])]
         bloque_finales = pasmo(os.path.join(SRC, "finales.asm"),
                                os.path.join(salidas, "finales.bin"),
                                os.path.join(salidas, "finales.sym"), equs=equs)
@@ -400,9 +435,20 @@ def main(argv):
         bloque_musica = (bloque_musica or b"") + bloque_finales
         assert len(bloque_musica) <= libre_hueco, \
             "la musica y las finales ocupan %d B y en el hueco caben %d" % (len(bloque_musica), libre_hueco)
-        assert finales_ram + len(bloque_finales) <= BUZON_POKES[0], \
-            "la rutina de las finales llega a 0x%04X y pisaria el buzon de POKEs" \
-            % (finales_ram + len(bloque_finales))
+        assert len(bloque_finales) <= SITIO_RUTINA, (
+            "la rutina de las finales ocupa %d B y solo se le reservan %d antes del bufer"
+            % (len(bloque_finales), SITIO_RUTINA))
+
+    # Los dos bufers de ZX0, comprobados contra lo que de verdad va a caer en
+    # ellos: si un bloque creciera, aqui se ve, y no en una pantalla con basura.
+    if comprimir:
+        mayor = max((d["bytes"] for d in disposicion.values() if d.get("zx0")), default=0)
+        assert mayor <= TAM_BUFER_Z, (
+            "el mayor bloque comprimido son %d B y el bufer tiene %d" % (mayor, TAM_BUFER_Z))
+        assert BUFER_D + TAM_BUFER_D <= CARGA_MEDIO, (
+            "el bufer de ZX0 llega a 0x%04X y pisa el bloque medio de 0x%04X"
+            % (BUFER_D + TAM_BUFER_D, CARGA_MEDIO))
+        assert ZONA_LIBRE >= FINALES[0][0], "la zona libre empieza dentro del bloque bajo"
 
     # El bloque medio, cargado en 0x3F4F, cruza a la pagina 1 en 0x4000
     en_pagina0 = 0x4000 - CARGA_MEDIO                  # 177 bytes
@@ -416,8 +462,9 @@ def main(argv):
         haya guardado. Asi el plan no repite la decision que ya se tomo arriba."""
         d = disposicion[nombre]
         texto = nota or d.get("que", nombre)
-        if d.get("rle"):
-            p.rle(a_vram, d, dst, "%s (%d B -> %d, RLE)" % (texto, d["crudo"], d["bytes"]))
+        if d.get("zx0"):
+            p.zx0(a_vram, d, dst, "%s (%d B -> %d, ZX0)" % (texto, d["crudo"], d["bytes"]),
+                  BUFER_Z, BUFER_D)
         else:
             p.copia_rom("ROM_VRAM" if a_vram else "ROM_RAM", d["rom"], dst, d["bytes"], texto)
 
@@ -590,6 +637,15 @@ def main(argv):
                    carga=dict(bajo=CARGA_BAJO, medio=CARGA_MEDIO, alto=CARGA_ALTO, salto=SALTO, pila=PILA),
                    pantalla_de_carga=con_pantalla, espera_cuadros=espera,
                    vdp_regs=VDP_REGS, psg_regs=PSG_REGS, plan=p.json())
+    if comprimir:
+        # LA ZONA LIBERADA, declarada: quien puede escribir en 0x094F-0x3F4E y
+        # que. Sin esto, los tests tendrian que reconocer los bufers por su
+        # direccion, que es justo lo que se queda viejo.
+        resumen["zona_libre"] = dict(
+            ini=ZONA_LIBRE, fin=CARGA_MEDIO - 1,
+            rutina=dict(ram=finales_ram, bytes=len(bloque_finales) if bloque_finales else 0),
+            bufer_z=dict(ram=BUFER_Z, bytes=TAM_BUFER_Z, que="el bloque comprimido, tal cual sale de la ROM"),
+            bufer_d=dict(ram=BUFER_D, bytes=TAM_BUFER_D, que="y el descomprimido, camino de la VRAM"))
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
         # la rutina, donde corre, de donde lee cada pantalla y el parche que la
@@ -604,7 +660,7 @@ def main(argv):
                             bytes=disposicion["final%d" % n]["bytes"],
                             banco=disposicion["final%d" % n]["rom"] // TAM_BANCO,
                             src=VENTANA_8000 + disposicion["final%d" % n]["rom"] % TAM_BANCO,
-                            marca=disposicion["final%d" % n]["marca"])
+                            zx0=disposicion["final%d" % n]["zx0"])
                        for n, (dir_, tam, que) in enumerate(FINALES)])
     with open(os.path.join(salidas, "plan.json"), "w") as f:
         json.dump(resumen, f, indent=1)
@@ -646,8 +702,8 @@ def main(argv):
         print("  las pantallas finales se quedan en la ROM: %d B de rutina de ROM 0x%05X a RAM 0x%04X"
               % (f["bytes"], f["rom"], f["ram"]))
         for q in f["pantallas"]:
-            print("     0x%04X (%d B crudos) desde el banco %d, 0x%04X, marca 0x%02X: %s"
-                  % (q["dir"], q["crudo"], q["banco"], q["src"], q["marca"], q["que"]))
+            print("     0x%04X (%d B crudos -> %d con ZX0) desde el banco %d, 0x%04X: %s"
+                  % (q["dir"], q["crudo"], q["bytes"], q["banco"], q["src"], q["que"]))
         q = f["parche"]
         print("     0x%04X del bloque medio: %s -> %s, %s"
               % (q["dir"], q["orig"], q["nuevo"], q["que"]))

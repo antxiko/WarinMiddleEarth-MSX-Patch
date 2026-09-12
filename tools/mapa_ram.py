@@ -104,11 +104,29 @@ def lee_musica(work):
     return ocupa
 
 
+def lee_bufers(work):
+    """Los dos bufers de ZX0. Solo se usan MIENTRAS CARGA -despues de saltar a
+    0x0190 esa RAM esta libre-, pero hay que contarlos: quien quiera meter algo
+    ahi tiene que saber que el cargador pasa por encima antes de arrancar."""
+    ruta = os.path.join(work, "musica", "plan.json")
+    if not os.path.exists(ruta):
+        return []
+    with open(ruta) as f:
+        d = json.load(f)
+    z = d.get("zona_libre")
+    if not z:
+        return []
+    return [(z[cual]["ram"], z[cual]["ram"] + z[cual]["bytes"],
+             "bufer de ZX0, SOLO durante la carga: %s" % z[cual]["que"])
+            for cual in ("bufer_z", "bufer_d")]
+
+
 def main(argv):
     work = argv[1] if len(argv) > 1 else "work"
     libres = lee_libres(work)
     musica = lee_musica(work)
     en_la_rom = lee_finales(work)
+    bufers = lee_bufers(work)
 
     # Lo que la CINTA deja en la RAM. Si las dos pantallas finales se quedan en
     # el cartucho, el bloque bajo se acorta hasta donde empezaban: de ahi salen
@@ -137,6 +155,8 @@ def main(argv):
         filas.append((ini, fin, "JUEGO", que))
     for ini, fin, que in musica:
         filas.append((ini, fin, "MUSICA", que))
+    for ini, fin, que in bufers:
+        filas.append((ini, fin, "CARGA", que))
     for ini, fin in libres:
         filas.append((ini, fin, "libre", "nadie lo leyo ni lo escribio en toda la partida"))
 
@@ -145,7 +165,8 @@ def main(argv):
         tam = fin - ini
         barra = ("#" if tipo in ("CINTA", "JUEGO")
                  else "*" if tipo in ("IMAGEN", "MUSICA")
-                 else "-" if tipo == "EN ROM" else ".")
+                 else "-" if tipo == "EN ROM"
+                 else "o" if tipo == "CARGA" else ".")
         n = max(1, min(ancho, round(tam / 65536 * ancho * 6)))
         print("  %04X-%04X %6d B  %-6s %-8s %s"
               % (ini, fin - 1, tam, tipo, barra * min(n, 8), que))
@@ -188,6 +209,13 @@ def main(argv):
             print("      %04X-%04X  %6d B  %s" % (i, f - 1, f - i, que))
             usa += f - i
         print("  Queda para lo que venga: %d B." % (sum(f - i for i, f in ajena) - usa))
+    if bufers:
+        print()
+        print("  Y ojo con esto: MIENTRAS CARGA, el cargador usa ademas")
+        for i, f, que in bufers:
+            print("      %04X-%04X  %6d B  %s" % (i, f - 1, f - i, que.split(": ", 1)[-1]))
+        print("  Despues de saltar a 0x0190 esa RAM queda libre, pero lo que se")
+        print("  deje ahi antes de arrancar el juego no sobrevive.")
     return 0
 
 

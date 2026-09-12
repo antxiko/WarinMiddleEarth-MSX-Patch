@@ -139,7 +139,7 @@ the openMSX output are in [INVESTIGACION.md](INVESTIGACION.md).
 ## From tape to cartridge
 
 The game itself is untouched: `make rom` builds from your tape **`war.rom`, a
-64 KB ASCII16 MegaROM** with a 77-byte boot and a 1,114-byte stub that leave RAM
+64 KB ASCII16 MegaROM** with a 77-byte boot and a 1,105-byte stub that leave RAM
 exactly as the tape loader leaves it and jump to the same place (0x0190). From
 the patched tape, `make rom_parche` builds `war_parche.rom`. Neither is
 distributed. The game only ever writes VDP register 7 and inherits everything
@@ -148,6 +148,10 @@ the tape; and since page 1 is the ROM while loading, the 14,400 bytes of the
 middle block that land there go through VRAM. Checked byte for byte — RAM, VRAM,
 VDP and PSG — on four machines (`make verifica_rom`, `make verifica_rom_parche`):
 all identical to the tape. Details in [INVESTIGACION.md](INVESTIGACION.md).
+
+The cartridge **uses ZX0**, by Einar Saukas, for the images: 26,112 bytes of
+screens in 12,600. Its licence asks that you say so, and it is said here and in
+[LEGAL-NOTICE.md](LEGAL-NOTICE.md); the compressor itself is not distributed.
 
 ## What is still missing
 

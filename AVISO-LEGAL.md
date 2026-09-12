@@ -19,8 +19,28 @@ publica para la **preservación, el estudio y la documentación** de un título 
 La imagen de la cinta **no** se distribuye aquí. Quien quiera volver
 a montar el listado tiene que poner la suya, y el `Makefile` comprueba su
 sha256 antes de hacer nada. Tampoco se distribuyen las ROM de cartucho
-(`war.rom`, `war_parche.rom`) que `make rom` monta a partir de ella: son el
-mismo juego en otro envase, y cada cual las hace de su propia cinta.
+(`war.rom`, `war_parche.rom`, `war_musica.rom`) que `make rom` monta a partir
+de ella: son el mismo juego en otro envase, y cada cual las hace de su propia
+cinta.
+
+## Código de otros que usa el cartucho
+
+**Este cartucho usa ZX0.** El formato y el compresor son de **Einar Saukas**
+([github.com/einar-saukas/ZX0](https://github.com/einar-saukas/ZX0)), con
+aportaciones de Urusergi e introspec. Su licencia permite usar el
+descompresor libremente dentro de programas propios, incluso comerciales, a
+cambio de una sola cosa: **decirlo en la documentación**. Queda dicho aquí, en
+el `README` y en el propio `src/cartucho/dzx0.asm`, que lleva la traducción de
+su ensamblador a la sintaxis de pasmo y nada más. **El compresor no se copia
+aquí**: es el `zx0.exe` que viaja en [MSXgl](https://github.com/aoineko-fr/MSXgl)
+y se le pasa la ruta.
+
+**El reproductor de música tampoco es nuestro.** `PT3-ROM.ASM` es de Bulba,
+Dioniso, msxKun y SapphiRe, viaja en [msx-msxlib](https://github.com/theNestruo/msx-msxlib)
+de Néstor Sancho y **no lleva licencia escrita**: sólo un *"hope you find useful
+this code"*. Por eso aquí va únicamente `tools/convierte_pt3.py`, que lo traduce
+de asMSX a pasmo, y cada cual pone su copia. **El módulo `.pt3` tampoco se
+distribuye**: es de su autor.
 
 Las imágenes que produce `tools/render_graficos.py` no son ilustraciones traídas de
 fuera: son la memoria de vídeo del propio juego, reconstruida repitiendo las

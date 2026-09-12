@@ -230,7 +230,15 @@ MUSICA   := ../../msx-msxlib/games/examples/pt3music/RUN23_ShuffleOne.pt3
 # sin una licencia escrita, solo un "hope you find useful this code". Aqui va la
 # herramienta que lo traduce de asMSX a pasmo; el fuente lo pone cada cual.
 PT3SRC   := ../../msx-msxlib/libext/pt3/PT3-ROM.ASM
-CARTUCHO := src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc
+# EL COMPRESOR. Las imagenes del cartucho van comprimidas con ZX0, de Einar
+# Saukas. El descompresor SI esta aqui (src/cartucho/dzx0.asm, 68 bytes: su
+# licencia lo permite a cambio de decir que se usa ZX0, y esta dicho en el
+# README y en AVISO-LEGAL.md); el compresor no, que viaja en MSXgl:
+#   make rom_musica ZX0EXE=/ruta/a/zx0.exe
+ZX0EXE   := C:/Users/Antxiko/Documents/MSXonLIVE/MSXgl/tools/compress/ZX0/zx0.exe
+export ZX0EXE
+
+CARTUCHO := src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc src/cartucho/dzx0.asm
 
 .PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica verifica_comprimido verifica_finales captura_rom
 
@@ -298,15 +306,17 @@ verifica_rom_parche: war_parche.rom estado_cinta
 	@grep -v volcado work/rom_parche_$(MAQUINA)/verifica_rom.log
 	python3 tools/coteja_rom.py work/rom_parche_$(MAQUINA) work/omsx_v4 work/estado_cinta
 
-# LA COMPRESION, SOLA: la misma ROM de siempre pero con las tres imagenes
-# comprimidas y sin musica, para que el cotejo contra la cinta diga si la ida y
-# vuelta pierde algo. Es la prueba de que no se pierde ninguna pantalla.
+# LA COMPRESION, SOLA: la misma ROM pero con las imagenes comprimidas con ZX0 y
+# sin musica, para que el cotejo contra la cinta diga si la ida y vuelta pierde
+# algo. Comprimir implica dejar las dos pantallas finales en la ROM -los bufers
+# de ZX0 caen justo en la RAM que ellas liberan-, asi que ese tramo se excluye
+# del cotejo y lo cubre `make verifica_finales`, que las fuerza y las compara.
 verifica_comprimido: estado_cinta
-	python3 tools/haz_rom.py work work/war_z.rom --espera $(ESPERA) --comprime
+	python3 tools/haz_rom.py work work/war_z.rom --espera $(ESPERA) --comprime --salidas work/z
 	@rm -rf work/rom_z
 	WAR_ROM="$(abspath work/war_z.rom)" WAR_OUT="$(abspath work/rom_z)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_z.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
 	@grep -v volcado work/rom_z/verifica_rom.log
-	python3 tools/coteja_rom.py work/rom_z work/omsx_orig work/estado_cinta
+	python3 tools/coteja_rom.py work/rom_z work/omsx_orig work/estado_cinta --sin-finales work/z/plan.json
 
 # ¿SUENA? El emulador arranca la ROM con musica, comprueba las cuatro cosas que
 # tienen que cumplirse -gancho, puente, ejecucion y PSG en movimiento-, mide el
@@ -322,14 +332,20 @@ verifica_musica: war_musica.rom
 # LAS DOS PANTALLAS FINALES. Para ver una hay que terminarse el juego, asi que
 # la sonda fuerza el PC en 0x83E7 -donde los cuatro finales convergen- con HL en
 # cada pantalla, y vuelca los 6.912 bytes que quedan en 0x4000 y la VRAM ya
-# pintada. Se monta ademas la ROM de ANTES del cambio (sin --finales-rom, con
-# las pantallas en la RAM) y se hace lo mismo, para poder comparar las dos.
+# pintada. Se monta ademas la ROM de ANTES del cambio -SIN --comprime, con las
+# dos pantallas en la RAM y el `ldir` original de 0x83E7 intacto- y se hace lo
+# mismo, para comparar las dos.
+#
+# OJO CON LA REFERENCIA: tiene que ser una ROM DISTINTA de verdad. Cuando
+# --comprime paso a implicar --finales-rom, la de referencia salio identica a la
+# nueva y el cotejo de VRAM se estaba comparando consigo mismo: en verde y sin
+# comprobar nada.
 #
 # El cotejo que decide es el primero: los 6.912 bytes contra los de la cinta.
 # El de la VRAM cierra el circulo, pero un cotejo entre dos ROMs no diria nada
 # si las dos estuvieran mal igual.
 verifica_finales: war_musica.rom
-	python3 tools/haz_rom.py work work/war_ref.rom --espera $(ESPERA) --comprime --musica "$(MUSICA)" --salidas work/ref
+	python3 tools/haz_rom.py work work/war_ref.rom --espera $(ESPERA) --musica "$(MUSICA)" --salidas work/ref
 	@rm -rf work/finales_ref work/finales_$(MAQUINA)
 	WAR_ROM="$(abspath work/war_ref.rom)" WAR_OUT="$(abspath work/finales_ref)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_ref.rom)" -romtype ascii16 -script tools/omsx_finales.tcl
 	WAR_ROM="$(abspath war_musica.rom)" WAR_OUT="$(abspath work/finales_$(MAQUINA))" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_finales.tcl

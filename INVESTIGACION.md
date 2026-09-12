@@ -613,7 +613,7 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 
 **1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
-sacadas de los lienzos (848 de tiles repintados). `make test` = 110 en verde: 79 del parche y 31 del cartucho.
+sacadas de los lienzos (848 de tiles repintados). `make test` = 114 en verde: 79 del parche y 35 del cartucho.
 
 ## Como se reparte
 
@@ -638,13 +638,13 @@ montan de tu cinta con `make rom` y `make rom_parche` (ver
 
 - **77 bytes de arranque** en la ROM (`src/cartucho/cargador_rom.asm`): la
   cabecera `AB`, el banco 0, copiar el stub a RAM y saltar a el.
-- **Un stub de 1.114 bytes** que corre en 0xD800 (`src/cartucho/cargador_ram.asm`):
+- **Un stub de 1.105 bytes** que corre en 0xD800 (`src/cartucho/cargador_ram.asm`):
   busca RAM en las paginas 2, 1 y 0 e interpreta un **plan de 52 operaciones
   de 8 bytes** que `tools/haz_rom.py` genera de la disposicion real de la ROM
   y deja en `work/plan.json`, para que los tests no supongan nada.
 - Los datos van de 0x0800 a 0xF727: quedan 2.264 bytes libres. (En
-  `war_musica.rom`, que ademas comprime las tres imagenes, el hueco es de
-  7.253 bytes.)
+  `war_musica.rom`, que ademas comprime las imagenes con ZX0, el hueco es de
+  13.627 bytes.)
 - **El tramo de la pagina 1 pasa por la VRAM.** Con el cartucho puesto la
   pagina 1 (0x4000-0x7FFF) es la ROM, y ahi caen 14.400 bytes del bloque medio
   (0x4000-0x783F). Se copian primero a la VRAM, que esta libre durante la
@@ -715,26 +715,31 @@ nada recuperable.
 `src/cartucho/finales.asm` mas cinco ceros. HL llega con 0x094F o con 0x244F,
 asi que la rutina sabe cual le piden sin tocar VICTORIA ni DERROTA. Los bloques
 se quedan en la ROM, donde ya viajaban comprimidos, y la rutina los descomprime
-a 0x4000. **Son 145 bytes** que viven en la pagina 0, detras del puente de la
-musica (0x0086-0x0116), y llevan su propio descompresor RLE.
+a 0x4000. **Son 200 bytes** que viven en la pagina 0, en la RAM que ellos mismos
+liberan (0x0950), y llevan su propio descompresor ZX0.
 
 **Las dos conmutaciones, que es lo delicado.** El registro que manda en la
 ventana de 0x8000 -por donde se lee el bloque- vive en 0x7000, o sea en la
 PAGINA 1, que en tiempo de juego es RAM. Para elegir banco hay que poner un
 momento el cartucho ahi, escribir el registro y devolver la RAM. Y **en ese
 tramo no se puede tocar la pila**: la del juego esta en 0x5BFF, pagina 1, y
-cualquier push, pop, call o ret leeria o escribiria la ROM. Por eso las
-conmutaciones van con instrucciones sueltas y el `push af` del lector queda
-fuera. Ademas corre con `di`, porque mientras dura la pagina 2 es la ROM y la
-interrupcion del juego usa datos que viven ahi.
+cualquier push, pop, call o ret leeria o escribiria la ROM. Por eso el bucle de
+copia no la toca. Ademas corre con `di`, porque mientras dura la pagina 2 es la
+ROM y la interrupcion del juego usa datos que viven ahi.
+
+**Y por eso va en dos pasos.** Primero se COPIA el bloque comprimido a un bufer
+en RAM -ahi si se cruza de banco- y despues se llama a ZX0, ya con las cuatro
+paginas en RAM. ZX0 usa la pila a fondo (`push bc`, `ex (sp),hl`) y lee el
+origen de corrido, asi que no puede correr ni con la pagina de la pila
+conmutada ni a caballo de dos bancos.
 
 **La RAM, antes y despues** (`tools/mapa_ram.py`, que la calcula del plan y de
 lo medido con openMSX, sin cifras escritas a mano):
 
     ajena a la cinta, antes .... 2.304 B
     ajena a la cinta, ahora ... 16.449 B
-    menos el puente (75), la rutina (145) y el area del PT3 (382)
-    LIBRE ..................... 15.847 B
+    menos el puente (75), la rutina (200) y el area del PT3 (382)
+    LIBRE ..................... 15.792 B
 
 **Quien mas usaba ese tramo: nadie.** Barrido de los cinco listados buscando el
 rango 0x094F-0x3F4E: 41 apariciones, y todas son constantes -tamanos, contadores
@@ -764,6 +769,56 @@ en las cuatro ranuras primarias posibles, porque una mascara mal puesta solo se
 nota en algunas combinaciones. El interprete solo conoce las instrucciones que
 la rutina usa: si alguien le anade una, el test se para en vez de pasarla por
 alto.
+
+### ZX0 en vez del RLE de marca: 6.429 bytes mas de ROM
+
+Las imagenes viajaban comprimidas con un **RLE de marca** escrito aqui: byte
+literal salvo tras una marca, que es el byte menos frecuente del bloque. Tiene
+la virtud de que descomprime **en streaming**, escribiendo directo al puerto
+0x98 del VDP sin pasar por RAM, y la pega de que en una pantalla del ZX hay
+pocas rachas y por tanto poco que encoger.
+
+**Este cartucho usa ZX0**, de Einar Saukas. Medido con su compresor, no
+estimado:
+
+| bloque | crudo | RLE de marca | ZX0 |
+|---|---|---|---|
+| intro: patrones | 6.144 | 5.236 | **3.663** |
+| intro: colores | 6.144 | 2.511 | **1.030** |
+| victoria | 6.912 | 5.519 | **3.847** |
+| derrota | 6.912 | 5.763 | **4.060** |
+| **total** | 26.112 | 19.029 | **12.600** |
+
+    hueco de la ROM: 7.253 -> 13.627 bytes
+
+El descompresor son **68 bytes** (`src/cartucho/dzx0.asm`, la version
+"Standard"), y va **dos veces** en la ROM: una en el stub, que descomprime al
+cargar, y otra dentro de la rutina de las pantallas finales, que no puede
+llamar al stub porque en tiempo de juego 0xD800 puede estar pisado.
+
+#### Lo que ZX0 obliga a cambiar, y por que hace falta un bufer
+
+ZX0 es LZ: la mayor parte de lo que escribe son **copias de lo que ya escribio**
+(`add hl,de` sobre el destino y `ldir`). De ahi tres consecuencias que el RLE no
+tenia:
+
+1. **El destino tiene que ser RAM legible.** Contra la VRAM no se puede, asi que
+   lo que va a la pantalla ya no se descomprime en un paso: se trae el bloque
+   comprimido a un bufer, se descomprime a otro y se vuelca de corrido
+   (`ROM_RAM`, `ZX0_RAM`, `RAM_VRAM`).
+2. **Usa la pila a fondo** (`push bc`, `ex (sp),hl`), asi que no puede correr
+   con la pagina de la pila conmutada al cartucho.
+3. **Lee el origen de corrido** y no sabe cruzar de banco.
+
+Los dos bufers piden ~9.800 bytes contiguos justo cuando se repinta la imagen de
+carga, y **eso solo cabe desde que las pantallas finales dejaron de viajar a la
+RAM**: van en 0x0A50-0x324F, dentro de los 13.824 que ellas liberaron. Los dos
+cambios se sostienen el uno al otro.
+
+Y una cosa que NO se ha hecho: **comprimir el modulo `.pt3`**. ZX0 lo dejaria en
+220 bytes en vez de 426, pero habria que tenerlo descomprimido en RAM y tocar el
+puente. Cambiar 206 bytes de ROM por 426 de RAM no sale a cuenta cuando lo que
+sobra es ROM.
 
 #### De paso: EL JUEGO PIERDE BYTES AL ESCRIBIR LA VRAM
 

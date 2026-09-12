@@ -126,6 +126,14 @@ class Z80:
         return v
 
     @property
+    def bc(self):
+        return (self.b << 8) | self.c
+
+    @bc.setter
+    def bc(self, v):
+        self.b, self.c = (v >> 8) & 0xFF, v & 0xFF
+
+    @property
     def de(self):
         return (self.d << 8) | self.e
 
@@ -232,15 +240,98 @@ class Z80:
         elif op == 0xC8:                                # ret z
             if self.z:
                 self.pc = self.pop()
+        elif op == 0xD8:                                # ret c
+            if self.cy:
+                self.pc = self.pop()
         elif op == 0xF5:                                # push af
             self.push((self.a << 8) | (0x40 if self.z else 0) | (1 if self.cy else 0))
         elif op == 0xF1:                                # pop af
             v = self.pop()
             self.a, self.z, self.cy = v >> 8, bool(v & 0x40), bool(v & 1)
+        # --- lo que ademas usa el descompresor ZX0 (src/cartucho/dzx0.asm).
+        # Las que no tocan los flags van juntas: en el Z80 `ld`, `inc hl/de/bc`
+        # y `ex` los dejan como estaban, y ZX0 depende de eso (el carry que
+        # llega a su `rr b` viene de dos instrucciones antes).
+        elif op == 0x01:                                # ld bc,nn
+            self.bc = self.nn()
+        elif op == 0x03:                                # inc bc
+            self.bc = (self.bc + 1) & 0xFFFF
+        elif op == 0x0B:                                # dec bc (NO toca flags:
+            self.bc = (self.bc - 1) & 0xFFFF            # de ahi el `ld a,b / or c`)
+        elif op == 0x78:                                # ld a,b
+            self.a = self.b
+        elif op == 0xB1:                                # or c
+            self.a |= self.c
+            self.z = self.a == 0
+            self.cy = False
+        elif op == 0x0C:                                # inc c  (toca Z, no C)
+            self.c = (self.c + 1) & 0xFF
+            self.z = self.c == 0
+        elif op == 0x41:                                # ld b,c
+            self.b = self.c
+        elif op == 0x4E:                                # ld c,(hl)
+            self.c = self.m.lee(self.hl)
+        elif op == 0x87:                                # add a,a
+            self.cy = bool(self.a & 0x80)
+            self.a = (self.a << 1) & 0xFF
+            self.z = self.a == 0
+        elif op == 0x17:                                # rla (toca C, NO Z)
+            nuevo = ((self.a << 1) | (1 if self.cy else 0)) & 0xFF
+            self.cy = bool(self.a & 0x80)
+            self.a = nuevo
+        elif op == 0x19:                                # add hl,de (toca C, no Z)
+            v = self.hl + self.de
+            self.cy = v > 0xFFFF
+            self.hl = v & 0xFFFF
+        elif op == 0xC5:                                # push bc
+            self.push(self.bc)
+        elif op == 0xC1:                                # pop bc
+            self.bc = self.pop()
+        elif op == 0xE5:                                # push hl
+            self.push(self.hl)
+        elif op == 0xE1:                                # pop hl
+            self.hl = self.pop()
+        elif op == 0xE3:                                # ex (sp),hl
+            self.m.pila(self.sp, "ex (sp),hl")
+            v = self.m.lee(self.sp) | (self.m.lee(self.sp + 1) << 8)
+            self.m.escribe(self.sp, self.l)
+            self.m.escribe(self.sp + 1, self.h)
+            self.hl = v
+        elif op == 0xD4:                                # call nc,nn
+            destino = self.nn()
+            if not self.cy:
+                self.push(self.pc)
+                self.pc = destino
+        elif op == 0x38:                                # jr c,d
+            e = self.desp()
+            if self.cy:
+                self.pc = (self.pc + e) & 0xFFFF
+        elif op == 0xED:
+            sub = self.n()
+            if sub == 0xB0:                             # ldir
+                while self.bc:
+                    self.m.escribe(self.de, self.m.lee(self.hl))
+                    self.hl = (self.hl + 1) & 0xFFFF
+                    self.de = (self.de + 1) & 0xFFFF
+                    self.bc = (self.bc - 1) & 0xFFFF
+            else:
+                raise NotImplementedError("ED %02X en 0x%04X" % (sub, self.pc - 2))
         elif op == 0xCB:
             sub = self.n()
             if sub == 0x74:                             # bit 6,h
                 self.z = not (self.h & 0x40)
+            elif sub in (0x10, 0x11, 0x18, 0x19):       # rl b/c y rr b/c
+                cual = "b" if sub in (0x10, 0x18) else "c"
+                v = getattr(self, cual)
+                entra = 1 if self.cy else 0
+                if sub < 0x18:                          # rl: rota a la izquierda
+                    self.cy = bool(v & 0x80)
+                    v = ((v << 1) | entra) & 0xFF
+                else:                                   # rr: a la derecha
+                    self.cy = bool(v & 0x01)
+                    v = ((v >> 1) | (entra << 7)) & 0xFF
+                setattr(self, cual, v)
+                self.z = v == 0
             else:
                 raise NotImplementedError("CB %02X en 0x%04X" % (sub, self.pc - 2))
         else:

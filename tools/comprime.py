@@ -23,7 +23,14 @@ EL FORMATO
 Un byte igual a la MARCA que aparezca suelto se emite como `MARCA 1 MARCA`,
 que ocupa tres. De ahi que la marca sea el byte menos frecuente.
 
-El descompresor en Z80 esta en src/cartucho/cargador_ram.asm (DESCOMPRIME).
+YA NO SE USA PARA MONTAR EL CARTUCHO
+
+Desde que las imagenes van con ZX0 (tools/zx0.py), esto se queda solo como
+herramienta de medida: es lo que permite comprobar que ZX0 encoge mas, que es un
+test de verdad en tests/test_cartucho.py y no una afirmacion del README. Las
+cifras, sobre los cuatro bloques de este cartucho:
+
+    RLE de marca  19.029 B        ZX0  12.600 B
 
 Uso:  comprime.py <fichero> [<fichero>...]      mide y ensena la tabla
 """
