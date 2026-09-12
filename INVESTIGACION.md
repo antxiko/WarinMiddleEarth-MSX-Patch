@@ -613,7 +613,7 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 
 **1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
-sacadas de los lienzos (848 de tiles repintados). `make test` = 87 en verde: 79 del parche y 8 del cartucho.
+sacadas de los lienzos (848 de tiles repintados). `make test` = 110 en verde: 79 del parche y 31 del cartucho.
 
 ## Como se reparte
 
@@ -638,11 +638,13 @@ montan de tu cinta con `make rom` y `make rom_parche` (ver
 
 - **77 bytes de arranque** en la ROM (`src/cartucho/cargador_rom.asm`): la
   cabecera `AB`, el banco 0, copiar el stub a RAM y saltar a el.
-- **Un stub de 977 bytes** que corre en 0xD800 (`src/cartucho/cargador_ram.asm`):
+- **Un stub de 1.114 bytes** que corre en 0xD800 (`src/cartucho/cargador_ram.asm`):
   busca RAM en las paginas 2, 1 y 0 e interpreta un **plan de 52 operaciones
   de 8 bytes** que `tools/haz_rom.py` genera de la disposicion real de la ROM
   y deja en `work/plan.json`, para que los tests no supongan nada.
-- Los datos van de 0x0800 a 0xF727: quedan 2.264 bytes libres.
+- Los datos van de 0x0800 a 0xF727: quedan 2.264 bytes libres. (En
+  `war_musica.rom`, que ademas comprime las tres imagenes, el hueco es de
+  7.253 bytes.)
 - **El tramo de la pagina 1 pasa por la VRAM.** Con el cartucho puesto la
   pagina 1 (0x4000-0x7FFF) es la ROM, y ahi caen 14.400 bytes del bloque medio
   (0x4000-0x783F). Se copian primero a la VRAM, que esta libre durante la
@@ -678,13 +680,106 @@ Exit 0 con `war.rom` en Philips VG-8020, Philips NMS 8250, C-BIOS MSX1 y C-BIOS
 MSX2, y con `war_parche.rom` en la VG-8020 contra los volcados de la cinta
 parcheada. En MSX2 el R1 se lee 0x60 porque el V9938 no tiene el bit 4K/16K del
 TMS9918; se acepta con aviso. `make captura_rom` ensena el menu y, tras pulsar
-0, el mapa (PC=0x6A47). Ocho tests mas en `tests/test_cartucho.py`; el fuerte
-es un interprete del plan en Python que lleva la cuenta de la RAM, la VRAM y de
-que hay en la pagina 1 en cada paso, y falla si el plan escribiera en
-0x4000-0x7FFF con el cartucho puesto.
+0, el mapa (PC=0x6A47). Los tests del cartucho estan en
+`tests/test_cartucho.py`; el fuerte es un interprete del plan en Python que
+lleva la cuenta de la RAM, la VRAM y de que hay en la pagina 1 en cada paso, y
+falla si el plan escribiera en 0x4000-0x7FFF con el cartucho puesto.
 
 Lo que NO se ha hecho: jugar una partida entera desde el cartucho. Se ha visto
 arrancar, el menu y el mapa.
+
+### Las dos pantallas finales, a la ROM: 13.824 bytes de RAM
+
+`war_musica.rom` se monta ademas con `--finales-rom`, y eso es lo que mas RAM
+libera de todo el cartucho.
+
+**El problema.** Las dos pantallas del final -la victoria en 0x094F y la
+derrota en 0x244F, 6.912 bytes cada una- ocupaban 13.824 bytes de RAM desde que
+arrancaba el cartucho hasta el final de la partida, y se usan UNA VEZ, en los
+ultimos segundos. Estaban ahi por herencia: la cinta las cargaba asi y el
+cartucho se limitaba a reproducir lo que dejaba la cinta.
+
+**Por que se puede.** `PINTA_LA_PANTALLA_FINAL` (0x83E7) es donde convergen los
+cuatro finales del juego -0x6A73, 0x7F7D, 0x8338 y 0x9229 saltan a VICTORIA
+(0x83D9) o a DERROTA (0x83E1), y las dos caen ahi-. Y lo que hacia eran ocho
+bytes:
+
+    83E7:  ld de,04000h / ld bc,01b00h / ldir      11 00 40 01 00 1B ED B0
+
+O sea que **las pantallas no se usan donde estan**: se copian a 0x4000 y se
+pintan desde ahi, asi que da igual de donde vengan los bytes. Detras viene un
+`di` y un bucle cerrado sobre si mismo: el juego se acaba y no hay que dejar
+nada recuperable.
+
+**Que se ha hecho.** Esos ocho bytes pasan a ser `call` a
+`src/cartucho/finales.asm` mas cinco ceros. HL llega con 0x094F o con 0x244F,
+asi que la rutina sabe cual le piden sin tocar VICTORIA ni DERROTA. Los bloques
+se quedan en la ROM, donde ya viajaban comprimidos, y la rutina los descomprime
+a 0x4000. **Son 145 bytes** que viven en la pagina 0, detras del puente de la
+musica (0x0086-0x0116), y llevan su propio descompresor RLE.
+
+**Las dos conmutaciones, que es lo delicado.** El registro que manda en la
+ventana de 0x8000 -por donde se lee el bloque- vive en 0x7000, o sea en la
+PAGINA 1, que en tiempo de juego es RAM. Para elegir banco hay que poner un
+momento el cartucho ahi, escribir el registro y devolver la RAM. Y **en ese
+tramo no se puede tocar la pila**: la del juego esta en 0x5BFF, pagina 1, y
+cualquier push, pop, call o ret leeria o escribiria la ROM. Por eso las
+conmutaciones van con instrucciones sueltas y el `push af` del lector queda
+fuera. Ademas corre con `di`, porque mientras dura la pagina 2 es la ROM y la
+interrupcion del juego usa datos que viven ahi.
+
+**La RAM, antes y despues** (`tools/mapa_ram.py`, que la calcula del plan y de
+lo medido con openMSX, sin cifras escritas a mano):
+
+    ajena a la cinta, antes .... 2.304 B
+    ajena a la cinta, ahora ... 16.449 B
+    menos el puente (75), la rutina (145) y el area del PT3 (382)
+    LIBRE ..................... 15.847 B
+
+**Quien mas usaba ese tramo: nadie.** Barrido de los cinco listados buscando el
+rango 0x094F-0x3F4E: 41 apariciones, y todas son constantes -tamanos, contadores
+y direcciones de VRAM- salvo dos, que son `ld hl,0094fh` (0x83DC) y
+`ld hl,0244fh` (0x83E4). Justo las dos que este cambio sustituye. Encaja con lo
+medido antes con la partida grabada: leidas una sola vez, por el `ldir` de
+0x83ED.
+
+#### Verificado: `make verifica_finales`, exit 0
+
+Para ver una pantalla final hay que terminarse el juego, asi que
+`tools/omsx_finales.tcl` lo fuerza: arranca la ROM, llega al menu, pulsa 0 y
+pone el PC en 0x83E7 con HL en cada pantalla. Dos cotejos, y el primero es el
+que decide:
+
+1. **Los 6.912 bytes que quedan en 0x4000, contra los de la CINTA.** Es una
+   verdad absoluta y no una comparacion entre dos ROMs: de ahi es de donde
+   0x05BD y 0x0604 sacan lo que suben al VDP. Las dos pantallas, OK.
+2. **La VRAM ya pintada, contra la de la ROM de antes del cambio.** Las dos, OK.
+
+Y sin emulador, `tools/corre_finales.py` **ejecuta la rutina** en un interprete
+del Z80 con las ranuras y el mapper modelados: comprueba que lo que deja en
+0x4000 es la pantalla de la cinta, que nunca toca la pila con el cartucho en la
+pagina 1, que no escribe un solo byte en la ROM, que devuelve las paginas y el
+banco como estaban y que no se pasa de 6.912 bytes. Lo repite con el cartucho
+en las cuatro ranuras primarias posibles, porque una mascara mal puesta solo se
+nota en algunas combinaciones. El interprete solo conoce las instrucciones que
+la rutina usa: si alguien le anade una, el test se para en vez de pasarla por
+alto.
+
+#### De paso: EL JUEGO PIERDE BYTES AL ESCRIBIR LA VRAM
+
+Cotejando la VRAM salian casi 4.000 bytes de diferencia entre dos ROMs cuyos
+6.912 bytes de 0x4000 eran identicos. No era el cambio: `UN_TERCIO_A_VRAM`
+(0x05D6) hace `ld a,(hl) / out (098h),a / inc h` en bucle apretado, y con la
+pantalla ENCENDIDA el VDP no tiene ranuras de acceso para tanto y se le caen
+bytes. Cuales se caen depende de en que punto del barrido se empiece, asi que
+dos ROMs que tardan distinto en cargar pintan bitmaps distintos.
+
+Medido: 3.996 bytes de diferencia en la victoria y 4.603 en la derrota con la
+pantalla encendida, y **CERO en cuanto se apaga**. La misma ROM dos veces da
+siempre lo mismo, asi que es reproducible, no aleatorio. O sea: **la pantalla
+final del juego original ya sale con bytes perdidos, y no siempre los mismos.**
+Por eso la sonda apaga la pantalla antes de pintar: para que el cotejo compare
+lo que el juego ESCRIBE, que es lo unico que este cambio podria alterar.
 
 ## Lo que queda abierto
 

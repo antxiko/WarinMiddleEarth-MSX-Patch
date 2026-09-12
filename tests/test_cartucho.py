@@ -136,8 +136,9 @@ def ejecuta_plan(test, rom, plan):
                 escribe_ram(op["dst"], salido)
             else:
                 vram[op["dst"]:op["dst"] + len(salido)] = salido
-        elif nombre == "RANURA_PAG2":
-            escribe_ram(op["dst"], b"\x00")   # un byte, el operando del `or` del puente
+        elif nombre in ("RANURA_PAG1", "RANURA_PAG2"):
+            # un byte: el operando del `or` que lleva la ranura del cartucho
+            escribe_ram(op["dst"], b"\x00")
         elif nombre == "SALTA":
             salto = (op["src"], op["dst"], pagina1)
             break
@@ -169,6 +170,15 @@ class TestLaRom(unittest.TestCase):
             self.plan = json.load(f)
         self.musica = self.plan["datos"].get("musica")
 
+    def parches(self):
+        """Todos los bytes del juego que esta ROM declara cambiar: los dos de
+        la musica y el de las pantallas finales. Vienen del plan, no de una
+        lista escrita aqui, para que no puedan quedarse viejos."""
+        todos = list((self.musica or {}).get("parches", []))
+        if self.plan.get("finales"):
+            todos.append(self.plan["finales"]["parche"])
+        return todos
+
     def test_cabecera_ab_y_tamano(self):
         self.assertEqual(len(self.rom), 0x10000)
         self.assertEqual(self.rom[:2], b"AB")
@@ -189,9 +199,10 @@ class TestLaRom(unittest.TestCase):
         esperado = dict(patrones=pantalla[100:100 + 6144], colores=pantalla[100 + 6144:100 + 12288],
                         bajo=lee(os.path.join(WORK, "bajo.raw")), medio=lee(os.path.join(WORK, "medio.raw")),
                         alto=lee(os.path.join(WORK, "alto.raw")))
-        # Con musica, el bloque medio lleva los parches del gancho y del menu:
-        # se aplican sobre lo esperado, que para eso el plan dice cuales son.
-        for q in (self.musica or {}).get("parches", []):
+        # Con musica y con las finales en la ROM, el bloque medio lleva sus
+        # parches: se aplican sobre lo esperado, que para eso el plan dice
+        # cuales son y donde caen.
+        for q in self.parches():
             o = q["dir"] - 0x5E00
             viejo, nuevo = bytes.fromhex(q["orig"]), bytes.fromhex(q["nuevo"])
             self.assertEqual(esperado["medio"][o:o + len(viejo)], viejo,
@@ -223,7 +234,10 @@ class TestLaRom(unittest.TestCase):
                 self.assertEqual(en_rom, esperado[nombre], nombre)
         fin = max(d["rom"] + d["bytes"] for n, d in self.plan["datos"].items() if n != "musica")
         self.assertEqual(fin, self.plan["fin_datos"])
-        relleno = self.rom[fin + (self.musica["bytes"] if self.musica else 0):]
+        extra = (self.musica["bytes"] if self.musica else 0)
+        if self.plan.get("finales"):
+            extra += self.plan["finales"]["bytes"]
+        relleno = self.rom[fin + extra:]
         self.assertEqual(set(relleno), {0xFF})
 
     def test_las_variables_del_stub_estan_donde_dice_direcciones_inc(self):
@@ -251,11 +265,23 @@ class TestLaRom(unittest.TestCase):
         """Lo que el cargador tiene que dejar, venga de la ROM que venga."""
         bajo, medio, alto = (lee(os.path.join(WORK, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
         # la RAM: como la deja el cargador de la cinta en 0xD741
-        for q in (self.musica or {}).get("parches", []):
+        for q in self.parches():
             o = q["dir"] - 0x5E00
             nuevo = bytes.fromhex(q["nuevo"])
             medio = medio[:o] + nuevo + medio[o + len(nuevo):]
-        self.assertEqual(ram[0x0190:0x0190 + len(bajo)], bajo)
+        # Con las finales en la ROM, del bloque bajo solo viaja el codigo: las
+        # dos pantallas se quedan donde estan y se descomprimen al acabar la
+        # partida. Esos 13.824 bytes de RAM tienen que quedar SIN TOCAR, que es
+        # justamente lo que libera el cambio.
+        finales = self.plan.get("finales")
+        if finales:
+            corte = min(q["dir"] for q in finales["pantallas"]) - 0x0190
+            self.assertEqual(ram[0x0190:0x0190 + corte], bajo[:corte])
+            for q in finales["pantallas"]:
+                self.assertEqual(set(ram[q["dir"]:q["dir"] + q["crudo"]]), {0},
+                                 "la pantalla de 0x%04X sigue viajando a la RAM" % q["dir"])
+        else:
+            self.assertEqual(ram[0x0190:0x0190 + len(bajo)], bajo)
         self.assertEqual(ram[0x3F4F:0x3F4F + len(medio)], medio)
         self.assertEqual(ram[0x88B8:0x88B8 + len(alto)], alto)
         self.assertEqual(ram[0x012C:0x0190], bytes(100), "el buzon de POKEs tiene que ir a cero")
@@ -304,6 +330,12 @@ class TestLaMusica(unittest.TestCase):
         with open(plan) as f:
             self.plan = json.load(f)
         self.m = self.plan["datos"]["musica"]
+
+    def parches_declarados(self):
+        todos = list(self.m["parches"])
+        if self.plan.get("finales"):
+            todos.append(self.plan["finales"]["parche"])
+        return todos
 
     def test_cabe_en_el_hueco_y_no_se_sale_del_ultimo_banco(self):
         ini = self.m["rom"]
@@ -394,21 +426,24 @@ class TestLaMusica(unittest.TestCase):
         copias = [o for o in self.plan["plan"] if o["op"] == "ROM_RAM" and o["dst"] == p["ram"]]
         self.assertEqual(len(copias), 1, "el puente no se copia exactamente una vez")
         self.assertEqual(copias[0]["len"], p["bytes"])
-        ranura = [o for o in self.plan["plan"] if o["op"] == "RANURA_PAG2"]
+        # La rutina de las finales tambien pide su RANURA_PAG2, asi que hay que
+        # quedarse con la que cae DENTRO del puente.
+        ranura = [o for o in self.plan["plan"] if o["op"] == "RANURA_PAG2"
+                  and p["ram"] <= o["dst"] < p["ram"] + p["bytes"]]
         self.assertEqual(len(ranura), 1, "nadie rellena la ranura del puente, o la rellenan dos veces")
-        self.assertTrue(p["ram"] <= ranura[0]["dst"] < p["ram"] + p["bytes"],
-                        "la ranura se escribe fuera del puente")
 
-    def test_la_musica_solo_cambia_cinco_bytes_del_juego(self):
-        """La prueba de que la musica no toca el juego.
+    def test_la_rom_con_extras_solo_cambia_la_ram_en_lo_que_declara(self):
+        """La prueba de que ni la musica ni las finales tocan el juego.
 
         No se comparan las dos ROMs byte a byte: desde que las imagenes viajan
         comprimidas, la de musica no se PARECE a la otra -otra disposicion, otro
         stub, otros tamanos- y ese diff no diria nada. Lo que tiene que
         coincidir es lo que acaba en la RAM, que es lo unico que el juego ve.
 
-        Se permite exactamente: los bytes que el plan declara como parches, y
-        el puente, que vive en tierra de nadie y no le quita el sitio a nadie.
+        Se permite exactamente: los bytes que el plan declara como parches, el
+        puente y la rutina de las finales -las dos en tierra de nadie, que no le
+        quitan el sitio a nadie- y los 13.824 bytes de las dos pantallas
+        finales, que es lo que este cambio LIBERA a proposito.
         """
         hace_falta(ROM, PLAN)
         with open(PLAN) as f:
@@ -416,18 +451,37 @@ class TestLaMusica(unittest.TestCase):
         ram_sin = ejecuta_plan(self, lee(ROM), plan_sin)[0]
         ram_con = ejecuta_plan(self, self.rom, self.plan)[0]
 
-        permitidos = set()
+        de_la_musica = set()
         for q in self.m["parches"]:
-            permitidos.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-        self.assertEqual(len(permitidos), 5, "los parches del juego tienen que ser cinco bytes")
+            de_la_musica.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
+        self.assertEqual(len(de_la_musica), 5, "los parches de la musica tienen que ser cinco bytes")
+        permitidos = set(de_la_musica)
         p = self.m["puente"]
         permitidos.update(range(p["ram"], p["ram"] + p["bytes"]))
 
+        finales = self.plan.get("finales")
+        if finales:
+            q = finales["parche"]
+            self.assertEqual(len(bytes.fromhex(q["nuevo"])), 8,
+                             "el parche de las finales son los ocho bytes del `ldir`")
+            permitidos.update(range(q["carga"], q["carga"] + 8))
+            permitidos.update(range(finales["ram"], finales["ram"] + finales["bytes"]))
+            for pantalla in finales["pantallas"]:
+                permitidos.update(range(pantalla["dir"], pantalla["dir"] + pantalla["crudo"]))
+                # Y que la diferencia sea la que se dice: war.rom SI las lleva a
+                # la RAM y esta NO. Sin esto, el tramo permitido taparia
+                # cualquier cosa que pasara ahi.
+                tramo = slice(pantalla["dir"], pantalla["dir"] + pantalla["crudo"])
+                self.assertNotEqual(set(ram_sin[tramo]), {0},
+                                    "war.rom tampoco lleva la pantalla de 0x%04X a la RAM" % pantalla["dir"])
+                self.assertEqual(set(ram_con[tramo]), {0},
+                                 "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
+
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
-        self.assertEqual(fuera, [], "la musica cambia la RAM fuera de lo que declara")
-        # Y los cinco se cambian de verdad: si el parche no se aplicara, la
+        self.assertEqual(fuera, [], "la ROM cambia la RAM fuera de lo que declara")
+        # Y los parches se aplican de verdad: si no llegaran a la RAM, la
         # comprobacion de arriba pasaria igual.
-        for q in self.m["parches"]:
+        for q in self.parches_declarados():
             n = len(bytes.fromhex(q["nuevo"]))
             self.assertEqual(bytes(ram_con[q["carga"]:q["carga"] + n]), bytes.fromhex(q["nuevo"]),
                              "el parche de 0x%04X no llega a la RAM" % q["dir"])
@@ -443,6 +497,175 @@ class TestLaMusica(unittest.TestCase):
         self.assertEqual(bytes.fromhex(porque[0x5E86]["nuevo"]),
                          bytes([0xCD]) + p["para"].to_bytes(2, "little"),
                          "el menu no llama a PARA_LA_MUSICA")
+
+
+class TestLasPantallasFinales(unittest.TestCase):
+    """Las dos pantallas del final se quedan en la ROM (--finales-rom).
+
+    Lo fuerte de aqui es que la rutina se EJECUTA, en tools/corre_finales.py:
+    un interprete del Z80 con las ranuras y el mapper modelados. Es la unica
+    forma de comprobar sin emulador las tres cosas que pueden salir mal -el
+    banco que se pone en la ventana de 0x8000, el cruce de banco a mitad del
+    flujo comprimido y las dos conmutaciones de pagina- y ademas la que
+    importa: que lo que queda en 0x4000 es la pantalla de la cinta, byte a byte.
+    """
+
+    def setUp(self):
+        plan = os.path.join(WORK_MUSICA, "plan.json")
+        hace_falta(ROM_MUSICA, plan)
+        self.rom = lee(ROM_MUSICA)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        if "finales" not in self.plan:
+            raise unittest.SkipTest("esta ROM no lleva las finales en la ROM (--finales-rom)")
+        self.f = self.plan["finales"]
+        self.bajo = lee(os.path.join(WORK, "bajo.raw"))
+
+    def de_la_cinta(self, pantalla):
+        """Los 6.912 bytes de esa pantalla tal y como vienen de la cinta."""
+        o = pantalla["dir"] - 0x0190
+        return self.bajo[o:o + pantalla["crudo"]]
+
+    # ---------------------------------------------------------- la colocacion
+    def test_la_rutina_cabe_donde_dice_y_no_pisa_el_buzon_de_pokes(self):
+        f = self.f
+        self.assertGreaterEqual(f["ram"], 0x003B, "la rutina se mete debajo del `jp 0x0400` de 0x0038")
+        self.assertLessEqual(f["ram"] + f["bytes"], 0x012C,
+                             "la rutina llega a 0x%04X y pisa el buzon de POKEs de 0x012C"
+                             % (f["ram"] + f["bytes"]))
+        # y no se solapa con el puente, que vive justo delante
+        p = self.plan["datos"]["musica"]["puente"]
+        self.assertGreaterEqual(f["ram"], p["ram"] + p["bytes"], "la rutina pisa el puente de la musica")
+        self.assertTrue(f["ram"] <= f["entrada"] < f["ram"] + f["bytes"])
+        with open(os.path.join(WORK_MUSICA, "finales.bin"), "rb") as fh:
+            binario = fh.read()
+        self.assertEqual(len(binario), f["bytes"])
+        self.assertEqual(self.rom[f["rom"]:f["rom"] + len(binario)], binario,
+                         "lo que hay en la ROM no es la rutina ensamblada")
+
+    def test_el_plan_copia_la_rutina_y_le_da_las_dos_ranuras(self):
+        f = self.f
+        copias = [o for o in self.plan["plan"] if o["op"] == "ROM_RAM" and o["dst"] == f["ram"]]
+        self.assertEqual(len(copias), 1, "la rutina no se copia exactamente una vez")
+        self.assertEqual(copias[0]["len"], f["bytes"])
+        # Las dos ranuras: la pagina 2 para leer la ROM y la 1 para el registro
+        # del mapper. Si faltara cualquiera, el `or` se quedaria en 0x00 y la
+        # rutina conmutaria a la ranura 0.
+        for pagina, op in (("pag2", "RANURA_PAG2"), ("pag1", "RANURA_PAG1")):
+            dst = f["ranuras"][pagina]
+            cuantas = [o for o in self.plan["plan"] if o["op"] == op and o["dst"] == dst]
+            self.assertEqual(len(cuantas), 1, "la ranura de la %s no se rellena una sola vez" % pagina)
+            self.assertTrue(f["ram"] <= dst < f["ram"] + f["bytes"],
+                            "la ranura de la %s se escribe fuera de la rutina" % pagina)
+
+    def test_las_pantallas_ya_no_viajan_a_la_ram(self):
+        """Lo que libera los 13.824 bytes: ninguna operacion del plan escribe en
+        0x094F-0x3F4E. Es la cuenta de RAM que justifica todo el cambio."""
+        ini = min(q["dir"] for q in self.f["pantallas"])
+        fin = max(q["dir"] + q["crudo"] for q in self.f["pantallas"])
+        self.assertEqual(fin - ini, 13824)
+        for o in self.plan["plan"]:
+            if o["op"] in ("ROM_RAM", "LLENA_RAM", "VRAM_RAM"):
+                self.assertFalse(o["dst"] < fin and o["dst"] + o["len"] > ini,
+                                 "la op %s escribe en el tramo liberado: 0x%04X +%d"
+                                 % (o["op"], o["dst"], o["len"]))
+            if o["op"] == "ROM_RAM_RLE":
+                self.assertFalse(ini <= o["dst"] < fin,
+                                 "una pantalla final sigue descomprimiendose a la RAM en 0x%04X" % o["dst"])
+
+    def test_el_parche_sustituye_exactamente_el_ldir_de_0x83e7(self):
+        q = self.f["parche"]
+        self.assertEqual(q["dir"], 0x83E7)
+        # `ld de,04000h / ld bc,01b00h / ldir`: los ocho bytes que copiaban la
+        # pantalla desde la RAM. 0x1B00 = 6912, que es lo que la rutina deja.
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("110040 01001b edb0"))
+        nuevo = bytes.fromhex(q["nuevo"])
+        self.assertEqual(len(nuevo), 8, "el parche tiene que ocupar lo mismo que el `ldir`")
+        self.assertEqual(nuevo[0], 0xCD, "el parche no empieza por un `call`")
+        self.assertEqual(nuevo[1] | (nuevo[2] << 8), self.f["entrada"],
+                         "el `call` no apunta a la entrada de la rutina")
+        self.assertEqual(set(nuevo[3:]), {0}, "los cinco bytes de relleno no van a cero")
+        # y llega a la RAM donde el juego lo ejecuta
+        o = q["dir"] - 0x5E00
+        medio = lee(os.path.join(WORK, "medio.raw"))
+        self.assertEqual(medio[o:o + 8], bytes.fromhex(q["orig"]),
+                         "en la cinta, 0x83E7 no es el `ldir` que el parche dice sustituir")
+        self.assertEqual(self.rom[q["rom"]:q["rom"] + 8], nuevo)
+
+    # ------------------------------------------------ y la rutina, EJECUTADA
+    def corre(self, pantalla, **kw):
+        import corre_finales
+        return corre_finales.pinta(self.rom, self.plan, pantalla, **kw)
+
+    def test_las_dos_pantallas_salen_identicas_a_las_de_la_cinta(self):
+        """EL TEST QUE DECIDE. Se ejecuta la rutina y lo que deja en 0x4000 -que
+        es de donde 0x05BD sube el bitmap al VDP- tiene que ser, byte a byte, la
+        pantalla que el `ldir` copiaba de la RAM."""
+        for pantalla in self.f["pantallas"]:
+            m, _z = self.corre(pantalla)
+            salido = bytes(m.ram[0x4000:0x4000 + pantalla["crudo"]])
+            self.assertEqual(salido, self.de_la_cinta(pantalla),
+                             "la pantalla de 0x%04X no sale como la de la cinta" % pantalla["dir"])
+
+    def test_la_rutina_nunca_toca_la_pila_con_el_cartucho_en_la_pagina_1(self):
+        """LO QUE NO PUEDE PASAR NUNCA.
+
+        La pila del juego esta en 0x5BFF, o sea en la pagina 1, y la rutina
+        conmuta esa pagina al cartucho para escribir el registro del mapper de
+        0x7000. Un push, un pop, un call o un ret en ese tramo escribiria o
+        leeria la ROM: el retorno se perderia y la maquina se iria. Por eso las
+        conmutaciones van con instrucciones sueltas y el `push af` de F_LEE
+        queda fuera.
+        """
+        for pantalla in self.f["pantallas"]:
+            m, _z = self.corre(pantalla)
+            self.assertEqual(m.pila_con_cartucho, [],
+                             "con la pantalla de 0x%04X se toca la pila teniendo el cartucho puesto"
+                             % pantalla["dir"])
+            self.assertEqual(m.escrituras_perdidas, [],
+                             "la rutina escribe en la ROM, donde no hay nada que escribir")
+
+    def test_la_rutina_devuelve_las_paginas_y_el_banco_como_estaban(self):
+        """Al volver, el juego sigue: las cuatro paginas tienen que ser RAM otra
+        vez y la ventana de 0x8000 tiene que apuntar al banco de la musica, que
+        es lo que el puente espera encontrar."""
+        for pantalla in self.f["pantallas"]:
+            m, z = self.corre(pantalla)
+            self.assertEqual(m.a8, m.ranura_ram * 0b01010101,
+                             "las paginas no quedan como estaban: 0xA8 = 0x%02X" % m.a8)
+            self.assertEqual(m.banco_8000, self.f["banco_vuelve"],
+                             "la ventana de 0x8000 se queda en el banco %d" % m.banco_8000)
+            self.assertIs(z.di, False, "la rutina se deja las interrupciones cerradas")
+
+    def test_vale_este_el_cartucho_en_la_ranura_que_este(self):
+        """La ranura no se sabe hasta el arranque: la escribe el cargador en los
+        dos `or` de la rutina. Se prueban las cuatro primarias posibles para el
+        cartucho, con la RAM en otra, porque una mascara mal puesta solo se nota
+        en algunas combinaciones."""
+        for cart in range(4):
+            for ram in range(4):
+                if cart == ram:
+                    continue
+                pantalla = self.f["pantallas"][0]
+                m, _z = self.corre(pantalla, ranura_cart=cart, ranura_ram=ram)
+                self.assertEqual(bytes(m.ram[0x4000:0x4000 + pantalla["crudo"]]),
+                                 self.de_la_cinta(pantalla),
+                                 "con el cartucho en la ranura %d y la RAM en la %d sale otra cosa"
+                                 % (cart, ram))
+                self.assertEqual(m.pila_con_cartucho, [])
+
+    def test_no_se_pasa_del_sitio_de_la_pantalla(self):
+        """6.912 bytes y ni uno mas: 0x4000+6912 = 0x5B00, y justo encima esta la
+        pila del juego en 0x5BFF. Si el flujo comprimido no acabara donde debe,
+        la rutina se la comeria."""
+        for pantalla in self.f["pantallas"]:
+            m, z = self.corre(pantalla)
+            self.assertEqual(z.de, 0x4000 + pantalla["crudo"],
+                             "la rutina deja DE en 0x%04X: ha escrito %d bytes y no %d"
+                             % (z.de, z.de - 0x4000, pantalla["crudo"]))
+            # de lo que escribe al final de la pantalla hasta la pila, nada
+            self.assertEqual(set(m.ram[0x4000 + pantalla["crudo"]:0x5BF0]), {0},
+                             "la rutina se ha pasado del sitio de la pantalla")
 
 
 class TestElCotejoConLaCinta(unittest.TestCase):

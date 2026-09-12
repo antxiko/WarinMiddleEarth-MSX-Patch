@@ -232,20 +232,22 @@ MUSICA   := ../../msx-msxlib/games/examples/pt3music/RUN23_ShuffleOne.pt3
 PT3SRC   := ../../msx-msxlib/libext/pt3/PT3-ROM.ASM
 CARTUCHO := src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc
 
-.PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica verifica_comprimido captura_rom
+.PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica verifica_comprimido verifica_finales captura_rom
 
 rom: war.rom
 war.rom: extract $(CARTUCHO) tools/haz_rom.py
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA)
 
 # La misma ROM con el reproductor PT3 y un modulo metidos en el hueco que queda
-# al final del ultimo banco, sonando en el MENU. Cambia dos sitios del bloque
-# medio -el gancho por cuadro y la lectura del nivel-, y por eso es un fichero
-# aparte: war.rom se queda intacta y cotejada.
+# al final del ultimo banco, sonando en el MENU, y con las dos pantallas
+# finales quedandose en la ROM en vez de ocupar 13.824 bytes de RAM toda la
+# partida. Cambia trece bytes del bloque medio -el gancho por cuadro, la
+# lectura del nivel y el `ldir` de 0x83E7-, y por eso es un fichero aparte:
+# war.rom se queda intacta y cotejada.
 rom_musica: war_musica.rom
-war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc
+war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)"
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom
 
 # El reproductor, traducido de la sintaxis de asMSX a la de pasmo. La traduccion
 # es mecanica -241 corchetes de indireccion, 46 desplazamientos de IX que hay que
@@ -316,6 +318,23 @@ verifica_musica: war_musica.rom
 	  WAR_DIRS="$(abspath work/musica/musica.tcl)" \
 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_musica.tcl
 	@cat work/musica_$(MAQUINA)/musica.log
+
+# LAS DOS PANTALLAS FINALES. Para ver una hay que terminarse el juego, asi que
+# la sonda fuerza el PC en 0x83E7 -donde los cuatro finales convergen- con HL en
+# cada pantalla, y vuelca los 6.912 bytes que quedan en 0x4000 y la VRAM ya
+# pintada. Se monta ademas la ROM de ANTES del cambio (sin --finales-rom, con
+# las pantallas en la RAM) y se hace lo mismo, para poder comparar las dos.
+#
+# El cotejo que decide es el primero: los 6.912 bytes contra los de la cinta.
+# El de la VRAM cierra el circulo, pero un cotejo entre dos ROMs no diria nada
+# si las dos estuvieran mal igual.
+verifica_finales: war_musica.rom
+	python3 tools/haz_rom.py work work/war_ref.rom --espera $(ESPERA) --comprime --musica "$(MUSICA)" --salidas work/ref
+	@rm -rf work/finales_ref work/finales_$(MAQUINA)
+	WAR_ROM="$(abspath work/war_ref.rom)" WAR_OUT="$(abspath work/finales_ref)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_ref.rom)" -romtype ascii16 -script tools/omsx_finales.tcl
+	WAR_ROM="$(abspath war_musica.rom)" WAR_OUT="$(abspath work/finales_$(MAQUINA))" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_finales.tcl
+	@cat work/finales_$(MAQUINA)/finales.log
+	python3 tools/coteja_finales.py work/finales_$(MAQUINA) work work/finales_ref
 
 # Ver el juego corriendo desde el cartucho: el menu y, tras pulsar 0, el mapa.
 captura_rom: war.rom

@@ -66,6 +66,22 @@ def lee_libres(work):
     return tramos
 
 
+def lee_finales(work):
+    """Si la ROM con musica se monto con --finales-rom, las dos pantallas ya no
+    viajan a la RAM: se quedan en el cartucho y se descomprimen a 0x4000 al
+    acabar la partida. Entonces su tramo deja de ser 'cola del bloque bajo' y
+    pasa a ser RAM libre AJENA A LA CINTA, que es la unica de fiar."""
+    ruta = os.path.join(work, "musica", "plan.json")
+    if not os.path.exists(ruta):
+        return None
+    with open(ruta) as f:
+        d = json.load(f)
+    f_ = d.get("finales")
+    if not f_:
+        return None
+    return [(q["dir"], q["dir"] + q["crudo"]) for q in f_["pantallas"]]
+
+
 def lee_musica(work):
     """Lo que la musica ocupa en RAM, si la ROM con musica esta montada."""
     ruta = os.path.join(work, "musica", "plan.json")
@@ -77,14 +93,31 @@ def lee_musica(work):
     if not m:
         return []
     p = m["puente"]
-    return [(p["ram"], p["ram"] + p["bytes"], "EL PUENTE de la musica (%d B)" % p["bytes"]),
-            (0x5C00, 0x5C00 + 382, "area de trabajo del reproductor PT3 (382 B)")]
+    ocupa = [(p["ram"], p["ram"] + p["bytes"], "EL PUENTE de la musica (%d B)" % p["bytes"]),
+             (0x5C00, 0x5C00 + 382, "area de trabajo del reproductor PT3 (382 B)")]
+    # La rutina de las pantallas finales vive justo detras del puente, en la
+    # misma tierra de nadie de la pagina 0.
+    f_ = d.get("finales")
+    if f_:
+        ocupa.append((f_["ram"], f_["ram"] + f_["bytes"],
+                      "LA RUTINA de las pantallas finales (%d B)" % f_["bytes"]))
+    return ocupa
 
 
 def main(argv):
     work = argv[1] if len(argv) > 1 else "work"
     libres = lee_libres(work)
     musica = lee_musica(work)
+    en_la_rom = lee_finales(work)
+
+    # Lo que la CINTA deja en la RAM. Si las dos pantallas finales se quedan en
+    # el cartucho, el bloque bajo se acorta hasta donde empezaban: de ahi salen
+    # los 13.824 bytes que este cambio libera.
+    cinta = list(CINTA)
+    if en_la_rom:
+        ini_finales = min(a for a, _b in en_la_rom)
+        cinta[0] = (cinta[0][0], ini_finales,
+                    "bloque bajo: la capa MSX y los graficos (las finales se quedan en la ROM)")
 
     print("=" * 78)
     print(" LA RAM DE WAR IN MIDDLE EARTH, 64 KB, con el juego corriendo")
@@ -93,10 +126,13 @@ def main(argv):
     print()
 
     filas = []
-    for ini, fin, que in CINTA:
+    for ini, fin, que in cinta:
         filas.append((ini, fin, "CINTA", que))
     for ini, fin, que in FINALES:
-        filas.append((ini, fin, "IMAGEN", que))
+        if en_la_rom:
+            filas.append((ini, fin, "EN ROM", que + ", ya NO en la RAM"))
+        else:
+            filas.append((ini, fin, "IMAGEN", que))
     for ini, fin, que in MONTADO:
         filas.append((ini, fin, "JUEGO", que))
     for ini, fin, que in musica:
@@ -107,7 +143,9 @@ def main(argv):
     ancho = 44
     for ini, fin, tipo, que in sorted(filas):
         tam = fin - ini
-        barra = "#" if tipo in ("CINTA", "JUEGO") else ("*" if tipo in ("IMAGEN", "MUSICA") else ".")
+        barra = ("#" if tipo in ("CINTA", "JUEGO")
+                 else "*" if tipo in ("IMAGEN", "MUSICA")
+                 else "-" if tipo == "EN ROM" else ".")
         n = max(1, min(ancho, round(tam / 65536 * ancho * 6)))
         print("  %04X-%04X %6d B  %-6s %-8s %s"
               % (ini, fin - 1, tam, tipo, barra * min(n, 8), que))
@@ -119,12 +157,37 @@ def main(argv):
     total_libre = sum(f - i for i, f in libres)
     print("  RAM que nadie toca en toda la partida: %d B" % total_libre)
     print("  De ella, AJENA A LA CINTA -la unica de fiar para meter cosas-:")
+    # No es una lista de direcciones escrita a mano: es lo LIBRE menos lo que la
+    # cinta deja ocupado. Asi, en cuanto las finales se quedan en la ROM, su
+    # tramo aparece aqui solo.
+    de_la_cinta = set()
+    for ini, fin, _que in cinta:
+        de_la_cinta.update(range(ini, fin))
+    ajena = []
     for ini, fin in libres:
-        if 0x5C00 <= ini < 0x5E00 or 0x9700 <= ini < 0x9E00:
-            print("      %04X-%04X  %5d B" % (ini, fin - 1, fin - ini))
+        tramo = None
+        for d in range(ini, fin):
+            if d in de_la_cinta:
+                if tramo:
+                    ajena.append(tramo)
+                    tramo = None
+            elif tramo:
+                tramo[1] = d + 1
+            else:
+                tramo = [d, d + 1]
+        if tramo:
+            ajena.append(tramo)
+    ajena = [t for t in ajena if t[1] - t[0] >= 64]
+    for ini, fin in sorted(ajena):
+        print("      %04X-%04X  %6d B" % (ini, fin - 1, fin - ini))
+    print("      %-11s %6d B  EN TOTAL" % ("", sum(f - i for i, f in ajena)))
     if musica:
-        print("  Y de esa, la musica ya usa 382 B en 0x5C00 y %d en 0x%04X."
-              % (musica[0][1] - musica[0][0], musica[0][0]))
+        print("  Y de esa, ya hay puesto:")
+        usa = 0
+        for i, f, que in sorted(musica):
+            print("      %04X-%04X  %6d B  %s" % (i, f - 1, f - i, que))
+            usa += f - i
+        print("  Queda para lo que venga: %d B." % (sum(f - i for i, f in ajena) - usa))
     return 0
 
 

@@ -104,7 +104,7 @@ TABLA_OPS:
         defw    OP_LLENA_RAM_,OP_LLENA_VRAM_,OP_IDENT_VRAM_,OP_SPRITES_VRAM_
         defw    OP_PAG1_RAM_,OP_PAG1_CART_,OP_VDP_REG_,OP_PSG_REG_
         defw    OP_ESPERA_,OP_SALTA_,OP_BANCO_8000_,OP_RANURA_PAG2_
-        defw    OP_ROM_RAM_RLE_,OP_ROM_VRAM_RLE_
+        defw    OP_ROM_RAM_RLE_,OP_ROM_VRAM_RLE_,OP_RANURA_PAG1_
 
 ; --------------------------------------------------------------------------
 ; Sin RAM en alguna pagina, o un plan roto: borde rojo y a esperar.
@@ -230,6 +230,15 @@ OP_BANCO_8000_:
 ; 0xA8 -los de la pagina 2- para que ahi se vea el cartucho. Eso no se sabe
 ; hasta el arranque, asi que se calcula aqui de la ranura ya averiguada y se
 ; escribe dentro del propio puente, en el operando de su `or`.
+; La rutina de las pantallas finales necesita ADEMAS los bits de la pagina 1,
+; que es la que conmuta un momento para escribir el registro del mapper.
+OP_RANURA_PAG1_:
+        ld      a,(V_ID_CART)
+        and     003h
+        rlca
+        rlca                            ; a los bits 2-3
+        jr      RANURA_PON
+
 OP_RANURA_PAG2_:
         ld      a,(V_ID_CART)
         and     003h                    ; la primaria; el subslot no se toca
@@ -237,6 +246,7 @@ OP_RANURA_PAG2_:
         rlca
         rlca
         rlca                            ; a los bits 4-5
+RANURA_PON:
         ld      l,(ix+4)
         ld      h,(ix+5)
         ld      (hl),a

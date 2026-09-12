@@ -47,8 +47,23 @@ interrupcion, que es lo que hace el puente de 0x003B. Ademas cambia dos sitios
 del bloque medio: el gancho por cuadro y la lectura del nivel del menu, para
 que la musica arranque con el menu y calle al empezar la partida.
 
+LAS PANTALLAS FINALES EN LA ROM (--finales-rom)
+
+Las dos pantallas del final -victoria y derrota, 6.912 bytes cada una- ocupan
+13.824 bytes de RAM desde el arranque para usarse una sola vez al acabar la
+partida. Con esta opcion dejan de viajar a la RAM: se quedan en la ROM, donde
+ya estaban comprimidas, y una rutina de la pagina 0 (src/cartucho/finales.asm)
+las descomprime a 0x4000 cuando el juego las pide. Son ocho bytes mas del
+bloque medio, los de 0x83E7, donde los cuatro finales convergen.
+
 Uso: haz_rom.py <work> <salida.rom> [--espera N] [--sin-pantalla]
-                                    [--musica <fichero.pt3>]
+                                    [--comprime] [--finales-rom]
+                                    [--musica <fichero.pt3>] [--salidas <dir>]
+
+`--salidas` manda donde van los derivados (plan, stub, .sym, plan.json). Hace
+falta para montar DOS ROMs parecidas sin que la segunda le pise el plan a la
+primera: los tests cargarian entonces una ROM con el plan de la otra y
+fallarian sin que nada estuviera roto.
 
 `work` es el directorio con los cuerpos: el `work/` del parche para la cinta
 original, o `work/cuerpos_parche/` para la parcheada (los saca el Makefile de
@@ -136,6 +151,14 @@ MENU_NIVEL = 0x5E70         # el operando del `ld a,nn` de 0x5E6F, que guarda el
 FINALES = ((0x094F, 6912, "victoria: Gandalf y THE FORCES OF EVIL HAVE BEEN DESTROYED"),
            (0x244F, 6912, "derrota: Sauron y May the Forces of Evil Never be Defeated"))
 
+# Y con --finales-rom ni siquiera viajan a la RAM. PINTA_LA_PANTALLA_FINAL es
+# donde los cuatro finales del juego convergen, y sus ocho primeros bytes son
+# el `ld de,04000h / ld bc,01b00h / ldir` que copiaba la pantalla desde la RAM:
+# se cambian por una llamada a la rutina, que hace lo mismo leyendo de la ROM.
+# HL llega con 0x094F o 0x244F, asi que no hay que tocar VICTORIA ni DERROTA.
+PINTA_LA_FINAL = 0x83E7
+PINTA_LA_FINAL_ORIG = bytes.fromhex("110040 01001b edb0")
+
 
 class Plan:
     def __init__(self):
@@ -211,6 +234,8 @@ def main(argv):
     con_pantalla = True
     musica = None
     comprimir = False
+    finales_rom = False
+    salidas_pedidas = None
     i = 3
     while i < len(argv):
         if argv[i] == "--espera":
@@ -221,17 +246,28 @@ def main(argv):
             musica = argv[i + 1]; i += 2
         elif argv[i] == "--comprime":
             comprimir = True; i += 1
+        elif argv[i] == "--finales-rom":
+            finales_rom = True; i += 1
+        elif argv[i] == "--salidas":
+            salidas_pedidas = argv[i + 1]; i += 2
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
+    # La rutina de las finales lleva un descompresor y nada mas: si los bloques
+    # viajaran crudos no sabria copiarlos.
+    assert not finales_rom or comprimir, "--finales-rom necesita --comprime"
 
     # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
     # ensamblado, los .sym- va aparte cuando hay musica: las dos ROMs salen de
     # los mismos cuerpos y, compartiendo directorio, la segunda pisaba el plan y
     # el stub de la primera. Los tests cargaban entonces war.rom con el plan de
     # war_musica.rom y fallaban sin que nada estuviera realmente roto.
-    if musica:
+    if salidas_pedidas:
+        salidas = salidas_pedidas
+    elif musica:
         salidas = os.path.join(work, "musica")
+    elif finales_rom:
+        salidas = os.path.join(work, "finales")
     elif comprimir:
         salidas = os.path.join(work, "comprimido")
     else:
@@ -339,6 +375,35 @@ def main(argv):
         assert PUENTE_RAM + len(puente) <= BUZON_POKES[0], \
             "el puente llega a 0x%04X y pisaria el buzon de POKEs" % (PUENTE_RAM + len(puente))
 
+    # LAS PANTALLAS FINALES. La rutina corre en la RAM de la pagina 0, detras
+    # del puente si lo hay, pero VIAJA en la ROM como el: en el hueco, detras
+    # de la musica. De donde lee cada pantalla -banco, direccion dentro de la
+    # ventana de 0x8000 y marca del RLE- se lo damos ya calculado, que es lo
+    # que hay en la disposicion y aqui no hay que volver a deducirlo.
+    bloque_finales = None
+    finales_ram = PUENTE_RAM + (len(puente) if musica else 0)
+    if finales_rom:
+        equs = [("FINALES_ORG", finales_ram),
+                ("BANCO_VUELVE", banco_musica if musica else 0)]
+        for n, (dir_, _tam, _que) in enumerate(FINALES):
+            d = disposicion["final%d" % n]
+            assert d.get("rle"), "la pantalla final %d no esta comprimida" % n
+            equs += [("F%d_DIR" % n, dir_),
+                     ("F%d_BANCO" % n, d["rom"] // TAM_BANCO),
+                     ("F%d_SRC" % n, VENTANA_8000 + d["rom"] % TAM_BANCO),
+                     ("F%d_MARCA" % n, d["marca"])]
+        bloque_finales = pasmo(os.path.join(SRC, "finales.asm"),
+                               os.path.join(salidas, "finales.bin"),
+                               os.path.join(salidas, "finales.sym"), equs=equs)
+        sim_finales = lee_simbolos(os.path.join(salidas, "finales.sym"))
+        finales_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
+        bloque_musica = (bloque_musica or b"") + bloque_finales
+        assert len(bloque_musica) <= libre_hueco, \
+            "la musica y las finales ocupan %d B y en el hueco caben %d" % (len(bloque_musica), libre_hueco)
+        assert finales_ram + len(bloque_finales) <= BUZON_POKES[0], \
+            "la rutina de las finales llega a 0x%04X y pisaria el buzon de POKEs" \
+            % (finales_ram + len(bloque_finales))
+
     # El bloque medio, cargado en 0x3F4F, cruza a la pagina 1 en 0x4000
     en_pagina0 = 0x4000 - CARGA_MEDIO                  # 177 bytes
     en_pagina1 = len(medio) - en_pagina0               # 14400 bytes
@@ -391,9 +456,13 @@ def main(argv):
                 "bloque medio 0x4000-0x783F, de momento a la VRAM")
     # lo que no toca la pagina 1
     bloque("bajo", CARGA_BAJO, nota="bloque bajo a 0x0190, donde corre")
-    for n, (dir_, _tam, _que) in enumerate(FINALES):
-        if ("final%d" % n) in disposicion:
-            bloque("final%d" % n, dir_)
+    # Con --finales-rom estas dos NO viajan a la RAM: se quedan donde estan y
+    # la rutina de la pagina 0 las descomprime a 0x4000 al acabar la partida.
+    # Son los 13.824 bytes de RAM que libera el cambio.
+    if not finales_rom:
+        for n, (dir_, _tam, _que) in enumerate(FINALES):
+            if ("final%d" % n) in disposicion:
+                bloque("final%d" % n, dir_)
     p.copia_rom("ROM_RAM", disposicion["medio"]["rom"], CARGA_MEDIO, en_pagina0, "bloque medio 0x3F4F-0x3FFF")
     p.op("LLENA_RAM", 0, 0, BUZON_POKES[0], BUZON_POKES[1], "buzon de POKEs de 0x012C a cero: sin POKEs")
     if musica:
@@ -403,6 +472,16 @@ def main(argv):
                     "el puente de la musica a 0x%04X, donde lo llama el gancho" % PUENTE_RAM)
         p.op("RANURA_PAG2", 0, 0, sim_puente["PUENTE_RANURA"] + 1, 0,
              "y la ranura del cartucho en el `or` de 0x%04X" % (sim_puente["PUENTE_RANURA"] + 1))
+    if finales_rom:
+        # La rutina de las finales, a su sitio, y sus DOS `or`: conmuta la
+        # pagina 2 para leer la ROM y la 1 un momento para el registro del
+        # mapper, asi que necesita los bits de las dos.
+        p.copia_rom("ROM_RAM", finales_rom_pos, finales_ram, len(bloque_finales),
+                    "la rutina de las pantallas finales a 0x%04X" % finales_ram)
+        p.op("RANURA_PAG2", 0, 0, sim_finales["F_RANURA2"] + 1, 0,
+             "la ranura del cartucho para la pagina 2 de las finales")
+        p.op("RANURA_PAG1", 0, 0, sim_finales["F_RANURA1"] + 1, 0,
+             "... y para la pagina 1, que conmuta al escribir el registro")
     p.copia_rom("ROM_RAM", disposicion["alto"]["rom"], CARGA_ALTO, len(alto), "bloque alto a 0x88B8, como cae de la cinta")
     # y la pagina 1
     p.op("PAG1_RAM", nota="fuera el cartucho de la pagina 1")
@@ -442,46 +521,67 @@ def main(argv):
         rom[pos:pos + len(cuerpo)] = cuerpo
         pos += len(cuerpo)
     assert pos == hueco, "la disposicion no ha salido donde se calculo"
+    # Los unicos bytes del juego que estas ROMs cambian, y la razon de que la
+    # musica y las finales vayan en un fichero aparte: en war.rom el gancho
+    # sigue siendo el `ret` de siempre, el menu no llama a nadie y las
+    # pantallas finales se copian de la RAM con su `ldir`.
+    base = disposicion["medio"]["rom"] - ORG_MEDIO
+    parches = []
+    parches_musica = []
+
+    def parchea(dir_, viejo, nuevo, que):
+        o = base + dir_
+        assert rom[o:o + len(viejo)] == viejo, \
+            "en 0x%04X no esta %s sino %s" % (dir_, viejo.hex(), bytes(rom[o:o + len(viejo)]).hex())
+        assert len(nuevo) == len(viejo), "un parche del juego no puede cambiar de tamano"
+        rom[o:o + len(nuevo)] = nuevo
+        # `dir` es donde el juego lo EJECUTA (0x5E00 y arriba) y `carga`
+        # donde cae al cargarlo, antes de que 0x0190 recoloque el bloque.
+        # Los tests que miran la RAM recien cargada necesitan la segunda.
+        q = dict(dir=dir_, carga=CARGA_MEDIO + dir_ - ORG_MEDIO,
+                 rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que)
+        parches.append(q)
+        return q
+
     if bloque_musica:
         rom[hueco:hueco + len(bloque_musica)] = bloque_musica
-        # Los CINCO unicos bytes del juego que esta ROM cambia, y la razon de
-        # que la musica vaya en un fichero aparte: en war.rom el gancho sigue
-        # siendo el `ret` de siempre y el menu no llama a nadie.
-        base = disposicion["medio"]["rom"] - ORG_MEDIO
-
-        def parchea(dir_, viejo, nuevo, que):
-            o = base + dir_
-            assert rom[o:o + len(viejo)] == viejo, \
-                "en 0x%04X no esta %s sino %s" % (dir_, viejo.hex(), bytes(rom[o:o + len(viejo)]).hex())
-            rom[o:o + len(nuevo)] = nuevo
-            # `dir` es donde el juego lo EJECUTA (0x5E00 y arriba) y `carga`
-            # donde cae al cargarlo, antes de que 0x0190 recoloque el bloque.
-            # Los tests que miran la RAM recien cargada necesitan la segunda.
-            parches.append(dict(dir=dir_, carga=CARGA_MEDIO + dir_ - ORG_MEDIO,
-                                rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que))
-
-        parches = []
-        parchea(GANCHO_OPERANDO, GANCHO_VACIO.to_bytes(2, "little"),
-                PUENTE_RAM.to_bytes(2, "little"),
-                "el gancho por cuadro pasa del `ret` de 0x%04X al puente" % GANCHO_VACIO)
-        parchea(MENU_LEE_NIVEL, bytes([0x3A]) + MENU_NIVEL.to_bytes(2, "little"),
-                bytes([0xCD]) + sim_puente["PARA_LA_MUSICA"].to_bytes(2, "little"),
-                "al pulsar 0 el menu avisa al puente antes de leer el nivel")
+    if musica:
+        parches_musica.append(parchea(
+            GANCHO_OPERANDO, GANCHO_VACIO.to_bytes(2, "little"),
+            PUENTE_RAM.to_bytes(2, "little"),
+            "el gancho por cuadro pasa del `ret` de 0x%04X al puente" % GANCHO_VACIO))
+        parches_musica.append(parchea(
+            MENU_LEE_NIVEL, bytes([0x3A]) + MENU_NIVEL.to_bytes(2, "little"),
+            bytes([0xCD]) + sim_puente["PARA_LA_MUSICA"].to_bytes(2, "little"),
+            "al pulsar 0 el menu avisa al puente antes de leer el nivel"))
+    parche_finales = None
+    if finales_rom:
+        # El `ld de,04000h / ld bc,01b00h / ldir` de PINTA_LA_PANTALLA_FINAL,
+        # por la llamada. Los cinco bytes que sobran van a cero: el `call`
+        # vuelve y los atraviesa como NOPs hasta el `call 005bdh` de 0x83EF.
+        parche_finales = parchea(
+            PINTA_LA_FINAL, PINTA_LA_FINAL_ORIG,
+            bytes([0xCD]) + sim_finales["FINALES"].to_bytes(2, "little") + bytes(5),
+            "los cuatro finales llaman a la rutina en vez de copiar de la RAM")
     with open(salida, "wb") as f:
         f.write(rom)
 
-    if bloque_musica:
-        disposicion["musica"] = dict(rom=hueco, bytes=len(bloque_musica),
+    if musica:
+        # `bytes` es lo que ocupa la MUSICA: el reproductor, el modulo y el
+        # puente. Si ademas van las finales, su rutina viaja detras y se cuenta
+        # aparte, en resumen["finales"].
+        musica_bytes = len(bloque_musica) - (len(bloque_finales) if bloque_finales else 0)
+        disposicion["musica"] = dict(rom=hueco, bytes=musica_bytes,
                                      banco=banco_musica, org=musica_org,
                                      pt3=os.path.basename(musica),
-                                     reproductor=len(bloque_musica) - len(puente),
+                                     reproductor=musica_bytes - len(puente),
                                      modulo=sim["MODULO"], init=sim["PT3_INIT"],
                                      play=sim["PT3_PLAY"], rout=sim["PT3_ROUT"],
                                      mute=sim["PT3_MUTE"],
                                      puente=dict(rom=puente_rom, ram=PUENTE_RAM,
                                                  bytes=len(puente),
                                                  para=sim_puente["PARA_LA_MUSICA"]),
-                                     parches=parches)
+                                     parches=parches_musica)
 
     resumen = dict(rom=os.path.basename(salida), bytes=TAM_ROM, mapper="ASCII16",
                    arranque=len(arranque), stub=len(stub), stub_ram=STUB, plan_entradas=len(p.ops),
@@ -490,6 +590,22 @@ def main(argv):
                    carga=dict(bajo=CARGA_BAJO, medio=CARGA_MEDIO, alto=CARGA_ALTO, salto=SALTO, pila=PILA),
                    pantalla_de_carga=con_pantalla, espera_cuadros=espera,
                    vdp_regs=VDP_REGS, psg_regs=PSG_REGS, plan=p.json())
+    if finales_rom:
+        # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
+        # la rutina, donde corre, de donde lee cada pantalla y el parche que la
+        # pone en marcha. Las direcciones salen del .sym, no de contarlas.
+        resumen["finales"] = dict(
+            rom=finales_rom_pos, ram=finales_ram, bytes=len(bloque_finales),
+            entrada=sim_finales["FINALES"], parche=parche_finales,
+            banco_vuelve=banco_musica if musica else 0,
+            ranuras=dict(pag1=sim_finales["F_RANURA1"] + 1, pag2=sim_finales["F_RANURA2"] + 1),
+            pantallas=[dict(dir=dir_, crudo=tam, que=que,
+                            rom=disposicion["final%d" % n]["rom"],
+                            bytes=disposicion["final%d" % n]["bytes"],
+                            banco=disposicion["final%d" % n]["rom"] // TAM_BANCO,
+                            src=VENTANA_8000 + disposicion["final%d" % n]["rom"] % TAM_BANCO,
+                            marca=disposicion["final%d" % n]["marca"])
+                       for n, (dir_, tam, que) in enumerate(FINALES)])
     with open(os.path.join(salidas, "plan.json"), "w") as f:
         json.dump(resumen, f, indent=1)
 
@@ -497,7 +613,7 @@ def main(argv):
     # `source`. Escritas a mano se quedan viejas en cuanto el puente cambia de
     # tamano: PUENTE_SONANDO se movio de 0x006E a 0x007C al anadirle el parar,
     # y la sonda siguio leyendo la vieja y dando un valor que no era.
-    if bloque_musica:
+    if musica:
         with open(os.path.join(salidas, "musica.tcl"), "w") as f:
             f.write("# generado por tools/haz_rom.py: no editar\n")
             for k, v in (("PUENTE", PUENTE_RAM), ("PUENTE_FIN", PUENTE_RAM + len(puente) - 1),
@@ -514,7 +630,7 @@ def main(argv):
           % (len(arranque), len(stub), len(p.ops), INICIO_DATOS, pos - 1, resumen["libre"]))
     for nombre, d in disposicion.items():
         print("  %-9s ROM 0x%05X  %5d B" % (nombre, d["rom"], d["bytes"]))
-    if bloque_musica:
+    if musica:
         m = disposicion["musica"]
         print("  la musica es %s: banco %d, se ve en 0x%04X-0x%04X por la ventana de 0x8000"
               % (m["pt3"], m["banco"], m["org"], m["org"] + m["bytes"] - 1))
@@ -525,6 +641,17 @@ def main(argv):
         for q in m["parches"]:
             print("     0x%04X del bloque medio: %s -> %s, %s"
                   % (q["dir"], q["orig"], q["nuevo"], q["que"]))
+    if finales_rom:
+        f = resumen["finales"]
+        print("  las pantallas finales se quedan en la ROM: %d B de rutina de ROM 0x%05X a RAM 0x%04X"
+              % (f["bytes"], f["rom"], f["ram"]))
+        for q in f["pantallas"]:
+            print("     0x%04X (%d B crudos) desde el banco %d, 0x%04X, marca 0x%02X: %s"
+                  % (q["dir"], q["crudo"], q["banco"], q["src"], q["marca"], q["que"]))
+        q = f["parche"]
+        print("     0x%04X del bloque medio: %s -> %s, %s"
+              % (q["dir"], q["orig"], q["nuevo"], q["que"]))
+        print("     RAM liberada: %d bytes" % sum(q["crudo"] for q in f["pantallas"]))
     return 0
 
 

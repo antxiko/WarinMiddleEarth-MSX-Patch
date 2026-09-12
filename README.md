@@ -139,7 +139,7 @@ the openMSX output are in [INVESTIGACION.md](INVESTIGACION.md).
 ## From tape to cartridge
 
 The game itself is untouched: `make rom` builds from your tape **`war.rom`, a
-64 KB ASCII16 MegaROM** with a 77-byte boot and a 977-byte stub that leave RAM
+64 KB ASCII16 MegaROM** with a 77-byte boot and a 1,114-byte stub that leave RAM
 exactly as the tape loader leaves it and jump to the same place (0x0190). From
 the patched tape, `make rom_parche` builds `war_parche.rom`. Neither is
 distributed. The game only ever writes VDP register 7 and inherits everything
