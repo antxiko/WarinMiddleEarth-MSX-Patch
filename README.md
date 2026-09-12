@@ -158,7 +158,8 @@ sprite and a fixed window**: instead of expanding the character screen into a
 bitmap and pushing 12,288 bytes to VRAM on every loop, it pushes the 768 bytes
 of the name table, because each cell's byte already is the pattern index; and
 the map chunk is only redrawn when the cursor (two 16x16 sprites, editable in
-`src/cartucho/cursor.png`) gets close to the edge. Measured on an NMS 8250: from
+`src/cartucho/cursor.png` with `tools/editor_cursor.html`, which opens in the
+browser) gets close to the edge. Measured on an NMS 8250: from
 3.2 to 43.1 loops per second, with the cursor at five cells per second and the
 picture checked against the old one (`make verifica_vista_parche`). The ROM to
 play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape

@@ -157,7 +157,8 @@ ventana quieta**: en vez de expandir la pantalla de caracteres a bitmap y
 subir 12.288 bytes a la VRAM en cada vuelta, sube los 768 de la tabla de
 nombres, porque el byte de cada celda ya es el indice de patron; y el trozo de
 mapa solo se repinta cuando el cursor -dos sprites de 16x16, editables en
-`src/cartucho/cursor.png`- se acerca al borde. Medido en un NMS 8250: de 3,2 a
+`src/cartucho/cursor.png` con `tools/editor_cursor.html`, que se abre en el
+navegador- se acerca al borde. Medido en un NMS 8250: de 3,2 a
 43,1 vueltas por segundo, con el cursor a cinco casillas por segundo y la
 imagen cotejada contra la de antes (`make verifica_vista_parche`). La ROM que
 se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Editor del cursor</title>
+<!--
+  EL EDITOR DEL CURSOR DE LA VISTA DE CERCA (dos sprites de 16x16 por cursor)
+
+  Abrelo en el navegador, sin servidor ni dependencias. Edita los tres
+  cursores de src/cartucho/cursor.png -mirar, elegir destino y batalla- y
+  cada uno como lo que es en el MSX: DOS planos de sprite de 16x16, cada plano
+  con un color de la paleta del TMS9918. El plano A va delante (el dibujo) y
+  el B detras (el bloque); donde ninguno pinta se ve el mapa.
+
+    Abrir PNG     lee un cursor.png (el del repositorio, o uno guardado aqui)
+    Guardar PNG   escribe el cursor.png de 48x16 que lee tools/cursor.py:
+                  colores exactos del MSX y transparente de verdad (alfa 0)
+
+  Luego, en el repositorio: make rom_parche_musica. Los 32 bytes de cada
+  plano se ensenan abajo por si alguien quiere meterlos a mano.
+-->
+<style>
+  :root { --fondo:#18181c; --tinta:#e8e8e8; --marco:#3a3a44; --panel:#24242b; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:14px/1.4 system-ui, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .fila { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--marco); border-radius:6px; padding:10px; }
+  button, label.boton { background:#3b3b48; color:var(--tinta); border:1px solid #555; border-radius:4px; padding:5px 10px; cursor:pointer; font:inherit; }
+  button.activo, label.activo { background:#5a5aa0; border-color:#8a8ad0; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display:block; }
+  #lienzo { border:1px solid var(--marco); cursor:crosshair; background:#000; }
+  .paleta { display:grid; grid-template-columns: repeat(8, 26px); gap:4px; }
+  .paleta div { width:26px; height:26px; border:2px solid #222; border-radius:3px; cursor:pointer; box-sizing:border-box; }
+  .paleta div.activo { border-color:#fff; }
+  .paleta div.transp { background: repeating-conic-gradient(#444 0 25%, #222 0 50%) 0 0/8px 8px; }
+  pre { margin:4px 0 0; font-size:11px; white-space:pre-wrap; color:#bbb; }
+  small { color:#999; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+<main>
+<h1>El cursor de la vista de cerca: dos sprites de 16x16 por cursor</h1>
+<div class="fila" style="margin-bottom:10px">
+  <span id="cursores"></span>
+  <span>
+    <button id="planoA" class="activo">plano A (delante)</button>
+    <button id="planoB">plano B (detras)</button>
+    <button id="goma">goma</button>
+  </span>
+  <span>
+    <label class="boton" for="fichero">Abrir PNG</label><input type="file" id="fichero" accept="image/png">
+    <button id="guardar">Guardar PNG</button>
+    <button id="limpiar">Vaciar este cursor</button>
+  </span>
+</div>
+<div class="fila">
+  <div class="panel">
+    <canvas id="lienzo" width="320" height="320"></canvas>
+    <small>izquierdo: pinta en el plano activo &middot; derecho: borra &middot; los dos planos se ven superpuestos, el A encima</small>
+  </div>
+  <div class="panel">
+    <div>Color del plano <b id="cual">A</b>:</div>
+    <div class="paleta" id="paleta"></div>
+    <div style="margin-top:8px">A: <span id="colorA"></span><br>B: <span id="colorB"></span></div>
+    <div style="margin-top:10px">Los tres, a tamano real y x4:</div>
+    <canvas id="previa" width="192" height="64" style="margin-top:4px"></canvas>
+    <div style="margin-top:10px">Los 32 bytes de cada plano (cuadrantes por columnas, como el TMS9918):</div>
+    <pre id="bytes"></pre>
+  </div>
+</div>
+<p><small>Guardar escribe <code>cursor.png</code> (48 x 16: mirar, destino y batalla seguidos). Copialo a
+<code>src/cartucho/cursor.png</code> y monta con <code>make rom_parche_musica</code>. Un cursor no puede llevar
+mas de dos colores: aqui no se puede, que cada plano tiene el suyo.</small></p>
+</main>
+<script>
+// La paleta del MSX1 con la que tools/lienzos.py escribe y lee los PNG: los
+// valores tienen que ser EXACTAMENTE estos para que la lectura sea exacta.
+const MSX = [null,
+  [0x00,0x00,0x00],[0x3E,0xB8,0x49],[0x74,0xD0,0x7D],[0x59,0x55,0xE0],[0x80,0x76,0xF1],
+  [0xB9,0x5E,0x51],[0x65,0xDB,0xEF],[0xDB,0x65,0x59],[0xFF,0x89,0x7D],[0xCC,0xC3,0x5E],
+  [0xDE,0xD0,0x87],[0x3A,0xA2,0x41],[0xB7,0x66,0xB5],[0xCC,0xCC,0xCC],[0xFF,0xFF,0xFF]];
+const NOMBRE = ["transparente","negro","verde medio","verde claro","azul oscuro","azul claro","rojo oscuro","cian",
+  "rojo medio","rojo claro","amarillo oscuro","amarillo claro","verde oscuro","magenta","gris","blanco"];
+const FONDO = [0x18,0x18,0x1c];               // el transparente de las laminas: tambien vale como color
+const CURSORES = ["mirar","destino","batalla"];
+const ZOOM = 20;
+
+// estado: por cursor, dos planos de 16x16 (0/1) y el color de cada plano
+const estado = CURSORES.map(() => ({ planos: [nuevo(), nuevo()], colores: [1, 15] }));
+let cursor = 0, plano = 0, goma = false, pintando = false, valorPincel = 1;
+function nuevo() { return Array.from({length: 16}, () => new Array(16).fill(0)); }
+
+// ---------------------------------------------------------------- dibujo
+const lienzo = document.getElementById("lienzo"), ctx = lienzo.getContext("2d");
+const previa = document.getElementById("previa"), pctx = previa.getContext("2d");
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function colorDe(n, x, y) {
+  const e = estado[n];
+  if (e.planos[0][y][x] && e.colores[0]) return MSX[e.colores[0]];
+  if (e.planos[1][y][x] && e.colores[1]) return MSX[e.colores[1]];
+  return null;
+}
+function pinta() {
+  ctx.fillStyle = "#101014"; ctx.fillRect(0, 0, 320, 320);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const c = colorDe(cursor, x, y);
+    ctx.fillStyle = c ? rgb(c) : ((x + y) & 1 ? "#1c1c22" : "#26262e");
+    ctx.fillRect(x * ZOOM, y * ZOOM, ZOOM - 1, ZOOM - 1);
+    // el plano que NO esta activo se marca con un punto, para verlo debajo
+    const otro = estado[cursor].planos[1 - plano][y][x], este = estado[cursor].planos[plano][y][x];
+    if (otro && !este) { ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(x * ZOOM + 8, y * ZOOM + 8, 3, 3); }
+  }
+  pctx.fillStyle = rgb(FONDO); pctx.fillRect(0, 0, 192, 64);
+  for (let n = 0; n < 3; n++) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const c = colorDe(n, x, y); if (!c) continue;
+    pctx.fillStyle = rgb(c);
+    pctx.fillRect(n * 16 + x, y, 1, 1);
+    pctx.fillRect(n * 64 + x * 4, 16 + y * 4, 4, 4);
+  }
+  document.getElementById("colorA").textContent = NOMBRE[estado[cursor].colores[0]];
+  document.getElementById("colorB").textContent = NOMBRE[estado[cursor].colores[1]];
+  document.getElementById("cual").textContent = "AB"[plano];
+  document.querySelectorAll("#paleta div").forEach((d, i) => d.classList.toggle("activo", i === estado[cursor].colores[plano]));
+  document.getElementById("planoA").classList.toggle("activo", plano === 0 && !goma);
+  document.getElementById("planoB").classList.toggle("activo", plano === 1 && !goma);
+  document.getElementById("goma").classList.toggle("activo", goma);
+  document.getElementById("bytes").textContent = CURSORES.map((nom, n) =>
+    nom + "\n  A: " + hex(bytesDe(estado[n].planos[0])) + "\n  B: " + hex(bytesDe(estado[n].planos[1]))).join("\n");
+}
+function bytesDe(p) {       // 32 bytes: arriba-izq 0-7, abajo-izq 8-15, arriba-der 16-23, abajo-der 24-31
+  const b = new Array(32).fill(0);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (p[y][x]) b[(x >= 8 ? 16 : 0) + y] |= 0x80 >> (x & 7);
+  return b;
+}
+function hex(b) { return b.map(v => v.toString(16).padStart(2, "0").toUpperCase()).join(" "); }
+
+// ---------------------------------------------------------------- raton
+function celda(ev) {
+  const r = lienzo.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / ZOOM), y = Math.floor((ev.clientY - r.top) / ZOOM);
+  return (x >= 0 && x < 16 && y >= 0 && y < 16) ? [x, y] : null;
+}
+function aplica(ev) {
+  const c = celda(ev); if (!c) return;
+  estado[cursor].planos[plano][c[1]][c[0]] = valorPincel;
+  pinta();
+}
+lienzo.addEventListener("contextmenu", ev => ev.preventDefault());
+lienzo.addEventListener("mousedown", ev => {
+  pintando = true;
+  valorPincel = (ev.button === 2 || goma) ? 0 : 1;
+  aplica(ev);
+});
+lienzo.addEventListener("mousemove", ev => { if (pintando) aplica(ev); });
+window.addEventListener("mouseup", () => { pintando = false; });
+
+// ---------------------------------------------------------------- botones
+const cont = document.getElementById("cursores");
+CURSORES.forEach((nom, n) => {
+  const b = document.createElement("button"); b.textContent = nom;
+  b.onclick = () => { cursor = n; cont.querySelectorAll("button").forEach((x, i) => x.classList.toggle("activo", i === n)); pinta(); };
+  if (n === 0) b.classList.add("activo");
+  cont.appendChild(b);
+});
+document.getElementById("planoA").onclick = () => { plano = 0; goma = false; pinta(); };
+document.getElementById("planoB").onclick = () => { plano = 1; goma = false; pinta(); };
+document.getElementById("goma").onclick = () => { goma = !goma; pinta(); };
+document.getElementById("limpiar").onclick = () => { estado[cursor].planos = [nuevo(), nuevo()]; pinta(); };
+const pal = document.getElementById("paleta");
+for (let i = 0; i < 16; i++) {
+  const d = document.createElement("div");
+  if (i === 0) d.className = "transp"; else d.style.background = rgb(MSX[i]);
+  d.title = NOMBRE[i];
+  d.onclick = () => { estado[cursor].colores[plano] = i; pinta(); };
+  pal.appendChild(d);
+}
+
+// ---------------------------------------------------------------- abrir
+function masParecido(r, g, b) {
+  let mejor = 1, dist = Infinity;
+  for (let i = 1; i < 16; i++) {
+    const c = MSX[i], d = (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2;
+    if (d < dist) { dist = d; mejor = i; }
+  }
+  return mejor;
+}
+document.getElementById("fichero").addEventListener("change", ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    if (img.width !== 48 || img.height !== 16) { alert("El cursor tiene que medir 48x16 (tres de 16x16 seguidos); este mide " + img.width + "x" + img.height); return; }
+    const c = document.createElement("canvas"); c.width = 48; c.height = 16;
+    const k = c.getContext("2d"); k.drawImage(img, 0, 0);
+    const d = k.getImageData(0, 0, 48, 16).data;
+    for (let n = 0; n < 3; n++) {
+      const cuenta = {};
+      const idx = nuevo();
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const o = (y * 48 + n * 16 + x) * 4;
+        let i = 0;
+        if (d[o + 3] >= 128 && !(d[o] === FONDO[0] && d[o + 1] === FONDO[1] && d[o + 2] === FONDO[2])) i = masParecido(d[o], d[o + 1], d[o + 2]);
+        idx[y][x] = i;
+        if (i) cuenta[i] = (cuenta[i] || 0) + 1;
+      }
+      // como tools/cursor.py: el plano A es el color con menos pixels; a igualdad, el de indice mas bajo
+      const orden = Object.keys(cuenta).map(Number).sort((a, b) => cuenta[a] - cuenta[b] || a - b);
+      if (orden.length > 2) { alert("El cursor de " + CURSORES[n] + " lleva " + orden.length + " colores y solo caben dos; se toman los dos menos usados"); }
+      const e = estado[n];
+      e.colores = [orden[0] || 0, orden[1] || 0];
+      e.planos = [nuevo(), nuevo()];
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        if (idx[y][x] === orden[0]) e.planos[0][y][x] = 1;
+        else if (idx[y][x] === orden[1]) e.planos[1][y][x] = 1;
+      }
+    }
+    pinta();
+  };
+  img.src = URL.createObjectURL(f);
+  ev.target.value = "";
+});
+
+// ---------------------------------------------------------------- guardar
+document.getElementById("guardar").onclick = () => {
+  const c = document.createElement("canvas"); c.width = 48; c.height = 16;
+  const k = c.getContext("2d");
+  const datos = k.createImageData(48, 16);
+  for (let n = 0; n < 3; n++) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const col = colorDe(n, x, y), o = (y * 48 + n * 16 + x) * 4;
+    if (col) { datos.data[o] = col[0]; datos.data[o + 1] = col[1]; datos.data[o + 2] = col[2]; datos.data[o + 3] = 255; }
+    else { datos.data[o] = FONDO[0]; datos.data[o + 1] = FONDO[1]; datos.data[o + 2] = FONDO[2]; datos.data[o + 3] = 0; }
+  }
+  k.putImageData(datos, 0, 0);
+  c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "cursor.png"; a.click();
+  }, "image/png");
+};
+
+pinta();
+</script>
+</body>
+</html>

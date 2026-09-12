@@ -944,7 +944,8 @@ Tres decisiones del usuario: el margen de tres celdas, el cursor **editable**
 -`src/cartucho/cursor.png`, 48 x 16, los tres cursores (mirar, elegir
 destino, batalla) con hasta dos colores mas el transparente; `tools/cursor.py`
 lo saca de los tiles de la cinta parcheada y lo vuelve a leer como planos de
-sprite- y **una casilla cada diez cuadros** con la tecla pulsada: con la vuelta
+sprite; `tools/editor_cursor.html` es un editor de los dos planos que se abre
+en el navegador y guarda ese PNG- y **una casilla cada diez cuadros** con la tecla pulsada: con la vuelta
 a mas de cuarenta por segundo el cursor, que avanza una casilla por vuelta,
 iba a 25 casillas por segundo. Ahora `MI_MUEVE` deja pasar un paso cada diez
 cuadros -cinco por segundo a 50 Hz-, y una pulsacion suelta mueve al instante.
