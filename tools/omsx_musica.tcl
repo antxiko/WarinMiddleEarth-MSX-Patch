@@ -175,14 +175,17 @@ proc muestrea_final {n} {
         return
     }
     set g [gancho]
-    say "el gancho de [hex $::GANCHO 4] = [hex $g 4]   ([hex $::GANCHO_VACIO 4] = ya no llama al puente)"
+    say "el gancho de [hex $::GANCHO 4] = [hex $g 4]   ([hex $::GANCHO_VACIO 4] o [hex $::CUENTA_CUADROS 4] = ya no llama al puente)"
     say "PUENTE_SONANDO [hex $::PUENTE_SONANDO 4] = [hex [debug read memory $::PUENTE_SONANDO]]"
     say "el puente se llamo $::veces veces en total"
     set quietas [llength [lsort -unique $::despues]]
     set vol {}
     foreach r {8 9 10} { lappend vol [debug read "PSG regs" $r] }
     say "volumenes A/B/C = [join $vol /]  ; muestras distintas tras el 0: $quietas"
-    set mudo [expr {$quietas == 1 && $g == $::GANCHO_VACIO
+    # Tras callar, el gancho va al `ret` vacio o, desde el cursor como sprite,
+    # a CUENTA_CUADROS (el contador de cuadros del paso del cursor): las dos
+    # valen, ninguna llama al puente.
+    set mudo [expr {$quietas == 1 && ($g == $::GANCHO_VACIO || $g == $::CUENTA_CUADROS)
                     && [lindex $vol 0] == 0 && [lindex $vol 1] == 0 && [lindex $vol 2] == 0}]
     if {$mudo} { say "CALLA" } else { say "NO CALLA: sigue sonando tras empezar la partida" }
     # El `exit` de openMSX no corta el procedimiento en el acto: sin el `else`

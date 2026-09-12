@@ -80,9 +80,14 @@ def pinta(vram, regs, escala=2, con_sprites=True):
             if not color:
                 continue
             base = spr_pat + ((patron & (0xFC if grandes else 0xFF)) << 3)
+            # Un sprite de 16x16 son 32 bytes en CUATRO cuadrantes de 8, y el
+            # orden del TMS9918 es por COLUMNAS: arriba a la izquierda (0-7),
+            # abajo a la izquierda (8-15), arriba a la derecha (16-23) y abajo
+            # a la derecha (24-31). Estaba al reves -filas primero- y nadie lo
+            # vio porque este juego no ensenaba ningun sprite hasta el cursor.
             for y in range(lado):
                 for x in range(lado):
-                    o = base + (y & 7) + (8 if x >= 8 else 0) + (16 if y >= 8 else 0)
+                    o = base + (y & 7) + (8 if y >= 8 else 0) + (16 if x >= 8 else 0)
                     if not (vram[o] << (x & 7)) & 0x80:
                         continue
                     py, px = sy + y, sx + x

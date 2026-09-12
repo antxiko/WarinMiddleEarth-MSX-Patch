@@ -153,12 +153,16 @@ The cartridge **uses ZX0**, by Einar Saukas, for the images: 26,112 bytes of
 screens in 12,600. Its licence asks that you say so, and it is said here and in
 [LEGAL-NOTICE.md](LEGAL-NOTICE.md); the compressor itself is not distributed.
 
-And in `war_musica.rom` **the close-up view goes through the name table**:
-instead of expanding the character screen into a bitmap and pushing 12,288 bytes
-to VRAM on every loop, it pushes the 768 bytes of the name table, because each
-cell's byte already is the pattern index. Measured on an NMS 8250: from 3.2 to
-9.8 loops per second, with the picture identical pixel for pixel
-(`make verifica_vista`). Details in [INVESTIGACION.md](INVESTIGACION.md).
+And **the close-up view goes through the name table, with the cursor as a
+sprite and a fixed window**: instead of expanding the character screen into a
+bitmap and pushing 12,288 bytes to VRAM on every loop, it pushes the 768 bytes
+of the name table, because each cell's byte already is the pattern index; and
+the map chunk is only redrawn when the cursor (two 16x16 sprites, editable in
+`src/cartucho/cursor.png`) gets close to the edge. Measured on an NMS 8250: from
+3.2 to 43.1 loops per second, with the cursor at five cells per second and the
+picture checked against the old one (`make verifica_vista_parche`). The ROM to
+play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
+with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 
 ## What is still missing
 

@@ -62,7 +62,7 @@ PUENTE_RANURA:
                 ; siempre, que es lo que deja la partida exactamente como
                 ; estaba, sin gastar un ciclo por cuadro en mirar una variable.
                 call PT3_MUTE
-                ld hl,GANCHO_VACIO
+                ld hl,CUENTA_CUADROS    ; desde aqui el gancho solo cuenta cuadros: el paso del cursor
                 ld (GANCHO),hl
                 jr PUENTE_SALE
 
@@ -97,6 +97,15 @@ PUENTE_SALE:
 
 PUENTE_SONANDO:
                 defb 0                  ; 0 hasta que suena la primera nota
+
+; Cuando la musica calla, el gancho por cuadro pasa a esto en vez de al `ret`
+; vacio: un contador de cuadros que la vista usa para limitar el paso del
+; cursor (MI_MUEVE, en nombres.asm). Corre en cada interrupcion, en la RAM de
+; la pagina 0 y sin asomar la ROM: cuatro bytes y unos 30 ciclos por cuadro.
+CUENTA_CUADROS: ld hl,CUADROS
+                inc (hl)
+                ret
+CUADROS:        defb 0
 
 ; --------------------------------------------------------------------------
 ; PARA_LA_MUSICA: la musica es del MENU, asi que calla al empezar la partida.

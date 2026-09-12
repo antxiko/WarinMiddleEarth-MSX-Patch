@@ -922,6 +922,92 @@ si fuera el mando. Con Frodo, que es el 5 (bits 0 y 2: arriba e izquierda), el
 cursor sube una casilla y va otra a la izquierda. Sale igual en la ROM sin el
 cambio, que ahi corre el codigo de la cinta tal cual.
 
+### El cursor como sprite y la ventana fija — HECHO y VERIFICADO
+
+Con la tabla de nombres, de los 363.884 ciclos de una vuelta 330.031 eran
+`DIBUJA_EL_TROZO_DE_MAPA` (0x7643): repintar las 16 x 13 celdas del trozo en
+cada vuelta aunque el cursor no se moviera. Se repintaba porque el cursor iba
+dentro de la pantalla de caracteres -cuatro caracteres de 0x77B5 + modo*4
+escritos encima del centro- y la ventana se desplazaba con el. La idea del
+usuario: *siendo un sprite no pintariamos el mapa*.
+
+Ahora el cursor son **dos sprites de 16x16 solapados**, uno por color (el
+dibujo y el bloque de detras), y la **ventana del trozo se queda quieta**: el
+cursor se mueve dentro sin repintar nada, y el trozo solo se vuelve a dibujar
+cuando el cursor se acerca a menos de tres celdas del borde (diez columnas y
+siete filas de recorrido), recentrandolo como lo pintaria el original. La
+pantalla de caracteres limpia se guarda en una cache de 850 bytes y en las
+vueltas sin repintado se restaura con un `ldir`; las ventanas de posicion,
+ficha y sitio se dibujan encima como siempre. El cursor ya no parpadea.
+
+Tres decisiones del usuario: el margen de tres celdas, el cursor **editable**
+-`src/cartucho/cursor.png`, 48 x 16, los tres cursores (mirar, elegir
+destino, batalla) con hasta dos colores mas el transparente; `tools/cursor.py`
+lo saca de los tiles de la cinta parcheada y lo vuelve a leer como planos de
+sprite- y **una casilla cada diez cuadros** con la tecla pulsada: con la vuelta
+a mas de cuarenta por segundo el cursor, que avanza una casilla por vuelta,
+iba a 25 casillas por segundo. Ahora `MI_MUEVE` deja pasar un paso cada diez
+cuadros -cinco por segundo a 50 Hz-, y una pulsacion suelta mueve al instante.
+Los cuadros los cuenta el gancho de la interrupcion: cuando la musica calla, el
+puente lo deja apuntando a `CUENTA_CUADROS` (cuatro bytes) en vez de al `ret`
+vacio.
+
+Son **cuatro parches del juego, trece bytes**: los siete de la vista, tres en
+0x71A4 (`push hl / push hl / exx` por un `jp MI_PINTA`) y tres en 0x7225 (el
+`call MUEVE_POR_EL_MAPA` de la vuelta por `call MI_MUEVE`). En 0x71C6 NO se
+puede poner un salto, porque 0x752E escribe en 0x71C7 (el operando del
+parpadeo): MI_PINTA replica 0x71A7-0x71C5 llamando a las mismas rutinas
+(`CELDA_DEL_MAPA` con la fila mas uno, la esquina 720 bytes atras,
+`DIBUJA_EL_TROZO_DE_MAPA`, `TAPA_LOS_BORDES`). Lo que se leyo del listado y
+manda en el diseno: la esquina del trozo es (H-5, L-7) y el cursor cae en la
+celda (7, 5) de la ventana; el reloj del juego no corre en la vista (solo lo
+mueve `BUCLE_DE_PARTIDA`), y el trozo cambia sin moverse el cursor solo por la
+marca de bit 6 de una orden -que llega tras un menu de bitmap, o sea tras el
+guardian- y al quitarla, que cambia el modo: la cache vale mientras no cambien
+la esquina ni el modo ni pase el guardian, que ademas esconde los sprites
+(Y=209, como los dejo el cargador). El tamano 16x16 lo pone el plan en R1
+(0xE2): el juego nunca escribe R1.
+
+Dos cosas que solo se vieron al cotejar. **`tools/render_vram.py` tenia los
+cuadrantes del sprite de 16x16 al reves** (van por columnas: 0-7 arriba a la
+izquierda, 8-15 abajo a la izquierda, 16-23 y 24-31 la derecha) y nadie lo
+habia visto porque este juego no ensenaba ningun sprite. Y **el atributo del
+texto no se puede copiar**: el parche de Araubi lo cambia de 0x78 a 0x70 (el
+amarillo claro de los marcos), asi que la rutina lo lee del operando de
+0x763E; con la constante, en la cinta parcheada el cartel de Posicion salia
+con los colores de la cinta original.
+
+**Medido en el NMS 8250** (`tools/omsx_vista.tcl`, `war_parche_musica.rom`):
+
+    en reposo                363.884 ->  83.037 ciclos por vuelta    9,8 -> 43,1 vueltas por segundo
+    moviendo sin soltar      623.715 ->  95.490                      5,7 -> 37,5 (cada diez casillas hay un recentrado)
+
+Y el paso del cursor (`tools/omsx_paso_cursor.tcl`, dos segundos con la derecha
+pulsada, VG-8020): 10 casillas, cinco por segundo; la ROM sin la vista, tres.
+
+**Verificado** (`make verifica_vista` y `make verifica_vista_parche`, exit 0 en
+la VG-8020, y la parcheada tambien en el NMS 8250). Como la nueva ya no ensena
+lo mismo que la vieja en cuanto el cursor se mueve, `tools/coteja_vista.py`
+lleva un **modelo del paginado** y la sonda vuelca el trozo puro de cada
+vuelta: se exige que la nueva pinte el trozo exactamente en las vueltas que
+dice el modelo (5 de 50: al entrar, tras el menu y en los tres recentrados,
+mientras la vieja lo pinta en las 50), que caracter a caracter el trozo sea el
+que la vieja pinto en el ultimo repintado y las ventanas las de cada vuelta,
+que los atributos y patrones de los sprites sean los que tocan, y, donde el
+encuadre coincide, **pixel a pixel con la vieja**: en `vista_k`, con el cursor
+de la vieja encendido, las dos imagenes son identicas, sprite incluido. En los
+instantes de bitmap la VRAM entera es identica byte a byte, sprites escondidos
+incluidos. Sin emulador, `tools/corre_nombres.py` ejecuta MI_PINTA y MI_MUEVE
+con trampas en las tres rutinas del juego (151 tests). Y como los PNG del
+cotejo los dibuja la propia herramienta, `make captura_vista` saca tres
+capturas del emulador de verdad, con el renderer encendido.
+
+**La ROM que se juega es `war_parche_musica.rom`** (`make rom_parche_musica`):
+la cinta parcheada de Araubi con la musica, ZX0, las finales en la ROM y la
+vista con el cursor. `cursor.png` sale de sus cuerpos (`make cursor`) porque
+el parche repinta el cursor de batalla.
+
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo

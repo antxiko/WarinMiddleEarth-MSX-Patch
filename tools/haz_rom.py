@@ -61,11 +61,14 @@ LA VISTA DE CERCA POR TABLA DE NOMBRES (--vista)
 La vista de cerca expandia su pantalla de caracteres a bitmap y subia 12.288
 bytes a la VRAM en cada vuelta. Con esta opcion una rutina de la pagina 0
 (src/cartucho/nombres.asm) sube solo la tabla de nombres -768 bytes-, porque
-el byte de cada celda YA es el indice de patron. Son siete bytes mas del juego:
-tres en 0x75A5 (un `jp` a la rutina) y cuatro en 0x044B, en el bloque BAJO,
-donde un guardian devuelve la tabla de nombres a la identidad en cuanto alguien
-vuelve a pintar en bitmap. Pide --comprime: vive en la RAM que liberan las
-finales, detras de los bufers de ZX0.
+el byte de cada celda YA es el indice de patron. Y el cursor pasa a ser un
+SPRITE de 16x16 (dos, uno por color, dibujados en src/cartucho/cursor.png) con
+la ventana del trozo QUIETA: el trozo se guarda en una cache y solo se repinta
+cuando el cursor se acerca al borde. Son diez bytes mas del juego: tres en
+0x75A5 (un `jp` a la rutina), cuatro en 0x044B, en el bloque BAJO, donde un
+guardian devuelve la tabla de nombres a la identidad en cuanto alguien vuelve
+a pintar en bitmap, y tres en 0x71A4 (un `jp` a MI_PINTA). Pide --comprime:
+vive en la RAM que liberan las finales, detras de los bufers de ZX0.
 
 Uso: haz_rom.py <work> <salida.rom> [--espera N] [--sin-pantalla]
                                     [--comprime] [--finales-rom] [--vista]
@@ -90,6 +93,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cursor                           # noqa: E402
 import zx0                              # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -201,6 +205,28 @@ PANTALLA_A_ZX_ORIG = bytes.fromhex("210040")
 VRAM_A_ESCRIBIR = 0x044B
 VRAM_A_ESCRIBIR_ORIG = bytes.fromhex("f37dd399")
 NOMBRES_RAM = BUFER_D + TAM_BUFER_D
+#
+# Y EL CURSOR COMO SPRITE, que va con la vista: un tercer sitio.
+#
+#   0x71A4, PINTA_LA_VISTA_DE_CERCA, bloque medio: sus tres primeros bytes
+#     (`push hl / push hl / exx`) pasan a ser `jp MI_PINTA`, que cubre a sus
+#     tres llamadores (0x71F9, 0x7547 y 0x778A). MI_PINTA deja la ventana del
+#     trozo quieta y guarda el trozo en una cache; el cursor son dos sprites de
+#     16x16 cuyos dibujos salen de src/cartucho/cursor.png (tools/cursor.py).
+#
+# El tamano 16x16 de los sprites lo pone el plan en R1 (bit 1): el juego no
+# escribe R1 nunca, asi que se queda.
+PINTA_LA_VISTA = 0x71A4
+PINTA_LA_VISTA_ORIG = bytes.fromhex("e5e5d9")
+# Y el paso del cursor: el `call MUEVE_POR_EL_MAPA` de 0x7225 pasa a llamar a
+# MI_MUEVE, que solo deja mover una casilla cada PASO cuadros con la tecla
+# pulsada. Los cuadros los cuenta el gancho de la interrupcion (puente.asm),
+# asi que --vista necesita --musica.
+MUEVE_EN_LA_VISTA = 0x7225
+MUEVE_EN_LA_VISTA_ORIG = bytes.fromhex("cd4b73")
+PASO_DEL_CURSOR = 10
+CURSOR_PNG = os.path.join(SRC, "cursor.png")
+R1_SPRITES_16 = 0x02
 
 
 class Plan:
@@ -324,6 +350,7 @@ def main(argv):
     assert not finales_rom or comprimir, "--finales-rom necesita --comprime"
     # Y la vista vive en esa misma RAM liberada, detras de los bufers.
     assert not vista or comprimir, "--vista necesita --comprime"
+    assert not vista or musica, "--vista necesita --musica: el contador de cuadros del paso del cursor vive en el puente"
 
     # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
     # ensamblado, los .sym- va aparte cuando hay musica: las dos ROMs salen de
@@ -483,11 +510,19 @@ def main(argv):
     # empieza donde acaba el segundo bufer de ZX0, que es lo ultimo que el
     # cargador escribe ahi, y tiene que acabar antes del bloque medio.
     bloque_nombres = None
+    cursor_planos = None
     if vista:
+        # Los dibujos del cursor, del PNG al include que nombres.asm mete.
+        assert os.path.exists(CURSOR_PNG), \
+            "falta %s: `python3 tools/cursor.py saca work %s` lo saca de los tiles del juego" % (CURSOR_PNG, CURSOR_PNG)
+        cursor_planos = cursor.escribe_inc(CURSOR_PNG, os.path.join(salidas, "cursor.inc"))
+        for aviso in cursor_planos[2]:
+            print("cursor.png:" + aviso)
         bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
                                os.path.join(salidas, "nombres.bin"),
                                os.path.join(salidas, "nombres.sym"),
-                               equs=[("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0)])
+                               equs=[("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0),
+                                     ("CUADROS", sim_puente["CUADROS"])])
         sim_nombres = lee_simbolos(os.path.join(salidas, "nombres.sym"))
         nombres_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
         bloque_musica = (bloque_musica or b"") + bloque_nombres
@@ -606,7 +641,12 @@ def main(argv):
         tablas_del_screen_2(" (otra vez: el bufer las piso)")
     for r, v in enumerate(PSG_REGS):
         p.op("PSG_REG", r, v, nota="PSG R%d como lo deja la cinta" % r)
-    p.op("VDP_REG", 1, VDP_REGS[1], nota="pantalla encendida, como la deja la cinta")
+    # Con la vista, los sprites son de 16x16 (bit 1 de R1): es el cursor.
+    vdp_regs = list(VDP_REGS)
+    if vista:
+        vdp_regs[1] |= R1_SPRITES_16
+    p.op("VDP_REG", 1, vdp_regs[1],
+         nota="pantalla encendida, como la deja la cinta" + (", con sprites de 16x16" if vista else ""))
     p.op("SALTA", 0, PILA, SALTO, nota="SP=0x%04X y a 0x%04X, como el cargador de la cinta" % (PILA, SALTO))
     p.op("FIN")
 
@@ -698,6 +738,19 @@ def main(argv):
             bytes([0xCD]) + sim_nombres["GUARDIAN"].to_bytes(2, "little") + bytes(1),
             "VRAM_A_ESCRIBIR pasa por el guardian, que devuelve la tabla de nombres a la identidad",
             bloque="bajo"))
+        # Y `push hl / push hl / exx` de PINTA_LA_VISTA_DE_CERCA por `jp
+        # MI_PINTA`: la ventana del trozo se queda quieta y el cursor es un
+        # sprite. El resto de 0x71A4 queda sin ejecutar.
+        parches_vista.append(parchea(
+            PINTA_LA_VISTA, PINTA_LA_VISTA_ORIG,
+            bytes([0xC3]) + sim_nombres["MI_PINTA"].to_bytes(2, "little"),
+            "PINTA_LA_VISTA_DE_CERCA salta a MI_PINTA: ventana fija, cache del trozo y el cursor como sprite"))
+        # Y el `call MUEVE_POR_EL_MAPA` de la vuelta de la vista por `call
+        # MI_MUEVE`: una casilla cada PASO cuadros con la tecla pulsada.
+        parches_vista.append(parchea(
+            MUEVE_EN_LA_VISTA, MUEVE_EN_LA_VISTA_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_MUEVE"].to_bytes(2, "little"),
+            "el cursor se mueve una casilla cada %d cuadros con la tecla pulsada" % PASO_DEL_CURSOR))
     with open(salida, "wb") as f:
         f.write(rom)
 
@@ -725,7 +778,7 @@ def main(argv):
                    libre=TAM_ROM - pos - (len(bloque_musica) if bloque_musica else 0),
                    carga=dict(bajo=CARGA_BAJO, medio=CARGA_MEDIO, alto=CARGA_ALTO, salto=SALTO, pila=PILA),
                    pantalla_de_carga=con_pantalla, espera_cuadros=espera,
-                   vdp_regs=VDP_REGS, psg_regs=PSG_REGS, plan=p.json())
+                   vdp_regs=vdp_regs, psg_regs=PSG_REGS, plan=p.json())
     if comprimir:
         # LA ZONA LIBERADA, declarada: quien puede escribir en 0x094F-0x3F4E y
         # que. Sin esto, los tests tendrian que reconocer los bufers por su
@@ -750,7 +803,24 @@ def main(argv):
             identidad=sim_nombres["TABLA_IDENTIDAD"],
             modo=sim_nombres["MODO_NOMBRES"],
             sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
-            parches=parches_vista)
+            parches=parches_vista,
+            # El cursor como sprite y la ventana fija: donde esta cada cosa
+            # en la rutina, y los dibujos que van en la ROM, del PNG.
+            cursor=dict(
+                pinta=sim_nombres["MI_PINTA"],
+                cache=sim_nombres["CACHE"], cache_bytes=850,
+                cache_valida=sim_nombres["CACHE_VALIDA"],
+                ultimo_modo=sim_nombres["ULTIMO_MODO"],
+                esquina_h=sim_nombres["ESQUINA_H"], esquina_l=sim_nombres["ESQUINA_L"],
+                atributos=sim_nombres["ATRIBUTOS"],
+                mueve=sim_nombres["MI_MUEVE"], ultimo_paso=sim_nombres["ULTIMO_PASO"],
+                cuadros=sim_puente["CUADROS"], paso=PASO_DEL_CURSOR,
+                patrones=sim_nombres["CURSOR_PATRONES"], colores=sim_nombres["CURSOR_COLORES"],
+                png=os.path.relpath(CURSOR_PNG, RAIZ).replace(os.sep, "/"),
+                planos=cursor_planos[0].hex(), planos_colores=list(cursor_planos[1]),
+                vram_atributos=0x1B00, vram_patrones=0x3800, r1=vdp_regs[1],
+                ventana=dict(ancho=16, alto=13, cursor_col=7, cursor_fila=5, margen=3),
+                modos={"0x10": 0, "0x12": 1, "0x17": 2}))
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
         # la rutina, donde corre, de donde lee cada pantalla y el parche que la
@@ -782,6 +852,7 @@ def main(argv):
                          ("PUENTE_RANURA", sim_puente["PUENTE_RANURA"] + 1),
                          ("PARA_LA_MUSICA", sim_puente["PARA_LA_MUSICA"]),
                          ("GANCHO", GANCHO_RAM), ("GANCHO_VACIO", GANCHO_VACIO),
+                         ("CUENTA_CUADROS", sim_puente["CUENTA_CUADROS"]), ("CUADROS", sim_puente["CUADROS"]),
                          ("PT3_SETUP", sim_puente["PT3_SETUP"]),
                          ("AYREGS", sim_puente["AYREGS"])):
                 f.write("set ::%-15s 0x%04X\n" % (k, v))
@@ -789,7 +860,9 @@ def main(argv):
         with open(os.path.join(salidas, "vista.tcl"), "w") as f:
             f.write("# generado por tools/haz_rom.py: no editar\n")
             for k in ("CARACTERES_A_NOMBRES", "PONE_LOS_PATRONES", "GUARDIAN",
-                      "TABLA_IDENTIDAD", "MODO_NOMBRES", "NOMBRES_FIN"):
+                      "TABLA_IDENTIDAD", "MODO_NOMBRES", "NOMBRES_FIN",
+                      "MI_PINTA", "CACHE", "CACHE_VALIDA", "ESQUINA_H", "ESQUINA_L",
+                      "ULTIMO_MODO", "ATRIBUTOS", "CURSOR_PATRONES", "MI_MUEVE", "ULTIMO_PASO"):
                 f.write("set ::%-22s 0x%04X\n" % (k, sim_nombres[k]))
 
     print("%s: %d bytes, %s" % (salida, TAM_ROM, resumen["mapper"]))
@@ -825,6 +898,9 @@ def main(argv):
               % (v["bytes"], v["rom"], v["ram"]))
         print("     entrada 0x%04X  patrones 0x%04X  guardian 0x%04X  modo 0x%04X"
               % (v["entrada"], v["patrones"], v["guardian"], v["modo"]))
+        c = v["cursor"]
+        print("     el cursor como sprite: MI_PINTA 0x%04X, cache de %d B en 0x%04X, dibujos de %s; R1 = 0x%02X"
+              % (c["pinta"], c["cache_bytes"], c["cache"], c["png"], c["r1"]))
         for q in v["parches"]:
             print("     0x%04X del bloque %s: %s -> %s, %s"
                   % (q["dir"], q["bloque"], q["orig"], q["nuevo"], q["que"]))

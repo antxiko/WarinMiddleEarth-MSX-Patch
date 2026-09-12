@@ -146,6 +146,7 @@ class TestLaRom(unittest.TestCase):
     # work/musica/ para que las dos no se pisen el plan ni el stub.
     ROM = ROM
     DERIVADOS = WORK
+    CUERPOS = WORK          # de que cinta salen los cuerpos: la original o la parcheada
 
     def setUp(self):
         plan = os.path.join(self.DERIVADOS, "plan.json")
@@ -182,10 +183,10 @@ class TestLaRom(unittest.TestCase):
         self.assertEqual(self.rom[self.plan["arranque"]:cabeza], stub, "el stub de la ROM no es el ensamblado")
 
     def test_los_cuerpos_de_la_cinta_estan_en_la_rom(self):
-        pantalla = lee(os.path.join(WORK, "pantalla.raw"))
+        pantalla = lee(os.path.join(self.CUERPOS, "pantalla.raw"))
         esperado = dict(patrones=pantalla[100:100 + 6144], colores=pantalla[100 + 6144:100 + 12288],
-                        bajo=lee(os.path.join(WORK, "bajo.raw")), medio=lee(os.path.join(WORK, "medio.raw")),
-                        alto=lee(os.path.join(WORK, "alto.raw")))
+                        bajo=lee(os.path.join(self.CUERPOS, "bajo.raw")), medio=lee(os.path.join(self.CUERPOS, "medio.raw")),
+                        alto=lee(os.path.join(self.CUERPOS, "alto.raw")))
         # Con musica, con las finales en la ROM y con la vista, los bloques
         # llevan sus parches -el medio, y el bajo desde la vista-: se aplican
         # sobre lo esperado, que para eso el plan dice cuales son y donde caen.
@@ -253,7 +254,7 @@ class TestLaRom(unittest.TestCase):
 
     def _comprueba_la_ram(self, ram, vram, vdp, psg, salto):
         """Lo que el cargador tiene que dejar, venga de la ROM que venga."""
-        bajo, medio, alto = (lee(os.path.join(WORK, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
+        bajo, medio, alto = (lee(os.path.join(self.CUERPOS, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
         # la RAM: como la deja el cargador de la cinta en 0xD741, con los
         # parches que el plan declara puestos en su bloque: el medio (que aqui
         # aun esta en 0x3F4F, sin recolocar) o el bajo (0x044B, la vista).
@@ -287,22 +288,30 @@ class TestLaRom(unittest.TestCase):
         self.assertEqual(ram[0x88B8:0x88B8 + len(alto)], alto)
         self.assertEqual(ram[0x012C:0x0190], bytes(100), "el buzon de POKEs tiene que ir a cero")
         # la VRAM: la imagen de carga y lo que deja el SCREEN 2 del BASIC
-        pantalla = lee(os.path.join(WORK, "pantalla.raw"))
+        pantalla = lee(os.path.join(self.CUERPOS, "pantalla.raw"))
         self.assertEqual(vram[0x0000:0x1800], pantalla[100:100 + 6144])
         self.assertEqual(vram[0x2000:0x3800], pantalla[100 + 6144:100 + 12288])
         self.assertEqual(vram[0x1800:0x1B00], bytes(range(256)) * 3)
         self.assertEqual(vram[0x1B00:0x1B80], b"".join(bytes([209, 0, n, 1]) for n in range(32)))
         self.assertEqual(set(vram[0x1B80:0x2000]) | set(vram[0x3800:0x4000]), {0})
-        # y los registros, los medidos en la cinta
+        # y los registros, los medidos en la cinta; con la vista, R1 lleva
+        # ademas el bit 1: el cursor es un sprite de 16x16
         self.assertEqual(vdp, self.plan["vdp_regs"])
         self.assertEqual(psg, self.plan["psg_regs"])
-        self.assertEqual(vdp[1], 0xE0, "hay que dejar la pantalla encendida")
+        self.assertEqual(vdp[1], 0xE2 if self.plan.get("vista") else 0xE0,
+                         "hay que dejar la pantalla encendida (y los sprites de 16x16 con la vista)")
 
 
     def test_lo_medido_en_la_cinta_es_lo_que_escribe_el_plan(self):
         estado = os.path.join(WORK, "estado_cinta")
         hace_falta(os.path.join(estado, "vdpregs_5e00.bin"), os.path.join(estado, "psgregs_5e00.bin"))
-        self.assertEqual(list(lee(os.path.join(estado, "vdpregs_5e00.bin"))[:8]), self.plan["vdp_regs"])
+        medidos = list(lee(os.path.join(estado, "vdpregs_5e00.bin"))[:8])
+        del_plan = list(self.plan["vdp_regs"])
+        if self.plan.get("vista"):
+            # el unico bit que el plan anade a lo medido es el tamano de sprite
+            self.assertEqual(del_plan[1], medidos[1] | 0x02)
+            del_plan[1] &= ~0x02
+        self.assertEqual(medidos, del_plan)
         psg = list(lee(os.path.join(estado, "psgregs_5e00.bin"))[:14])
         psg[7] |= 0x80  # el puerto B del PSG es de salida en el MSX
         self.assertEqual(psg, self.plan["psg_regs"])
@@ -319,6 +328,16 @@ class TestLaRomConMusica(TestLaRom):
     """
     ROM = ROM_MUSICA
     DERIVADOS = WORK_MUSICA
+
+
+class TestLaRomParcheConMusica(TestLaRom):
+    """Y otra vez sobre war_parche_musica.rom: la cinta PARCHEADA de Araubi
+    con la musica, ZX0, las finales en la ROM y la vista con el cursor como
+    sprite. Es el cartucho que se juega, asi que tiene que cumplir lo mismo,
+    con los cuerpos de la cinta parcheada (work/cuerpos_parche)."""
+    ROM = os.path.join(RAIZ, "war_parche_musica.rom")
+    DERIVADOS = os.path.join(WORK, "parche_musica")
+    CUERPOS = os.path.join(WORK, "cuerpos_parche")
 
 
 class TestLaMusica(unittest.TestCase):
@@ -482,13 +501,13 @@ class TestLaMusica(unittest.TestCase):
                                     "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
         vista = self.plan.get("vista")
         if vista:
-            # La rutina de la vista, en la misma zona liberada, y sus dos
-            # parches: siete bytes, tres del bloque medio y cuatro del bajo.
+            # La rutina de la vista, en la misma zona liberada, y sus cuatro
+            # parches: trece bytes, nueve del bloque medio y cuatro del bajo.
             permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 7, "los parches de la vista tienen que ser siete bytes")
+            self.assertEqual(len(de_la_vista), 13, "los parches de la vista tienen que ser trece bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -742,7 +761,7 @@ class TestLaVistaPorNombres(unittest.TestCase):
 
     def monta(self):
         import corre_nombres
-        return corre_nombres.monta(self.rom, self.plan, self.bajo, self.alto)
+        return corre_nombres.monta(self.rom, self.plan, self.bajo, self.alto, medio=self.medio)
 
     # ---------------------------------------------------------- la colocacion
     def test_el_bloque_esta_en_la_rom_y_es_el_ensamblado(self):
@@ -782,11 +801,26 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_dos_parches_son_los_que_dice(self):
-        """Tres bytes en 0x75A5 (bloque medio) y cuatro en 0x044B (bloque bajo),
-        y los dos caen sobre lo que la cinta trae."""
+    def test_los_cuatro_parches_son_los_que_dice(self):
+        """Tres bytes en 0x75A5, tres en 0x71A4 y tres en 0x7225 (bloque medio)
+        y cuatro en 0x044B (bloque bajo), y los cuatro caen sobre lo que la
+        cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
-        self.assertEqual(sorted(porque), [0x044B, 0x75A5])
+        self.assertEqual(sorted(porque), [0x044B, 0x71A4, 0x7225, 0x75A5])
+        q = porque[0x7225]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cd4b73"),
+                         "0x7225 tiene que ser `call MUEVE_POR_EL_MAPA`")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xCD]) + self.v["cursor"]["mueve"].to_bytes(2, "little"))
+        self.assertEqual(self.medio[0x7225 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
+        q = porque[0x71A4]
+        self.assertEqual(q["bloque"], "medio")
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("e5e5d9"),
+                         "0x71A4 tiene que empezar por `push hl / push hl / exx`")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xC3]) + self.v["cursor"]["pinta"].to_bytes(2, "little"),
+                         "el parche de 0x71A4 no es un `jp` a MI_PINTA")
+        self.assertEqual(self.medio[0x71A4 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
         q = porque[0x75A5]
         self.assertEqual(q["bloque"], "medio")
         self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("210040"),
@@ -829,12 +863,17 @@ class TestLaVistaPorNombres(unittest.TestCase):
         import corre_nombres
         m = self.monta()
         pantalla = self.pantalla_de_prueba()
+        c = self.v["cursor"]
+        atributos = bytes((i * 13 + 5) & 0xFF for i in range(8))
+        m.ram[c["atributos"]:c["atributos"] + 8] = atributos
         vdp, z = corre_nombres.corre_vista(m, self.plan, pantalla, modo=1)
-        self.assertEqual(vdp.escritos, 768, "con los patrones ya puestos solo van los 768 nombres")
+        self.assertEqual(vdp.escritos, 768 + 8, "con los patrones ya puestos van los 768 nombres y los 8 atributos del cursor")
         self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(pantalla),
                          "la tabla de nombres no es la pantalla de caracteres, 32 de cada 34")
-        self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B00:]), {0},
-                         "la rutina ha escrito fuera de la tabla de nombres")
+        self.assertEqual(bytes(vdp.vram[0x1B00:0x1B08]), atributos,
+                         "los dos sprites del cursor no llevan los atributos que dejo MI_PINTA")
+        self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B08:]), {0},
+                         "la rutina ha escrito fuera de la tabla de nombres y los atributos del cursor")
         self.assertEqual(m.ram[self.v["modo"]], 1)
         self.assertIs(z.di, False, "la rutina se deja las interrupciones cerradas")
 
@@ -846,14 +885,18 @@ class TestLaVistaPorNombres(unittest.TestCase):
         m = self.monta()
         pantalla = self.pantalla_de_prueba()
         vdp, _z = corre_nombres.corre_vista(m, self.plan, pantalla, modo=0)
-        self.assertEqual(vdp.escritos, 3 * 2048 + 3 * 2048 + 768)
+        self.assertEqual(vdp.escritos, 3 * 2048 + 3 * 2048 + 192 + 768 + 8)
         esperado_p = corre_nombres.patrones_esperados(m.ram)
         esperado_c = corre_nombres.colores_esperados(m.ram)
         self.assertEqual(len(esperado_p), 0x1800)
         self.assertEqual(bytes(vdp.vram[:0x1800]), esperado_p, "los patrones no son los de la fuente y los dibujos")
         self.assertEqual(bytes(vdp.vram[0x2000:0x3800]), esperado_c, "los colores no son los de la tabla de 0x0200")
         self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), corre_nombres.filas_de_nombres(pantalla))
-        self.assertEqual(set(vdp.vram[0x1B00:0x2000]) | set(vdp.vram[0x3800:]), {0})
+        # y los seis planos del cursor, los de cursor.png, en la tabla de patrones de sprites
+        planos = bytes.fromhex(self.v["cursor"]["planos"])
+        self.assertEqual(len(planos), 192)
+        self.assertEqual(bytes(vdp.vram[0x3800:0x3800 + 192]), planos, "los patrones del cursor no son los del PNG")
+        self.assertEqual(set(vdp.vram[0x1B08:0x2000]) | set(vdp.vram[0x3800 + 192:]), {0})
         self.assertEqual(m.ram[self.v["modo"]], 1, "la rutina no apunta que los patrones ya estan")
         # y los tres tercios son de verdad iguales: el nombre n ensena lo mismo este donde este
         self.assertEqual(esperado_p[:0x800], esperado_p[0x800:0x1000])
@@ -900,19 +943,214 @@ class TestLaVistaPorNombres(unittest.TestCase):
         casos BC, DE y HL salen como entraron, que sus llamadores cuentan con
         ello."""
         import corre_nombres
-        for modo, escribe in ((1, 768), (0, 0)):
+        c = self.v["cursor"]
+        for modo, escribe in ((1, 768 + 8), (0, 0)):
             m = self.monta()
+            m.ram[c["cache_valida"]] = 1
             vdp, z = corre_nombres.corre_guardian(m, self.plan, hl=0x2345, modo=modo)
             self.assertEqual(vdp.escritos, escribe, "con el modo a %d el guardian escribe %d bytes" % (modo, vdp.escritos))
             if modo:
                 self.assertEqual(bytes(vdp.vram[0x1800:0x1B00]), bytes(range(256)) * 3,
                                  "el guardian no devuelve la identidad")
-                self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B00:]), {0})
+                # y los dos sprites del cursor, como los dejo el cargador: fuera de la pantalla
+                self.assertEqual(bytes(vdp.vram[0x1B00:0x1B08]), bytes([209, 0, 0, 1, 209, 0, 1, 1]),
+                                 "el guardian no esconde el cursor")
+                self.assertEqual(set(vdp.vram[:0x1800]) | set(vdp.vram[0x1B08:]), {0})
+                self.assertEqual(m.ram[c["cache_valida"]], 0, "el guardian tiene que invalidar la cache del trozo")
+            else:
+                self.assertEqual(m.ram[c["cache_valida"]], 1, "sin nada que devolver, el guardian no toca la cache")
             self.assertEqual(m.ram[self.v["modo"]], 0)
             self.assertEqual(vdp.direcciones[-1], (0x2345, True),
                              "0x044B no deja puesta la direccion de escritura que le pidieron")
             self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x2345), "el guardian pisa BC, DE o HL")
             self.assertIs(z.di, False, "0x044B tiene que salir con las interrupciones abiertas, como siempre")
+
+    # ------------------------------------- MI_PINTA: la ventana fija y la cache
+    # Las tres rutinas del juego que MI_PINTA llama (CELDA_DEL_MAPA,
+    # DIBUJA_EL_TROZO_DE_MAPA, TAPA_LOS_BORDES) van sustituidas por trampas que
+    # apuntan con que se las llamo: lo que se comprueba es lo que MI_PINTA hace
+    # alrededor de ellas, que es lo nuevo.
+    ESQUINA = (32, 29)          # donde entra el cursor en la partida de la sonda
+
+    def pinta(self, hl, modo=0x10, **estado):
+        import corre_nombres
+        m = corre_nombres.monta(self.rom, self.plan, self.bajo, self.alto, medio=self.medio)
+        z = corre_nombres.corre_pinta(m, self.plan, hl, modo, **estado)
+        return m, z
+
+    def cache_de_prueba(self):
+        return bytes((i * 11 + 1) & 0xFF for i in range(850))
+
+    def con_cache(self, hl, modo=0x10, esquina=ESQUINA, ultimo_modo=0x10):
+        return self.pinta(hl, modo, cache_valida=1, esquina=esquina, ultimo_modo=ultimo_modo,
+                          cache=self.cache_de_prueba())
+
+    def test_sin_cache_repinta_como_el_original_y_la_guarda(self):
+        """Entra por el `jp` de 0x71A4. Sin cache valida hace lo que hacia
+        0x71A7-0x71C5: la pantalla a 0x80, CELDA_DEL_MAPA con la fila mas
+        uno, la esquina 720 bytes atras, el trozo, los bordes con el HL de
+        verdad; y ademas guarda la pantalla en la cache y apunta la esquina."""
+        import corre_nombres
+        c = self.v["cursor"]
+        h, l = self.ESQUINA
+        m, z = self.pinta((h << 8) | l)
+        self.assertEqual([d for d, _ in z.llamadas],
+                         [corre_nombres.CELDA_DEL_MAPA, corre_nombres.DIBUJA_EL_TROZO, corre_nombres.TAPA_LOS_BORDES])
+        self.assertEqual(z.llamadas[0][1], ("hl", ((h + 1) << 8) | l), "CELDA_DEL_MAPA va con la fila mas uno, como en 0x71B5")
+        self.assertEqual(z.llamadas[1][1], ("ix", (corre_nombres.celda_del_mapa(h + 1, l) - 720) & 0xFFFF),
+                         "la esquina del trozo no esta 7 columnas y 6 filas atras")
+        self.assertEqual(z.llamadas[2][1], ("hl", (h << 8) | l), "TAPA_LOS_BORDES quiere el HL de verdad")
+        self.assertEqual(z.hl, (h << 8) | l, "MI_PINTA tiene que devolver HL intacto")
+        pantalla = bytes(m.ram[0x5E00:0x5E00 + 850])
+        self.assertEqual(bytes(m.ram[c["cache"]:c["cache"] + 850]), pantalla, "la cache no es la pantalla recien pintada")
+        self.assertEqual(m.ram[c["cache_valida"]], 1)
+        self.assertEqual((m.ram[c["esquina_h"]], m.ram[c["esquina_l"]]), (h, l))
+        self.assertEqual(m.ram[c["ultimo_modo"]], 0x10)
+        self.assertEqual(bytes(m.ram[c["atributos"]:c["atributos"] + 8]),
+                         corre_nombres.atributos_esperados(self.plan, 7, 5, 0x10),
+                         "recien repintado, el cursor cae en la celda (7, 5) de la ventana")
+
+    def test_la_pantalla_se_pone_a_0x80_antes_de_pintar(self):
+        """Con una trampa que solo pinta la mitad de las celdas se ve el
+        relleno de 0x71A7 en la otra mitad."""
+        import corre_nombres
+        m = corre_nombres.monta(self.rom, self.plan, self.bajo, self.alto, medio=self.medio)
+        trampas = corre_nombres.trampas_del_juego(relleno=lambda ix, o: 0x90 if o % 2 else None)
+        m.ram[corre_nombres.MODO_DE_LA_VISTA] = 0x10
+        z = corre_nombres.Z80(m, corre_nombres.Vdp(), corre_nombres.PINTA_LA_VISTA, 0x5BFF, trampas)
+        z.hl = 0x201D
+        z.push(corre_nombres.CENTINELA)
+        z.corre()
+        pantalla = bytes(m.ram[0x5E00:0x5E00 + 850])
+        self.assertEqual(pantalla, bytes(0x90 if o % 2 else 0x80 for o in range(850)))
+
+    def test_con_cache_no_repinta_y_restaura_el_trozo(self):
+        import corre_nombres
+        c = self.v["cursor"]
+        h, l = self.ESQUINA
+        m, z = self.con_cache(((h + 1) << 8) | (l + 1))
+        self.assertEqual(z.llamadas, [], "con la cache valida y el cursor dentro no se llama a nadie")
+        self.assertEqual(bytes(m.ram[0x5E00:0x5E00 + 850]), self.cache_de_prueba(), "la pantalla no es la cache")
+        self.assertEqual((m.ram[c["esquina_h"]], m.ram[c["esquina_l"]]), (h, l), "la esquina no se mueve")
+        self.assertEqual(z.hl, ((h + 1) << 8) | (l + 1))
+        self.assertEqual(bytes(m.ram[c["atributos"]:c["atributos"] + 8]),
+                         corre_nombres.atributos_esperados(self.plan, 8, 6, 0x10))
+
+    def test_el_margen_es_de_tres_celdas_por_los_cuatro_lados(self):
+        """Ventana de 16 x 13 con el cursor en (7, 5): sin repintar de la
+        columna 3 a la 12 y de la fila 3 a la 9. Una mas alla, se repinta y la
+        esquina pasa a ser la posicion nueva."""
+        import corre_nombres
+        c = self.v["cursor"]
+        h, l = self.ESQUINA
+        for dh, dl, repinta in ((0, -4, False), (0, -5, True), (0, 5, False), (0, 6, True),
+                                (-2, 0, False), (-3, 0, True), (4, 0, False), (5, 0, True),
+                                (4, 5, False), (-2, -4, False), (5, 6, True)):
+            hl = ((h + dh) << 8) | (l + dl)
+            m, z = self.con_cache(hl)
+            self.assertEqual(bool(z.llamadas), repinta,
+                             "con el cursor en (%+d, %+d) %s" % (dh, dl, "tenia que repintar" if repinta else "no habia que repintar"))
+            if repinta:
+                self.assertEqual((m.ram[c["esquina_h"]], m.ram[c["esquina_l"]]), (h + dh, l + dl))
+                self.assertEqual(bytes(m.ram[c["atributos"]:c["atributos"] + 8]),
+                                 corre_nombres.atributos_esperados(self.plan, 7, 5, 0x10))
+            else:
+                self.assertEqual(bytes(m.ram[c["atributos"]:c["atributos"] + 8]),
+                                 corre_nombres.atributos_esperados(self.plan, 7 + dl, 5 + dh, 0x10))
+
+    def test_repinta_si_cambia_el_modo_o_la_cache_no_vale(self):
+        h, l = self.ESQUINA
+        hl = (h << 8) | l
+        _m, z = self.con_cache(hl, modo=0x12, ultimo_modo=0x10)
+        self.assertEqual(len(z.llamadas), 3, "al cambiar de modo hay que repintar: el trozo lleva la marca de la orden")
+        _m, z = self.pinta(hl, cache_valida=0, esquina=self.ESQUINA, ultimo_modo=0x10, cache=self.cache_de_prueba())
+        self.assertEqual(len(z.llamadas), 3, "con la cache invalidada (el guardian) hay que repintar")
+
+    def test_las_banderas_del_bit_7_no_cuentan(self):
+        import corre_nombres
+        h, l = self.ESQUINA
+        m, z = self.con_cache(((h | 0x80) << 8) | (l | 0x80))
+        self.assertEqual(z.llamadas, [], "el bit 7 de H y L son banderas: no mueven el cursor")
+        self.assertEqual(bytes(m.ram[self.v["cursor"]["atributos"]:][:8]),
+                         corre_nombres.atributos_esperados(self.plan, 7, 5, 0x10))
+
+    def test_el_patron_y_el_color_van_con_el_modo(self):
+        """0x10 mirar, 0x12 destino y 0x17 batalla: dos planos de 16x16 cada
+        uno (patrones 0/4, 8/12 y 16/20) con los colores de cursor.png."""
+        import corre_nombres
+        c = self.v["cursor"]
+        h, l = self.ESQUINA
+        for modo, n in ((0x10, 0), (0x12, 1), (0x17, 2)):
+            m, _z = self.con_cache((h << 8) | l, modo=modo, ultimo_modo=modo)
+            a = bytes(m.ram[c["atributos"]:c["atributos"] + 8])
+            self.assertEqual(a, corre_nombres.atributos_esperados(self.plan, 7, 5, modo))
+            self.assertEqual((a[2], a[6]), (n * 8, n * 8 + 4))
+            self.assertEqual((a[3], a[7]), tuple(c["planos_colores"][n * 2:n * 2 + 2]))
+            self.assertEqual((a[0], a[1]), (79, 112), "la celda (7, 5) son 16 pixels por celda, y Y una linea por encima")
+
+    def test_el_plan_pone_los_sprites_de_16x16(self):
+        """El juego nunca escribe R1: lo que deje el cargador se queda."""
+        self.assertEqual(self.plan["vdp_regs"][1], 0xE2)
+        ultimo_r1 = [o for o in self.plan["plan"] if o["op"] == "VDP_REG" and o["b"] == 1][-1]
+        self.assertEqual(ultimo_r1["src"] & 0xFF, 0xE2)
+        self.assertEqual(self.v["cursor"]["r1"], 0xE2)
+
+    def test_los_dibujos_de_la_rom_son_los_del_png(self):
+        """Lo que viaja en la ROM (CURSOR_PATRONES y CURSOR_COLORES) es lo que
+        sale de leer src/cartucho/cursor.png ahora mismo."""
+        import cursor
+        c = self.v["cursor"]
+        patrones, colores, _avisos = cursor.planos_del_png(os.path.join(RAIZ, c["png"]))
+        self.assertEqual(bytes.fromhex(c["planos"]), patrones)
+        self.assertEqual(bytes(c["planos_colores"]), colores)
+        m = self.monta()
+        self.assertEqual(bytes(m.ram[c["patrones"]:c["patrones"] + 192]), patrones)
+        self.assertEqual(bytes(m.ram[c["colores"]:c["colores"] + 6]), colores)
+        self.assertEqual(c["colores"] - c["patrones"], 192)
+
+    def test_el_paso_del_cursor_es_una_casilla_cada_diez_cuadros(self):
+        """MI_MUEVE: con una direccion pulsada solo se mueve si han pasado
+        PASO cuadros desde el ultimo paso; sin direccion, el contador se deja
+        listo para que la siguiente pulsacion mueva al instante."""
+        import corre_nombres
+        c = self.v["cursor"]
+        self.assertEqual(c["paso"], 10)
+        m = self.monta()
+        z = corre_nombres.corre_mueve(m, self.plan, 0x201D, 0x10, cuadros=100, ultimo=95)
+        self.assertEqual(z.llamadas, [], "sin direccion no se mueve")
+        self.assertEqual(m.ram[c["ultimo_paso"]], 90, "sin direccion el contador queda a un paso de distancia")
+        m = self.monta()
+        z = corre_nombres.corre_mueve(m, self.plan, 0x201D, 0x08, cuadros=100, ultimo=91)
+        self.assertEqual(z.llamadas, [], "a nueve cuadros del ultimo paso, todavia no")
+        self.assertEqual(m.ram[c["ultimo_paso"]], 91)
+        m = self.monta()
+        z = corre_nombres.corre_mueve(m, self.plan, 0x201D, 0x18, cuadros=100, ultimo=90)
+        self.assertEqual(z.llamadas, [(corre_nombres.MUEVE_POR_EL_MAPA, ("a_hl", (0x18, 0x201D)))],
+                         "a diez cuadros se mueve, con el mando entero y la posicion")
+        self.assertEqual(m.ram[c["ultimo_paso"]], 100)
+        m = self.monta()
+        z = corre_nombres.corre_mueve(m, self.plan, 0x201D, 0x01, cuadros=4, ultimo=250)
+        self.assertEqual(len(z.llamadas), 1, "el contador da la vuelta: de 250 a 4 son diez cuadros")
+
+    def test_el_atributo_del_texto_se_lee_del_juego(self):
+        """0x763F es 0x78 en la cinta y 0x70 con el parche de Araubi: los
+        colores de la fuente tienen que salir de ahi, no de una constante."""
+        import corre_nombres
+        for atributo in (0x78, 0x70):
+            m = self.monta()
+            m.ram[0x763F] = atributo
+            vdp, _z = corre_nombres.corre_vista(m, self.plan, self.pantalla_de_prueba(), modo=0)
+            color = m.ram[0x0200 + atributo]
+            self.assertEqual(set(vdp.vram[0x2000:0x2400]), {color}, "el color de la fuente no es el del atributo 0x%02X" % atributo)
+            self.assertEqual(bytes(vdp.vram[0x2000:0x3800]), corre_nombres.colores_esperados(m.ram))
+
+    def test_la_cache_y_las_variables_caben_en_el_bloque(self):
+        c = self.v["cursor"]
+        for nombre in ("pinta", "cache", "cache_valida", "ultimo_modo", "esquina_h", "esquina_l",
+                       "atributos", "patrones", "colores"):
+            self.assertTrue(self.v["ram"] <= c[nombre] < self.v["ram"] + self.v["bytes"],
+                            "%s cae en 0x%04X, fuera del bloque" % (nombre, c[nombre]))
+        self.assertLessEqual(c["cache"] + 850, self.v["ram"] + self.v["bytes"])
 
 
 class TestZX0(unittest.TestCase):

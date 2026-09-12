@@ -34,7 +34,7 @@ FUENTE = 0xC800
 DIBUJOS = 0x9E00
 TABLA_COLOR = 0x0200
 PANTALLA = 0x5E00
-ATRIBUTO_TEXTO = 0x78
+ATRIBUTO_TEXTO = 0x763F     # el operando del `ld a,078h` de 0x763E: 0x78 en la cinta, 0x70 con el parche
 # Las dos tablas de ocho colores de ATRIBUTO_A_COLOR (0x049F): sin brillo en
 # 0x04CE y con brillo en 0x04D6. Son del bloque bajo.
 COLORES_ZX = (0x04CE, 0x04D6)
@@ -71,15 +71,54 @@ class Vdp:
 
 
 class Z80(corre_finales.Z80):
-    """Las instrucciones de nombres.asm que finales.asm no usa, y el VDP."""
+    """Las instrucciones de nombres.asm que finales.asm no usa, el VDP, IX y
+    las TRAMPAS: direcciones del juego que MI_PINTA llama (CELDA_DEL_MAPA,
+    DIBUJA_EL_TROZO_DE_MAPA, TAPA_LOS_BORDES) y que aqui no se ejecutan sino
+    que se sustituyen por una funcion de Python que apunta con que la
+    llamaron. Asi se comprueba lo que MI_PINTA hace ALREDEDOR de ellas sin
+    interpretar medio bloque medio."""
 
-    def __init__(self, maquina, vdp, pc, sp):
+    def __init__(self, maquina, vdp, pc, sp, trampas=None):
         super().__init__(maquina, pc, sp)
         self.vdp = vdp
+        self.ix = 0
+        self.trampas = trampas or {}
+        self.llamadas = []          # (direccion de la trampa, lo que apunto)
 
     def paso(self):
+        if self.pc in self.trampas:
+            self.llamadas.append((self.pc, self.trampas[self.pc](self)))
+            self.pc = self.pop()
+            return
         op = self.m.lee(self.pc)
-        if op == 0xD3:                                  # out (n),a
+        if op == 0xDD:                                  # el prefijo de IX
+            self.n()
+            sub = self.n()
+            if sub == 0x19:                             # add ix,de
+                self.ix = (self.ix + self.de) & 0xFFFF
+            else:
+                raise NotImplementedError("DD %02X en 0x%04X" % (sub, self.pc - 2))
+        elif op == 0xC6:                                # add a,n
+            self.n(); v = self.a + self.n(); self.cy = v > 255; self.a = v & 0xFF; self.z = self.a == 0
+        elif op == 0x85:                                # add a,l
+            self.n(); v = self.a + self.l; self.cy = v > 255; self.a = v & 0xFF; self.z = self.a == 0
+        elif op == 0x8C:                                # adc a,h
+            self.n(); v = self.a + self.h + (1 if self.cy else 0); self.cy = v > 255; self.a = v & 0xFF; self.z = self.a == 0
+        elif op == 0x91:                                # sub c
+            self.n(); v = self.a - self.c; self.cy = v < 0; self.a = v & 0xFF; self.z = self.a == 0
+        elif op == 0xB8:                                # cp b
+            self.n(); self.z = self.a == self.b; self.cy = self.a < self.b
+        elif op == 0xD6:                                # sub n
+            self.n(); v = self.a - self.n(); self.cy = v < 0; self.a = v & 0xFF; self.z = self.a == 0
+        elif op == 0x3D:                                # dec a
+            self.n(); self.a = (self.a - 1) & 0xFF; self.z = self.a == 0
+        elif op == 0x4F:                                # ld c,a
+            self.n(); self.c = self.a
+        elif op == 0x67:                                # ld h,a
+            self.n(); self.h = self.a
+        elif op == 0x36:                                # ld (hl),n
+            self.n(); self.m.escribe(self.hl, self.n())
+        elif op == 0xD3:                                # out (n),a
             self.n()
             puerto = self.n()
             if puerto == 0x98:
@@ -152,7 +191,7 @@ def colores_esperados(ram):
     """Un tercio: el color del atributo 0x78 para los 128 caracteres, y el del
     noveno byte de cada dibujo, ocho veces cada uno. Tres."""
     t = ram[TABLA_COLOR:TABLA_COLOR + 256]
-    texto = bytes([t[ATRIBUTO_TEXTO]]) * 1024
+    texto = bytes([t[ram[ATRIBUTO_TEXTO]]]) * 1024
     dibujos = b"".join(bytes([t[ram[DIBUJOS + i * 9 + 8]]]) * 8 for i in range(128))
     return (texto + dibujos) * 3
 
@@ -163,21 +202,119 @@ def filas_de_nombres(pantalla):
 
 
 # ------------------------------------------------------------- la maquina
-def monta(rom, plan, bajo, alto, ranura_cart=1, ranura_ram=3):
+def monta(rom, plan, bajo, alto, ranura_cart=1, ranura_ram=3, medio=None):
     """La maquina como la deja el juego al entrar en la vista: las cuatro
     paginas en RAM, el bloque bajo en 0x0190 con el parche del guardian, el
     alto recolocado en 0x9E00 -de ahi salen los dibujos y la fuente-, la tabla
-    de color de 0x0200 y la rutina en su sitio."""
+    de color de 0x0200 y la rutina en su sitio. Con `medio`, tambien el bloque
+    medio recolocado en 0x5E00 (con el parche de 0x71A4), para entrar en
+    MI_PINTA por donde entra el juego."""
     v = plan["vista"]
     m = Maquina(rom, ranura_cart, ranura_ram)
     m.ram[CARGA_BAJO:CARGA_BAJO + len(bajo)] = bajo
     m.ram[ORG_ALTO:ORG_ALTO + len(alto)] = alto
+    if medio is not None:
+        m.ram[ORG_MEDIO:ORG_MEDIO + len(medio)] = medio
     m.ram[TABLA_COLOR:TABLA_COLOR + 256] = tabla_de_color(bajo)
     m.ram[v["ram"]:v["ram"] + v["bytes"]] = rom[v["rom"]:v["rom"] + v["bytes"]]
     for q in v["parches"]:
         nuevo = bytes.fromhex(q["nuevo"])
         m.ram[q["dir"]:q["dir"] + len(nuevo)] = nuevo
     return m
+
+
+# ------------------------------------------------- MI_PINTA y sus trampas
+ORG_MEDIO = 0x5E00
+PINTA_LA_VISTA = 0x71A4
+MODO_DE_LA_VISTA = 0x71CF
+CELDA_DEL_MAPA = 0x8108
+DIBUJA_EL_TROZO = 0x7643
+TAPA_LOS_BORDES = 0x7129
+MAPA = 0xCC00 + 0x67            # donde CELDA_DEL_MAPA empieza a contar: 0xCC00 mas 0x67 de margen
+ANCHO_MAPA = 102                # bytes por columna del mapa
+
+
+def celda_del_mapa(h, l):
+    """Lo que CELDA_DEL_MAPA (0x8108) devuelve en IX para (H, L), sin las banderas."""
+    return (MAPA + ANCHO_MAPA * (l & 0x7F) + (h & 0x7F)) & 0xFFFF
+
+
+def trampas_del_juego(relleno=None):
+    """Las tres rutinas del juego que MI_PINTA llama, sustituidas: CELDA_DEL_MAPA
+    calcula IX como la de verdad; DIBUJA_EL_TROZO_DE_MAPA apunta la esquina que
+    le dan y rellena la pantalla de caracteres con algo que dependa de ella
+    -asi se ve que lo que se guarda en la cache es lo que se pinto-; y
+    TAPA_LOS_BORDES apunta el HL con el que la llaman."""
+    def celda(z):
+        z.ix = celda_del_mapa(z.h, z.l)
+        z.a = z.m.lee(z.ix)
+        return ("hl", z.hl)
+
+    def dibuja(z):
+        for o in range(850):
+            v = relleno(z.ix, o) if relleno else ((z.ix + o * 7) & 0x7F) | 0x80
+            if v is not None:                   # None: esa celda se deja como estaba
+                z.m.escribe(PANTALLA + o, v)
+        return ("ix", z.ix)
+
+    def tapa(z):
+        return ("hl", z.hl)
+
+    return {CELDA_DEL_MAPA: celda, DIBUJA_EL_TROZO: dibuja, TAPA_LOS_BORDES: tapa}
+
+
+def corre_pinta(m, plan, hl, modo, cache_valida=0, esquina=(0, 0), ultimo_modo=0,
+                cache=None, sp=0x5BFF, desde=None):
+    """MI_PINTA con el cursor en HL y el modo en 0x71CF, con el estado de la
+    rutina que se diga: si la cache vale, la esquina del ultimo repintado, el
+    modo de entonces y los 850 bytes de la cache. Entra por 0x71A4 -el `jp`
+    del parche- si el bloque medio esta en RAM, o directo a MI_PINTA.
+    Devuelve la CPU, con las llamadas a las trampas apuntadas."""
+    c = plan["vista"]["cursor"]
+    m.ram[MODO_DE_LA_VISTA] = modo
+    m.ram[c["cache_valida"]] = cache_valida
+    m.ram[c["esquina_h"]], m.ram[c["esquina_l"]] = esquina
+    m.ram[c["ultimo_modo"]] = ultimo_modo
+    if cache is not None:
+        m.ram[c["cache"]:c["cache"] + 850] = cache
+    if desde is None:
+        desde = PINTA_LA_VISTA if m.ram[PINTA_LA_VISTA] == 0xC3 else c["pinta"]
+    z = Z80(m, Vdp(), desde, sp, trampas_del_juego())
+    z.hl = hl
+    z.push(CENTINELA)
+    z.corre()
+    return z
+
+
+MUEVE_POR_EL_MAPA = 0x734B
+
+
+def corre_mueve(m, plan, hl, mando, cuadros, ultimo, sp=0x5BFF):
+    """MI_MUEVE con el mando en A y la posicion en HL, con el contador de
+    cuadros y el cuadro del ultimo paso que se digan. MUEVE_POR_EL_MAPA va
+    con una trampa que apunta con que A y HL la llaman."""
+    c = plan["vista"]["cursor"]
+    m.ram[c["cuadros"]] = cuadros
+    m.ram[c["ultimo_paso"]] = ultimo
+
+    def mueve(z):
+        return ("a_hl", (z.a, z.hl))
+
+    z = Z80(m, Vdp(), c["mueve"], sp, {MUEVE_POR_EL_MAPA: mueve})
+    z.a, z.hl = mando, hl
+    z.push(CENTINELA)
+    z.corre()
+    return z
+
+
+def atributos_esperados(plan, ci, ri, modo):
+    """Los ocho bytes de ATRIBUTOS para el cursor en la celda (ci, ri) de la
+    ventana y ese modo: Y una linea por encima, X, el patron y el color."""
+    c = plan["vista"]["cursor"]
+    mi = c["modos"]["0x%02x" % modo] if ("0x%02x" % modo) in c["modos"] else c["modos"]["0x%02X" % modo]
+    colores = c["planos_colores"]
+    y, x = (16 * ri - 1) & 0xFF, (16 * ci) & 0xFF
+    return bytes([y, x, mi * 8, colores[mi * 2], y, x, mi * 8 + 4, colores[mi * 2 + 1]])
 
 
 def corre_vista(m, plan, pantalla, modo, sp=0x5BFF, vdp=None):

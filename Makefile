@@ -253,7 +253,7 @@ war.rom: extract $(CARTUCHO) tools/haz_rom.py
 # lectura del nivel y el `ldir` de 0x83E7-, y por eso es un fichero aparte:
 # war.rom se queda intacta y cotejada.
 rom_musica: war_musica.rom
-war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm
+war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista
 
@@ -286,6 +286,26 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 	python3 tools/tsx_parse.py war_parche.tsx work/cuerpos_parche/extracted >/dev/null
 	python3 tools/cuerpos.py work/cuerpos_parche/extracted work/cuerpos_parche >/dev/null
 	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA)
+
+# Y LA PARCHEADA CON TODO: la cinta de Araubi (textos, ficha, mapa repintado)
+# mas la musica, ZX0, las finales en la ROM y la vista con el cursor como
+# sprite. Es el cartucho que se juega. Los seis sitios que el cartucho parchea
+# son identicos en las dos cintas (comprobado), y cursor.png sale de los
+# cuerpos PARCHEADOS, que el parche repinta el cursor de batalla.
+rom_parche_musica: war_parche_musica.rom
+war_parche_musica.rom: war_parche.rom tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
+	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --salidas work/parche_musica
+
+# Su referencia SIN la vista, para el cotejo y la medida.
+work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --salidas work/parche_sin_vista
+
+# El cursor de fabrica, de los tiles de la cinta PARCHEADA. Se niega a pisar
+# el PNG si ya existe (puede llevar cambios de alguien): con REHAZ=1 lo pisa.
+.PHONY: cursor
+cursor: war_parche.rom
+	python3 tools/cursor.py saca work/cuerpos_parche src/cartucho/cursor.png $(if $(REHAZ),--rehaz)
 
 # Lo que deja la cinta al llegar a 0x5E00 (VRAM, VDP, PSG), del estado que
 # guarda omsx_arranque.tcl: es lo que el cartucho tiene que reproducir.
@@ -357,15 +377,19 @@ verifica_finales: war_musica.rom
 	@cat work/finales_$(MAQUINA)/finales.log
 	python3 tools/coteja_finales.py work/finales_$(MAQUINA) work work/finales_ref
 
-# LA VISTA DE CERCA POR TABLA DE NOMBRES. La VRAM de la ROM nueva ya no se
-# parece a la de antes -una lleva nombres y la otra bitmap-, asi que el cotejo
-# es POR PIXEL: las dos ROMs se llevan a los mismos instantes de la vista
-# (contados por vueltas del bucle, no por reloj: van a distinta velocidad), se
-# vuelca la VRAM y se dibuja lo que el VDP ensena (tools/render_vram.py). Las
-# imagenes tienen que salir identicas, y ademas en los instantes de bitmap -el
-# menu y el mapa- la VRAM entera tiene que ser identica byte a byte, que es la
-# prueba de que el guardian devolvio la identidad. Los PNG quedan en
-# work/vista_png para mirarlos, que un hash no lo hace.
+# LA VISTA DE CERCA POR TABLA DE NOMBRES, CON EL CURSOR COMO SPRITE. La VRAM
+# de la ROM nueva ya no se parece a la de antes -una lleva nombres y la otra
+# bitmap- y, con la ventana del trozo fija, ni siquiera ensena lo mismo en
+# cuanto el cursor se mueve. Las dos ROMs se llevan a los mismos instantes de
+# la vista (contados por vueltas del bucle, no por reloj: van a distinta
+# velocidad), la sonda vuelca el trozo puro de CADA vuelta y el estado entero
+# en los instantes elegidos, y tools/coteja_vista.py reconstruye con un MODELO
+# del paginado lo que la nueva tiene que ensenar: caracter a caracter en todas
+# las vueltas, pixel a pixel (tools/render_vram.py) donde el encuadre coincide,
+# y en los instantes de bitmap -el menu y el mapa- la VRAM entera identica byte
+# a byte, sprites escondidos incluidos. Los PNG quedan en work/vista_png para
+# mirarlos, que un hash no lo hace; y tools/omsx_captura_vista.tcl saca
+# capturas del emulador de verdad (make captura_vista).
 #
 # Se hace con la pantalla APAGADA en las dos: encendida, el VDP pierde bytes.
 # Una tercera pasada, con la pantalla encendida y solo la ROM nueva, comprueba
@@ -373,15 +397,31 @@ verifica_finales: war_musica.rom
 # VDP admite.
 #
 # OJO CON LA REFERENCIA: se comprueba antes que las dos ROMs son distintas.
-.PHONY: verifica_vista mide_vista
+.PHONY: verifica_vista verifica_vista_parche mide_vista captura_vista
+# Capturas del emulador de verdad, con la ROM que se diga (por defecto la
+# parcheada con todo): make captura_vista ROM=war_musica.rom
+captura_vista: $(ROM)
+	@rm -rf work/captura_vista
+	WAR_OUT="$(abspath work/captura_vista)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath $(ROM))" -romtype ascii16 -script tools/omsx_captura_vista.tcl
+	@cat work/captura_vista/captura_vista.log
+
+# Lo mismo que verifica_vista pero con la cinta PARCHEADA: la que se juega.
+verifica_vista_parche: war_parche_musica.rom work/war_parche_sin_vista.rom
+	@cmp -s war_parche_musica.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
+	@rm -rf work/vistap_ref work/vistap_nueva work/vistap_encendida work/vistap_png
+	WAR_OUT="$(abspath work/vistap_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_parche_sin_vista.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vistap_nueva)" WAR_DIRS="$(abspath work/parche_musica/vista.tcl)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vistap_encendida)" WAR_DIRS="$(abspath work/parche_musica/vista.tcl)" WAR_PANTALLA=encendida $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	@cat work/vistap_nueva/coteja_vista.log
+	python3 tools/coteja_vista.py work/vistap_nueva work/vistap_ref work/vistap_png --plan work/parche_musica/plan.json --work work/cuerpos_parche --roms war_parche_musica.rom work/war_parche_sin_vista.rom --encendida work/vistap_encendida
 verifica_vista: war_musica.rom work/war_sin_vista.rom
 	@cmp -s war_musica.rom work/war_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
 	@rm -rf work/vista_ref work/vista_nueva work/vista_encendida work/vista_png
 	WAR_OUT="$(abspath work/vista_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sin_vista.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	WAR_OUT="$(abspath work/vista_nueva)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	WAR_OUT="$(abspath work/vista_encendida)" WAR_PANTALLA=encendida $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vista_nueva)" WAR_DIRS="$(abspath work/musica/vista.tcl)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vista_encendida)" WAR_DIRS="$(abspath work/musica/vista.tcl)" WAR_PANTALLA=encendida $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
 	@cat work/vista_nueva/coteja_vista.log
-	python3 tools/coteja_vista.py work/vista_nueva work/vista_ref work/vista_png --roms war_musica.rom work/war_sin_vista.rom --encendida work/vista_encendida --work work
+	python3 tools/coteja_vista.py work/vista_nueva work/vista_ref work/vista_png --plan work/musica/plan.json --work work --roms war_musica.rom work/war_sin_vista.rom --encendida work/vista_encendida
 
 # Y LA MEDIDA: ciclos por vuelta de la vista y vueltas por segundo, antes y
 # despues, con la misma sonda. Un numero, no una impresion.
@@ -399,7 +439,7 @@ mide_vista: war_musica.rom work/war_sin_vista.rom
 # parpadea el cursor- y MOVIENDO el cursor -cambia el trozo entero-. Y el cotejo
 # por pixel de la de sombra contra la referencia, que ahorrar no vale si pinta
 # otra cosa.
-work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm
+work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista-sombra --salidas work/sombra
 
 .PHONY: mide_sombra
@@ -411,8 +451,8 @@ mide_sombra: war_musica.rom work/war_sombra.rom work/war_sin_vista.rom
 	WAR_OUT="$(abspath work/sinsombra_mueve)" WAR_MUEVE=1 $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
 	WAR_OUT="$(abspath work/sombra_mueve)" WAR_MUEVE=1 $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_vista.tcl
 	WAR_OUT="$(abspath work/vista_ref_sombra)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sin_vista.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	WAR_OUT="$(abspath work/vista_sombra)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	python3 tools/coteja_vista.py work/vista_sombra work/vista_ref_sombra work/sombra_png --roms work/war_sombra.rom work/war_sin_vista.rom
+	WAR_OUT="$(abspath work/vista_sombra)" WAR_DIRS="$(abspath work/sombra/vista.tcl)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sombra.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	python3 tools/coteja_vista.py work/vista_sombra work/vista_ref_sombra work/sombra_png --plan work/sombra/plan.json --work work --roms work/war_sombra.rom work/war_sin_vista.rom
 	@for d in sinsombra_reposo sombra_reposo sinsombra_mueve sombra_mueve; do echo "--- $$d ($(MAQUINA)):"; grep -E "VUELTA|vueltas por segundo" work/$$d/vista.log; done
 
 # PARA MIRARLO TU. Arranca la ROM con musica en el emulador, sin scripts ni
@@ -424,7 +464,7 @@ mide_sombra: war_musica.rom work/war_sombra.rom work/war_sin_vista.rom
 # partida entera para verlas. Salen de la ROM, descomprimidas con ZX0:
 #   make ve_final
 #   make ve_final PANTALLA=derrota
-ROM      := war_musica.rom
+ROM      := war_parche_musica.rom
 PANTALLA := victoria
 
 .PHONY: juega ve_final
