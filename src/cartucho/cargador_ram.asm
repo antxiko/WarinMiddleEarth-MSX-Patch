@@ -104,6 +104,7 @@ TABLA_OPS:
         defw    OP_LLENA_RAM_,OP_LLENA_VRAM_,OP_IDENT_VRAM_,OP_SPRITES_VRAM_
         defw    OP_PAG1_RAM_,OP_PAG1_CART_,OP_VDP_REG_,OP_PSG_REG_
         defw    OP_ESPERA_,OP_SALTA_,OP_BANCO_8000_,OP_RANURA_PAG2_
+        defw    OP_ROM_RAM_RLE_,OP_ROM_VRAM_RLE_
 
 ; --------------------------------------------------------------------------
 ; Sin RAM en alguna pagina, o un plan roto: borde rojo y a esperar.
@@ -240,6 +241,90 @@ OP_RANURA_PAG2_:
         ld      h,(ix+5)
         ld      (hl),a
         ret
+
+; --------------------------------------------------------------------------
+; LAS TRES IMAGENES VIAJAN COMPRIMIDAS. RLE de marca, el que genera
+; tools/comprime.py, que ademas elige la marca midiendo -es el byte MENOS
+; frecuente del bloque- y va en la propia entrada del plan:
+;
+;   <b>             si b no es la marca, un byte literal
+;   marca <n> <v>   n veces el byte v   (1 <= n <= 255)
+;   marca 0         se acabo
+;
+; Entra con IX en la entrada del plan: +1 el banco donde empieza, +2 el origen
+; en la ventana de 0x4000, +4 el destino y +6 la marca.
+;
+; El flujo PUEDE cruzar de banco: cuando el puntero se sale de la ventana se
+; pasa al siguiente y se vuelve a 0x4000. Sin eso habria que colocar los
+; bloques cuidando de que no crucen, que es una atadura que no hace falta.
+; --------------------------------------------------------------------------
+OP_ROM_RAM_RLE_:
+        ld      hl,RLE_A_RAM
+        ld      (RLE_PON+1),hl
+        call    BANCO_Y_REGISTROS       ; HL=origen DE=destino C=marca
+        jr      RLE_ARRANCA
+
+OP_ROM_VRAM_RLE_:
+        ld      hl,RLE_A_VRAM
+        ld      (RLE_PON+1),hl
+        call    BANCO_Y_REGISTROS
+        push    hl                      ; el origen, que ahora hace falta HL
+        ex      de,hl
+        call    VRAM_ESCRIBIR_EN        ; el VDP apuntando al destino
+        pop     hl
+
+RLE_ARRANCA:
+        ld      a,(ix+1)
+        ld      (RLE_BANCO),a           ; de que banco se esta leyendo
+        ld      a,c
+        ld      (RLE_ES_MARCA+1),a      ; la marca, dentro del `cp` de abajo
+
+RLE_BUCLE:
+        call    RLE_LEE
+RLE_ES_MARCA:
+        cp      000h
+        jr      z,RLE_RACHA
+        call    RLE_PON                 ; un byte literal
+        jr      RLE_BUCLE
+
+RLE_RACHA:
+        call    RLE_LEE
+        or      a
+        ret     z                       ; `marca 0`: fin del bloque
+        ld      b,a                     ; cuantas veces
+        call    RLE_LEE                 ; y que byte
+RLE_REPITE:
+        call    RLE_PON                 ; ni RLE_A_RAM ni RLE_A_VRAM tocan A
+        djnz    RLE_REPITE
+        jr      RLE_BUCLE
+
+; Un byte del flujo, saltando de banco si el puntero se sale de la ventana.
+; La ventana es 0x4000-0x7FFF, asi que pasarse se ve en el bit 7 de H.
+RLE_LEE:
+        ld      a,(hl)
+        inc     hl
+        bit     7,h
+        ret     z
+        push    af
+        ld      a,(RLE_BANCO)
+        inc     a
+        ld      (RLE_BANCO),a
+        ld      (BANCO_VENTANA),a
+        ld      h,040h
+        pop     af
+        ret
+
+RLE_PON:
+        jp      0000h                   ; el operando lo pone la entrada de arriba
+RLE_A_RAM:
+        ld      (de),a
+        inc     de
+        ret
+RLE_A_VRAM:
+        out     (098h),a
+        ret
+RLE_BANCO:
+        defb    0
 
 OP_PAG1_RAM_:
         ld      a,(V_ID_RAM1)

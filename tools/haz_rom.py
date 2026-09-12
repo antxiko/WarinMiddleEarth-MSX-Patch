@@ -63,6 +63,9 @@ import struct
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from comprime import comprime           # noqa: E402
+
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 SRC = os.path.join(RAIZ, "src", "cartucho")
@@ -119,6 +122,20 @@ ORG_MEDIO = 0x5E00          # donde corre el bloque medio, ya recolocado
 MENU_LEE_NIVEL = 0x5E86     # `3A 70 5E`, tres bytes
 MENU_NIVEL = 0x5E70         # el operando del `ld a,nn` de 0x5E6F, que guarda el nivel
 
+# LAS TRES IMAGENES (--comprime). Son lo unico del juego que se puede encoger
+# de verdad, y no se pierde ninguna: viajan comprimidas y el cargador las
+# descomprime en su sitio, asi que el juego encuentra exactamente lo mismo.
+#
+#   la intro    los 12.288 B de la pantalla de carga, que van a la VRAM
+#   la victoria 6.912 B en 0x094F, dentro del bloque bajo (Gandalf)
+#   la derrota  6.912 B en 0x244F, la cola del bloque bajo (Sauron)
+#
+# Las dos finales son pantallas del ZX enteras -bitmap y atributos- y ocupan
+# TODA la cola del bloque bajo, que por eso se parte en dos: el codigo se copia
+# crudo y ellas se descomprimen detras.
+FINALES = ((0x094F, 6912, "victoria: Gandalf y THE FORCES OF EVIL HAVE BEEN DESTROYED"),
+           (0x244F, 6912, "derrota: Sauron y May the Forces of Evil Never be Defeated"))
+
 
 class Plan:
     def __init__(self):
@@ -138,6 +155,14 @@ class Plan:
             origen_rom += trozo
             dst += trozo
             n -= trozo
+
+    # Un bloque comprimido: basta el banco donde EMPIEZA, porque el
+    # descompresor cruza al siguiente solo. La marca viaja en el campo `len`,
+    # que en estas dos operaciones no hace falta para nada mas.
+    def rle(self, a_vram, d, dst, nota):
+        banco = d["rom"] // TAM_BANCO
+        self.op("ROM_VRAM_RLE" if a_vram else "ROM_RAM_RLE", banco,
+                0x4000 + d["rom"] % TAM_BANCO, dst, d["marca"], nota)
 
     def inc(self):
         lineas = []
@@ -185,6 +210,7 @@ def main(argv):
     espera = 150
     con_pantalla = True
     musica = None
+    comprimir = False
     i = 3
     while i < len(argv):
         if argv[i] == "--espera":
@@ -193,6 +219,8 @@ def main(argv):
             con_pantalla = False; i += 1
         elif argv[i] == "--musica":
             musica = argv[i + 1]; i += 2
+        elif argv[i] == "--comprime":
+            comprimir = True; i += 1
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
@@ -202,7 +230,12 @@ def main(argv):
     # los mismos cuerpos y, compartiendo directorio, la segunda pisaba el plan y
     # el stub de la primera. Los tests cargaban entonces war.rom con el plan de
     # war_musica.rom y fallaban sin que nada estuviera realmente roto.
-    salidas = os.path.join(work, "musica") if musica else work
+    if musica:
+        salidas = os.path.join(work, "musica")
+    elif comprimir:
+        salidas = os.path.join(work, "comprimido")
+    else:
+        salidas = work
     os.makedirs(salidas, exist_ok=True)
 
     cuerpos = {}
@@ -223,17 +256,44 @@ def main(argv):
     disposicion = {}
     pos = INICIO_DATOS
 
-    def mete(nombre, cuerpo):
+    def mete(nombre, cuerpo, **extra):
         nonlocal pos
-        disposicion[nombre] = dict(rom=pos, bytes=len(cuerpo))
+        disposicion[nombre] = dict(rom=pos, bytes=len(cuerpo), **extra)
         datos.append(cuerpo)
         pos += len(cuerpo)
 
-    mete("patrones", patrones)
-    mete("colores", colores)
-    mete("bajo", bajo)
-    mete("medio", medio)
-    mete("alto", alto)
+    def mete_z(nombre, cuerpo, que):
+        """Comprimido, con su marca y el tamano original apuntados: el plan los
+        necesita y el test los usa para comprobar la ida y vuelta. Si el
+        resultado fuera mas grande que el original -puede pasar, comprimir no
+        siempre encoge- se mete crudo y se dice."""
+        z, marca = comprime(cuerpo)
+        if len(z) >= len(cuerpo):
+            mete(nombre, cuerpo, crudo=len(cuerpo), rle=False, que=que)
+            return False
+        mete(nombre, z, crudo=len(cuerpo), rle=True, marca=marca, que=que)
+        return True
+
+    if comprimir:
+        # Las tres imagenes comprimidas, y el bloque bajo partido: primero su
+        # codigo, crudo, y detras las dos pantallas finales.
+        mete_z("patrones", patrones, "intro: los patrones de la pantalla de carga")
+        mete_z("colores", colores, "intro: los colores de la pantalla de carga")
+        corte = FINALES[0][0] - CARGA_BAJO
+        assert FINALES[0][0] + FINALES[0][1] == FINALES[1][0], "las dos finales no van seguidas"
+        assert FINALES[1][0] + FINALES[1][1] - CARGA_BAJO == len(bajo), \
+            "las dos pantallas finales no acaban donde acaba el bloque bajo"
+        mete("bajo", bajo[:corte], crudo=corte, rle=False,
+             que="bloque bajo: el codigo, hasta donde empiezan las pantallas finales")
+        for n, (dir_, tam, que) in enumerate(FINALES):
+            o = dir_ - CARGA_BAJO
+            mete_z("final%d" % n, bajo[o:o + tam], que)
+    else:
+        mete("patrones", patrones, crudo=len(patrones), rle=False)
+        mete("colores", colores, crudo=len(colores), rle=False)
+        mete("bajo", bajo, crudo=len(bajo), rle=False)
+    mete("medio", medio, crudo=len(medio), rle=False)
+    mete("alto", alto, crudo=len(alto), rle=False)
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
     # ---------------------------------------------------------------- musica
@@ -286,6 +346,16 @@ def main(argv):
     assert CARGA_ALTO + len(alto) - 1 < STUB, "el bloque alto pisaria el stub"
 
     # ------------------------------------------------------------------ plan
+    def bloque(nombre, dst, a_vram=False, nota=None):
+        """Mete el bloque `nombre` en el plan, comprimido o crudo segun como se
+        haya guardado. Asi el plan no repite la decision que ya se tomo arriba."""
+        d = disposicion[nombre]
+        texto = nota or d.get("que", nombre)
+        if d.get("rle"):
+            p.rle(a_vram, d, dst, "%s (%d B -> %d, RLE)" % (texto, d["crudo"], d["bytes"]))
+        else:
+            p.copia_rom("ROM_VRAM" if a_vram else "ROM_RAM", d["rom"], dst, d["bytes"], texto)
+
     p = Plan()
     if musica:
         # Lo primero de todo, que es cuando la pagina 1 es el cartucho con toda
@@ -308,8 +378,8 @@ def main(argv):
         p.op("LLENA_VRAM", 0, 0, 0x3800, 0x0800, "patrones de sprites a cero" + cuando)
     tablas_del_screen_2("")
     if con_pantalla:
-        p.copia_rom("ROM_VRAM", disposicion["patrones"]["rom"], 0x0000, 6144, "pantalla de carga: patrones")
-        p.copia_rom("ROM_VRAM", disposicion["colores"]["rom"], 0x2000, 6144, "pantalla de carga: colores")
+        bloque("patrones", 0x0000, a_vram=True, nota="pantalla de carga: patrones")
+        bloque("colores", 0x2000, a_vram=True, nota="pantalla de carga: colores")
         p.op("VDP_REG", 1, 0xE0, nota="pantalla encendida: se ve la imagen de carga")
         p.op("ESPERA", espera, nota="%d cuadros mirando la imagen" % espera)
         p.op("VDP_REG", 1, 0xA0, nota="pantalla apagada: la VRAM va a hacer de bufer")
@@ -320,7 +390,10 @@ def main(argv):
     p.copia_rom("ROM_VRAM", disposicion["medio"]["rom"] + en_pagina0, 0x0000, en_pagina1,
                 "bloque medio 0x4000-0x783F, de momento a la VRAM")
     # lo que no toca la pagina 1
-    p.copia_rom("ROM_RAM", disposicion["bajo"]["rom"], CARGA_BAJO, len(bajo), "bloque bajo a 0x0190, donde corre")
+    bloque("bajo", CARGA_BAJO, nota="bloque bajo a 0x0190, donde corre")
+    for n, (dir_, _tam, _que) in enumerate(FINALES):
+        if ("final%d" % n) in disposicion:
+            bloque("final%d" % n, dir_)
     p.copia_rom("ROM_RAM", disposicion["medio"]["rom"], CARGA_MEDIO, en_pagina0, "bloque medio 0x3F4F-0x3FFF")
     p.op("LLENA_RAM", 0, 0, BUZON_POKES[0], BUZON_POKES[1], "buzon de POKEs de 0x012C a cero: sin POKEs")
     if musica:
@@ -336,8 +409,8 @@ def main(argv):
     p.op("VRAM_RAM", 0, 0x0000, 0x4000, en_pagina1, "el tramo vuelve de la VRAM a 0x4000-0x783F")
     if con_pantalla:
         p.op("PAG1_CART", nota="el cartucho otra vez, para repintar la imagen")
-        p.copia_rom("ROM_VRAM", disposicion["patrones"]["rom"], 0x0000, 6144, "imagen de carga otra vez: patrones")
-        p.copia_rom("ROM_VRAM", disposicion["colores"]["rom"], 0x2000, 6144, "imagen de carga otra vez: colores")
+        bloque("patrones", 0x0000, a_vram=True, nota="imagen de carga otra vez: patrones")
+        bloque("colores", 0x2000, a_vram=True, nota="imagen de carga otra vez: colores")
         tablas_del_screen_2(" (otra vez: el bufer las piso)")
         p.op("PAG1_RAM", nota="y fuera del todo: el juego quiere las cuatro paginas en RAM")
     else:
@@ -381,7 +454,11 @@ def main(argv):
             assert rom[o:o + len(viejo)] == viejo, \
                 "en 0x%04X no esta %s sino %s" % (dir_, viejo.hex(), bytes(rom[o:o + len(viejo)]).hex())
             rom[o:o + len(nuevo)] = nuevo
-            parches.append(dict(dir=dir_, rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que))
+            # `dir` es donde el juego lo EJECUTA (0x5E00 y arriba) y `carga`
+            # donde cae al cargarlo, antes de que 0x0190 recoloque el bloque.
+            # Los tests que miran la RAM recien cargada necesitan la segunda.
+            parches.append(dict(dir=dir_, carga=CARGA_MEDIO + dir_ - ORG_MEDIO,
+                                rom=o, orig=viejo.hex(), nuevo=nuevo.hex(), que=que))
 
         parches = []
         parchea(GANCHO_OPERANDO, GANCHO_VACIO.to_bytes(2, "little"),

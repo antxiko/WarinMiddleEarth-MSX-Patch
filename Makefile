@@ -232,7 +232,7 @@ MUSICA   := ../../msx-msxlib/games/examples/pt3music/RUN23_ShuffleOne.pt3
 PT3SRC   := ../../msx-msxlib/libext/pt3/PT3-ROM.ASM
 CARTUCHO := src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.asm src/cartucho/direcciones.inc
 
-.PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica captura_rom
+.PHONY: rom rom_parche rom_musica estado_cinta verifica_rom verifica_rom_parche verifica_musica verifica_comprimido captura_rom
 
 rom: war.rom
 war.rom: extract $(CARTUCHO) tools/haz_rom.py
@@ -245,7 +245,7 @@ war.rom: extract $(CARTUCHO) tools/haz_rom.py
 rom_musica: war_musica.rom
 war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --musica "$(MUSICA)"
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)"
 
 # El reproductor, traducido de la sintaxis de asMSX a la de pasmo. La traduccion
 # es mecanica -241 corchetes de indireccion, 46 desplazamientos de IX que hay que
@@ -295,6 +295,16 @@ verifica_rom_parche: war_parche.rom estado_cinta
 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
 	@grep -v volcado work/rom_parche_$(MAQUINA)/verifica_rom.log
 	python3 tools/coteja_rom.py work/rom_parche_$(MAQUINA) work/omsx_v4 work/estado_cinta
+
+# LA COMPRESION, SOLA: la misma ROM de siempre pero con las tres imagenes
+# comprimidas y sin musica, para que el cotejo contra la cinta diga si la ida y
+# vuelta pierde algo. Es la prueba de que no se pierde ninguna pantalla.
+verifica_comprimido: estado_cinta
+	python3 tools/haz_rom.py work work/war_z.rom --espera $(ESPERA) --comprime
+	@rm -rf work/rom_z
+	WAR_ROM="$(abspath work/war_z.rom)" WAR_OUT="$(abspath work/rom_z)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_z.rom)" -romtype ascii16 -script tools/omsx_verifica_rom.tcl
+	@grep -v volcado work/rom_z/verifica_rom.log
+	python3 tools/coteja_rom.py work/rom_z work/omsx_orig work/estado_cinta
 
 # ¿SUENA? El emulador arranca la ROM con musica, comprueba las cuatro cosas que
 # tienen que cumplirse -gancho, puente, ejecucion y PSG en movimiento-, mide el

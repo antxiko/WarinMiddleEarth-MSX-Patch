@@ -35,11 +35,123 @@ def lee(ruta):
         return f.read()
 
 
+def descomprime_desde(rom, ini, marca):
+    """El RLE de marca de tools/comprime.py, leido de la ROM tal y como lo lee
+    el descompresor del stub: hasta el `marca 0` que cierra el bloque. Escrito
+    aparte a proposito, para que un fallo del compresor no se cuele por usar su
+    propia funcion en los dos lados."""
+    out = bytearray()
+    i = ini
+    while True:
+        b = rom[i]
+        i += 1
+        if b != marca:
+            out.append(b)
+            continue
+        n = rom[i]
+        i += 1
+        if n == 0:
+            return bytes(out)
+        out += bytes([rom[i]]) * n
+        i += 1
+
+
 def hace_falta(*rutas):
     for r in rutas:
         if not os.path.exists(r):
             raise unittest.SkipTest("falta %s: hace falta `make rom` o `make verifica_rom` con tu cinta" % os.path.relpath(r, RAIZ))
 
+
+
+
+def ejecuta_plan(test, rom, plan):
+    """El plan, interpretado aparte del stub: lleva la cuenta de la RAM, la
+    VRAM, los registros y de quien esta en la pagina 1 en cada paso. Sirve para
+    cualquier ROM del proyecto, que es lo que permite ejecutar las dos y
+    comparar la RAM que dejan."""
+    self = test
+    ram = bytearray(b"\x00" * 0x10000)
+    vram = bytearray(b"\x00" * 0x4000)
+    vdp = [None] * 8
+    psg = [None] * 14
+    pagina1 = "cart"
+    ventana_8000 = None
+    salto = None
+    escribe_pagina1_con_cart = []
+    lee_rom_sin_cart = []
+
+    def escribe_ram(dst, datos):
+        if pagina1 == "cart" and any(0x4000 <= dst + i <= 0x7FFF for i in (0, len(datos) - 1)):
+            escribe_pagina1_con_cart.append((dst, len(datos)))
+        ram[dst:dst + len(datos)] = datos
+
+    def lee_rom(op):
+        if pagina1 != "cart":
+            lee_rom_sin_cart.append(op)
+        self.assertTrue(0x4000 <= op["src"] and op["src"] + op["len"] <= 0x8000, "una copia cruza el banco")
+        base = op["b"] * 0x4000 + op["src"] - 0x4000
+        return rom[base:base + op["len"]]
+
+    for op in plan["plan"]:
+        nombre = op["op"]
+        if nombre == "ROM_RAM":
+            escribe_ram(op["dst"], lee_rom(op))
+        elif nombre == "ROM_VRAM":
+            vram[op["dst"]:op["dst"] + op["len"]] = lee_rom(op)
+        elif nombre == "VRAM_RAM":
+            escribe_ram(op["dst"], vram[op["src"]:op["src"] + op["len"]])
+        elif nombre == "LLENA_RAM":
+            escribe_ram(op["dst"], bytes([op["b"]]) * op["len"])
+        elif nombre == "LLENA_VRAM":
+            vram[op["dst"]:op["dst"] + op["len"]] = bytes([op["b"]]) * op["len"]
+        elif nombre == "IDENT_VRAM":
+            vram[op["dst"]:op["dst"] + op["len"]] = bytes(i & 0xFF for i in range(op["len"]))
+        elif nombre == "SPRITES_VRAM":
+            vram[op["dst"]:op["dst"] + 128] = b"".join(bytes([209, 0, n, 1]) for n in range(32))
+        elif nombre == "PAG1_RAM":
+            pagina1 = "ram"
+        elif nombre == "PAG1_CART":
+            pagina1 = "cart"
+        elif nombre == "VDP_REG":
+            vdp[op["b"]] = op["src"] & 0xFF
+        elif nombre == "PSG_REG":
+            psg[op["b"]] = op["src"] & 0xFF
+        elif nombre == "ESPERA":
+            self.assertGreater(op["b"], 0)
+        elif nombre == "BANCO_8000":
+            # El registro vive en 0x7000, o sea en la pagina 1: solo se
+            # puede escribir con el cartucho puesto ahi.
+            self.assertEqual(pagina1, "cart",
+                             "la ventana de 0x8000 se fija sin el cartucho en la pagina 1")
+            ventana_8000 = op["b"]
+        elif nombre in ("ROM_RAM_RLE", "ROM_VRAM_RLE"):
+            # El descompresor cruza de banco solo, y en la ROM los bancos
+            # van seguidos, asi que aqui basta con leer de corrido desde
+            # donde empieza. La marca viaja en el campo `len`.
+            if pagina1 != "cart":
+                lee_rom_sin_cart.append(op)
+            ini = op["b"] * 0x4000 + op["src"] - 0x4000
+            salido = descomprime_desde(rom, ini, op["len"] & 0xFF)
+            if nombre == "ROM_RAM_RLE":
+                escribe_ram(op["dst"], salido)
+            else:
+                vram[op["dst"]:op["dst"] + len(salido)] = salido
+        elif nombre == "RANURA_PAG2":
+            escribe_ram(op["dst"], b"\x00")   # un byte, el operando del `or` del puente
+        elif nombre == "SALTA":
+            salto = (op["src"], op["dst"], pagina1)
+            break
+        else:
+            self.fail("op desconocida en el plan: %s" % nombre)
+
+    if "musica" in plan["datos"]:
+        self.assertEqual(ventana_8000, plan["datos"]["musica"]["banco"],
+                         "la ventana de 0x8000 no se queda en el banco de la musica")
+    self.assertEqual(escribe_pagina1_con_cart, [], "el plan escribe en la pagina 1 con el cartucho puesto")
+    self.assertEqual(lee_rom_sin_cart, [], "el plan lee la ROM con el cartucho quitado")
+    self.assertEqual(salto, (0xFDE8, 0x0190, "ram"), "hay que saltar a 0x0190 con SP=0xFDE8 y las cuatro paginas en RAM")
+
+    return ram, vram, vdp, psg, salto
 
 class TestLaRom(unittest.TestCase):
 
@@ -85,10 +197,30 @@ class TestLaRom(unittest.TestCase):
             self.assertEqual(esperado["medio"][o:o + len(viejo)], viejo,
                              "el parche de 0x%04X no cae sobre lo que dice" % q["dir"])
             esperado["medio"] = esperado["medio"][:o] + nuevo + esperado["medio"][o + len(nuevo):]
+        # Con --comprime, el bloque bajo se parte: su codigo crudo y detras las
+        # dos pantallas finales comprimidas, cada una en su entrada.
+        corte = len(esperado["bajo"])
+        for n, (dir_, tam) in enumerate(((0x094F, 6912), (0x244F, 6912))):
+            if ("final%d" % n) in self.plan["datos"]:
+                o = dir_ - 0x0190
+                esperado["final%d" % n] = esperado["bajo"][o:o + tam]
+                corte = min(corte, o)
+        esperado["bajo"] = esperado["bajo"][:corte]
+
         for nombre, d in self.plan["datos"].items():
             if nombre == "musica":
                 continue        # no sale de la cinta; tiene sus propios tests
-            self.assertEqual(self.rom[d["rom"]:d["rom"] + d["bytes"]], esperado[nombre], nombre)
+            en_rom = self.rom[d["rom"]:d["rom"] + d["bytes"]]
+            if d.get("rle"):
+                # Lo que cuenta no es lo que hay en la ROM sino lo que sale al
+                # descomprimirlo: es la unica forma de que este test siga
+                # comprobando la cinta y no el formato.
+                salido = descomprime_desde(self.rom, d["rom"], d["marca"])
+                self.assertEqual(salido, esperado[nombre], "%s, descomprimido" % nombre)
+                self.assertEqual(len(salido), d["crudo"], nombre)
+                self.assertLess(d["bytes"], d["crudo"], "%s no encoge" % nombre)
+            else:
+                self.assertEqual(en_rom, esperado[nombre], nombre)
         fin = max(d["rom"] + d["bytes"] for n, d in self.plan["datos"].items() if n != "musica")
         self.assertEqual(fin, self.plan["fin_datos"])
         relleno = self.rom[fin + (self.musica["bytes"] if self.musica else 0):]
@@ -112,77 +244,13 @@ class TestLaRom(unittest.TestCase):
 
     def test_el_plan_deja_la_ram_como_la_cinta(self):
         """Interprete del plan aparte del stub: RAM, VRAM y quien esta en la pagina 1."""
-        ram = bytearray(b"\x00" * 0x10000)
-        vram = bytearray(b"\x00" * 0x4000)
-        vdp = [None] * 8
-        psg = [None] * 14
-        pagina1 = "cart"
-        ventana_8000 = None
-        salto = None
-        escribe_pagina1_con_cart = []
-        lee_rom_sin_cart = []
+        ram, vram, vdp, psg, salto = ejecuta_plan(self, self.rom, self.plan)
+        self._comprueba_la_ram(ram, vram, vdp, psg, salto)
 
-        def escribe_ram(dst, datos):
-            if pagina1 == "cart" and any(0x4000 <= dst + i <= 0x7FFF for i in (0, len(datos) - 1)):
-                escribe_pagina1_con_cart.append((dst, len(datos)))
-            ram[dst:dst + len(datos)] = datos
-
-        def lee_rom(op):
-            if pagina1 != "cart":
-                lee_rom_sin_cart.append(op)
-            self.assertTrue(0x4000 <= op["src"] and op["src"] + op["len"] <= 0x8000, "una copia cruza el banco")
-            base = op["b"] * 0x4000 + op["src"] - 0x4000
-            return self.rom[base:base + op["len"]]
-
-        for op in self.plan["plan"]:
-            nombre = op["op"]
-            if nombre == "ROM_RAM":
-                escribe_ram(op["dst"], lee_rom(op))
-            elif nombre == "ROM_VRAM":
-                vram[op["dst"]:op["dst"] + op["len"]] = lee_rom(op)
-            elif nombre == "VRAM_RAM":
-                escribe_ram(op["dst"], vram[op["src"]:op["src"] + op["len"]])
-            elif nombre == "LLENA_RAM":
-                escribe_ram(op["dst"], bytes([op["b"]]) * op["len"])
-            elif nombre == "LLENA_VRAM":
-                vram[op["dst"]:op["dst"] + op["len"]] = bytes([op["b"]]) * op["len"]
-            elif nombre == "IDENT_VRAM":
-                vram[op["dst"]:op["dst"] + op["len"]] = bytes(i & 0xFF for i in range(op["len"]))
-            elif nombre == "SPRITES_VRAM":
-                vram[op["dst"]:op["dst"] + 128] = b"".join(bytes([209, 0, n, 1]) for n in range(32))
-            elif nombre == "PAG1_RAM":
-                pagina1 = "ram"
-            elif nombre == "PAG1_CART":
-                pagina1 = "cart"
-            elif nombre == "VDP_REG":
-                vdp[op["b"]] = op["src"] & 0xFF
-            elif nombre == "PSG_REG":
-                psg[op["b"]] = op["src"] & 0xFF
-            elif nombre == "ESPERA":
-                self.assertGreater(op["b"], 0)
-            elif nombre == "BANCO_8000":
-                # El registro vive en 0x7000, o sea en la pagina 1: solo se
-                # puede escribir con el cartucho puesto ahi.
-                self.assertEqual(pagina1, "cart",
-                                 "la ventana de 0x8000 se fija sin el cartucho en la pagina 1")
-                ventana_8000 = op["b"]
-            elif nombre == "RANURA_PAG2":
-                escribe_ram(op["dst"], b"\x00")   # un byte, el operando del `or` del puente
-            elif nombre == "SALTA":
-                salto = (op["src"], op["dst"], pagina1)
-                break
-            else:
-                self.fail("op desconocida en el plan: %s" % nombre)
-
-        if "musica" in self.plan["datos"]:
-            self.assertEqual(ventana_8000, self.plan["datos"]["musica"]["banco"],
-                             "la ventana de 0x8000 no se queda en el banco de la musica")
-        self.assertEqual(escribe_pagina1_con_cart, [], "el plan escribe en la pagina 1 con el cartucho puesto")
-        self.assertEqual(lee_rom_sin_cart, [], "el plan lee la ROM con el cartucho quitado")
-        self.assertEqual(salto, (0xFDE8, 0x0190, "ram"), "hay que saltar a 0x0190 con SP=0xFDE8 y las cuatro paginas en RAM")
-
+    def _comprueba_la_ram(self, ram, vram, vdp, psg, salto):
+        """Lo que el cargador tiene que dejar, venga de la ROM que venga."""
+        bajo, medio, alto = (lee(os.path.join(WORK, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
         # la RAM: como la deja el cargador de la cinta en 0xD741
-        bajo, medio, alto = (lee(os.path.join(WORK, n + ".raw")) for n in ("bajo", "medio", "alto"))
         for q in (self.musica or {}).get("parches", []):
             o = q["dir"] - 0x5E00
             nuevo = bytes.fromhex(q["nuevo"])
@@ -202,6 +270,7 @@ class TestLaRom(unittest.TestCase):
         self.assertEqual(vdp, self.plan["vdp_regs"])
         self.assertEqual(psg, self.plan["psg_regs"])
         self.assertEqual(vdp[1], 0xE0, "hay que dejar la pantalla encendida")
+
 
     def test_lo_medido_en_la_cinta_es_lo_que_escribe_el_plan(self):
         estado = os.path.join(WORK, "estado_cinta")
@@ -331,25 +400,38 @@ class TestLaMusica(unittest.TestCase):
                         "la ranura se escribe fuera del puente")
 
     def test_la_musica_solo_cambia_cinco_bytes_del_juego(self):
-        """La prueba de que la musica no toca el juego: war.rom y
-        war_musica.rom, montadas de los mismos cuerpos, solo pueden diferir en
-        el cargador -que lleva dos operaciones mas-, en el hueco del final y en
-        los bytes que el plan declara como parches."""
+        """La prueba de que la musica no toca el juego.
+
+        No se comparan las dos ROMs byte a byte: desde que las imagenes viajan
+        comprimidas, la de musica no se PARECE a la otra -otra disposicion, otro
+        stub, otros tamanos- y ese diff no diria nada. Lo que tiene que
+        coincidir es lo que acaba en la RAM, que es lo unico que el juego ve.
+
+        Se permite exactamente: los bytes que el plan declara como parches, y
+        el puente, que vive en tierra de nadie y no le quita el sitio a nadie.
+        """
         hace_falta(ROM, PLAN)
-        sin = lee(ROM)
-        self.assertEqual(len(sin), len(self.rom))
-        cabeza = 0x0800                      # arranque + stub + plan
-        hueco = self.plan["fin_datos"]
+        with open(PLAN) as f:
+            plan_sin = json.load(f)
+        ram_sin = ejecuta_plan(self, lee(ROM), plan_sin)[0]
+        ram_con = ejecuta_plan(self, self.rom, self.plan)[0]
+
         permitidos = set()
         for q in self.m["parches"]:
-            permitidos.update(range(q["rom"], q["rom"] + len(bytes.fromhex(q["nuevo"]))))
-        fuera = [i for i in range(cabeza, hueco)
-                 if sin[i] != self.rom[i] and i not in permitidos]
-        self.assertEqual(fuera, [], "la musica cambia bytes del juego que no declara")
+            permitidos.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
         self.assertEqual(len(permitidos), 5, "los parches del juego tienen que ser cinco bytes")
+        p = self.m["puente"]
+        permitidos.update(range(p["ram"], p["ram"] + p["bytes"]))
+
+        fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
+        self.assertEqual(fuera, [], "la musica cambia la RAM fuera de lo que declara")
+        # Y los cinco se cambian de verdad: si el parche no se aplicara, la
+        # comprobacion de arriba pasaria igual.
         for q in self.m["parches"]:
-            self.assertEqual(bytes(sin[q["rom"]:q["rom"] + len(bytes.fromhex(q["orig"]))]),
-                             bytes.fromhex(q["orig"]),
+            n = len(bytes.fromhex(q["nuevo"]))
+            self.assertEqual(bytes(ram_con[q["carga"]:q["carga"] + n]), bytes.fromhex(q["nuevo"]),
+                             "el parche de 0x%04X no llega a la RAM" % q["dir"])
+            self.assertEqual(bytes(ram_sin[q["carga"]:q["carga"] + n]), bytes.fromhex(q["orig"]),
                              "en 0x%04X, war.rom no tiene lo que el parche dice sustituir" % q["dir"])
 
     def test_el_gancho_y_el_menu_quedan_apuntando_al_puente(self):
