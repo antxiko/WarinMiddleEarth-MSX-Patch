@@ -30,6 +30,10 @@ import sys
 
 TAM_BANCO = 0x4000
 CENTINELA = 0xBEEF          # la direccion de retorno que se le pone a la pila
+# Las dos rutinas del juego que MAPA llama, para poder sustituirlas por un
+# `ret` cuando se ejecuta aqui: no hay juego cargado.
+BORRA_PANTALLA = 0x7F12
+ELIGE_EL_RELLENO = 0x7E7A
 
 
 class Maquina:
@@ -231,6 +235,10 @@ class Z80:
             self.b = (self.b - 1) & 0xFF
             if self.b:
                 self.pc = (self.pc + e) & 0xFFFF
+        elif op == 0xC3:                                # jp nn
+            self.pc = self.nn()
+        elif op == 0xAF:                                # xor a
+            self.a = 0; self.z = True; self.cy = False
         elif op == 0xCD:                                # call nn
             destino = self.nn()
             self.push(self.pc)
@@ -356,6 +364,27 @@ def pinta(rom, plan, pantalla, ranura_cart=1, ranura_ram=3, sp=0x5BFF):
     return m, z
 
 
+def descomprime_el_mapa(rom, plan, ranura_cart=1, ranura_ram=3, sp=0x5BFF):
+    """MAPA, como lo llama el `jp` que sustituye al `ld hl,04000h` de 0x816B.
+
+    Las dos rutinas del juego que llama -BORRA_PANTALLA y ELIGE_EL_RELLENO- se
+    cambian por un `ret`: aqui no hay juego cargado, y lo que se comprueba es
+    el lienzo. Y en 0x81C1, que es a donde salta al acabar, otro `ret`, que
+    devuelve al centinela y para el interprete."""
+    q, f = plan["mapa"], plan["finales"]
+    m = Maquina(rom, ranura_cart, ranura_ram)
+    m.ram[f["ram"]:f["ram"] + f["bytes"]] = rom[f["rom"]:f["rom"] + f["bytes"]]
+    m.ram[f["ranuras"]["pag2"]] = ranura_cart << 4
+    m.ram[f["ranuras"]["pag1"]] = ranura_cart << 2
+    m.banco_8000 = f["banco_vuelve"]
+    for d in (BORRA_PANTALLA, ELIGE_EL_RELLENO, q["sigue"]):
+        m.ram[d] = 0xC9
+    z = Z80(m, q["entrada"], sp)
+    z.push(CENTINELA)
+    z.corre()
+    return m, z
+
+
 def main(argv):
     if len(argv) < 3:
         print(__doc__)
@@ -364,6 +393,13 @@ def main(argv):
         rom = fh.read()
     with open(argv[2]) as fh:
         plan = json.load(fh)
+    if "mapa" in plan:
+        m, z = descomprime_el_mapa(rom, plan)
+        q = plan["mapa"]
+        print("EL MAPA GENERAL: %d instrucciones; %d bytes en 0x%04X; 0xA8 = 0x%02X; banco de 0x8000 = %d"
+              % (z.pasos, q["crudo"], q["destino"], m.a8, m.banco_8000))
+        print("   la pila con el cartucho puesto: %s"
+              % ("NUNCA" if not m.pila_con_cartucho else m.pila_con_cartucho[:4]))
     if "finales" not in plan:
         print("ese plan no lleva las pantallas finales en la ROM (--finales-rom)")
         return 2

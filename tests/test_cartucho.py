@@ -28,6 +28,7 @@ WORK = os.path.join(RAIZ, "work")
 PLAN = os.path.join(WORK, "plan.json")
 ROM_MUSICA = os.path.join(RAIZ, "war_musica.rom")
 WORK_MUSICA = os.path.join(WORK, "musica")
+CUERPOS_PARCHE = os.path.join(WORK, "cuerpos_parche")
 
 
 def lee(ruta):
@@ -158,12 +159,14 @@ class TestLaRom(unittest.TestCase):
 
     def parches(self):
         """Todos los bytes del juego que esta ROM declara cambiar: los dos de
-        la musica, el de las pantallas finales y los dos de la vista. Vienen
-        del plan, no de una lista escrita aqui, para que no puedan quedarse
-        viejos."""
+        la musica, el de las pantallas finales, los siete de la vista y el del
+        mapa ya dibujado. Vienen del plan, no de una lista escrita aqui, para
+        que no puedan quedarse viejos."""
         todos = list((self.musica or {}).get("parches", []))
         if self.plan.get("finales"):
             todos.append(self.plan["finales"]["parche"])
+        if self.plan.get("mapa"):
+            todos.append(self.plan["mapa"]["parche"])
         todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
@@ -207,6 +210,12 @@ class TestLaRom(unittest.TestCase):
                 corte = min(corte, o)
         esperado["bajo"] = esperado["bajo"][:corte]
 
+        if "mapa" in self.plan["datos"]:
+            # El mapa general no viene de la cinta hecho: se dibuja al montar
+            # la ROM con las rutinas del juego transcritas, y lo que se exige
+            # es que al descomprimirlo salga EXACTAMENTE eso.
+            import mapa_general
+            esperado["mapa"] = mapa_general.dibuja_el_mapa(self.CUERPOS)
         for nombre, d in self.plan["datos"].items():
             if nombre == "musica":
                 continue        # no sale de la cinta; tiene sus propios tests
@@ -355,6 +364,8 @@ class TestLaMusica(unittest.TestCase):
         todos = list(self.m["parches"])
         if self.plan.get("finales"):
             todos.append(self.plan["finales"]["parche"])
+        if self.plan.get("mapa"):
+            todos.append(self.plan["mapa"]["parche"])
         todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
@@ -499,15 +510,24 @@ class TestLaMusica(unittest.TestCase):
                 tramo = slice(pantalla["dir"], pantalla["dir"] + pantalla["crudo"])
                 self.assertNotEqual(bytes(ram_con[tramo]), bytes(ram_sin[tramo]),
                                     "la pantalla de 0x%04X sigue viajando a la RAM" % pantalla["dir"])
+        mapa = self.plan.get("mapa")
+        if mapa:
+            # El mapa ya dibujado no viaja a la RAM: se descomprime cuando el
+            # juego lo pide. Lo unico que cambia son los tres bytes del parche.
+            q = mapa["parche"]
+            self.assertEqual(len(bytes.fromhex(q["nuevo"])), 3,
+                             "el parche del mapa son los tres bytes del `ld hl,04000h` de 0x816B")
+            permitidos.update(range(q["carga"], q["carga"] + 3))
         vista = self.plan.get("vista")
         if vista:
-            # La rutina de la vista, en la misma zona liberada, y sus cinco
-            # parches: dieciseis bytes, doce del bloque medio y cuatro del bajo.
+            # La rutina de la vista, en la misma zona liberada, y sus SIETE
+            # parches: veinte bytes, dieciseis del bloque medio y cuatro del
+            # bajo. Los dos ultimos son los del guante del mapa general.
             permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 16, "los parches de la vista tienen que ser dieciseis bytes")
+            self.assertEqual(len(de_la_vista), 20, "los parches de la vista tienen que ser veinte bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -732,6 +752,121 @@ class TestLasPantallasFinales(unittest.TestCase):
                              "la rutina se ha pasado del sitio de la pantalla")
 
 
+class TestElMapaGeneral(unittest.TestCase):
+    """El mapa general ya dibujado (--mapa): tools/mapa_general.py lo dibuja al
+    montar la ROM y finales.asm lo descomprime cuando el juego lo pide.
+
+    Lo fuerte, como en las finales, es que la rutina se EJECUTA: lo que se
+    compara no es "el bloque comprimido es el que se metio" sino que al
+    DESCOMPRIMIRLO con el descompresor del propio cartucho sale exactamente el
+    lienzo que sale de transcribir las rutinas del juego. Y ese lienzo, a su
+    vez, esta cotejado byte a byte con el del emulador (`make verifica_mapa`).
+    """
+
+    def setUp(self):
+        plan = os.path.join(WORK_MUSICA, "plan.json")
+        hace_falta(ROM_MUSICA, plan)
+        self.rom = lee(ROM_MUSICA)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        if "mapa" not in self.plan:
+            raise unittest.SkipTest("esta ROM no lleva el mapa ya dibujado (--mapa)")
+        self.q = self.plan["mapa"]
+        self.medio = lee(os.path.join(WORK, "medio.raw"))
+
+    def dibujado(self):
+        import mapa_general
+        return mapa_general.dibuja_el_mapa(WORK)
+
+    def corre(self, **kw):
+        import corre_finales
+        return corre_finales.descomprime_el_mapa(self.rom, self.plan, **kw)
+
+    def test_el_parche_es_el_ld_hl_del_ldir_que_borraba_el_lienzo(self):
+        """Tres bytes en 0x816B, y ni uno mas del juego. El `ldir` que ponia
+        0x4000-0x5AFF a cero sobraba: BORRA_PANTALLA, dos instrucciones mas
+        alla, borra ese mismo tramo."""
+        q = self.q["parche"]
+        self.assertEqual(q["dir"], 0x816B)
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("210040"),
+                         "0x816B tiene que ser el `ld hl,04000h` del `ldir`")
+        nuevo = bytes.fromhex(q["nuevo"])
+        self.assertEqual(len(nuevo), 3)
+        self.assertEqual(nuevo[0], 0xC3, "el parche no es un `jp`")
+        self.assertEqual(nuevo[1] | (nuevo[2] << 8), self.q["entrada"],
+                         "el `jp` no apunta a la entrada de la rutina")
+        self.assertEqual(self.medio[q["dir"] - 0x5E00:][:3], bytes.fromhex(q["orig"]),
+                         "en la cinta, 0x816B no es lo que el parche dice sustituir")
+        self.assertEqual(self.rom[q["rom"]:q["rom"] + 3], nuevo)
+
+    def test_el_lienzo_que_descomprime_es_el_que_se_dibujo(self):
+        """EL TEST QUE DECIDE. Se ejecuta la rutina del cartucho y lo que deja
+        en 0x4000 -que es de donde 0x05BD sube el bitmap al VDP- tiene que ser,
+        byte a byte, lo que sale de transcribir PINTA_TERRENO_ALTO y
+        PINTA_TERRENO_BAJO sobre el mapa de la cinta."""
+        m, _z = self.corre()
+        self.assertEqual(bytes(m.ram[0x4000:0x5800]), self.dibujado(),
+                         "el lienzo que sale de la ROM no es el que se dibujo")
+
+    def test_no_se_pasa_del_lienzo(self):
+        """6.144 bytes y ni uno mas: encima estan los 768 atributos y, detras,
+        la pila del juego en 0x5BFF."""
+        m, z = self.corre()
+        self.assertEqual(z.de, 0x4000 + 0x1800,
+                         "la rutina deja DE en 0x%04X: ha escrito %d bytes y no 6144"
+                         % (z.de, z.de - 0x4000))
+        self.assertEqual(set(m.ram[0x5800:0x5BF0]), {0},
+                         "la rutina se mete en los atributos o mas alla")
+
+    def test_nunca_toca_la_pila_con_el_cartucho_en_la_pagina_1(self):
+        """Lo mismo que con las finales, y por lo mismo: la pila vive en
+        0x5BFF, en la pagina que hay que conmutar para escribir el registro del
+        mapper. Ahora las dos entradas comparten esa rutina."""
+        m, _z = self.corre()
+        self.assertEqual(m.pila_con_cartucho, [])
+        self.assertEqual(m.escrituras_perdidas, [])
+
+    def test_devuelve_las_paginas_y_el_banco_como_estaban(self):
+        m, z = self.corre()
+        self.assertEqual(m.a8, m.ranura_ram * 0b01010101,
+                         "las paginas no quedan como estaban: 0xA8 = 0x%02X" % m.a8)
+        self.assertEqual(m.banco_8000, self.plan["finales"]["banco_vuelve"])
+        self.assertIs(z.di, False, "la rutina se deja las interrupciones cerradas")
+
+    def test_vale_este_el_cartucho_en_la_ranura_que_este(self):
+        esperado = self.dibujado()
+        for cart in range(4):
+            for ram in range(4):
+                if cart == ram:
+                    continue
+                m, _z = self.corre(ranura_cart=cart, ranura_ram=ram)
+                self.assertEqual(bytes(m.ram[0x4000:0x5800]), esperado,
+                                 "con el cartucho en la ranura %d y la RAM en la %d sale otra cosa"
+                                 % (cart, ram))
+                self.assertEqual(m.pila_con_cartucho, [])
+
+    def test_encoge_y_no_viaja_a_la_ram(self):
+        """Lo que justifica el cambio: 6.144 bytes que ya no se recorren, y de
+        ROM cuesta menos de la mitad. Y no ocupa ni un byte de RAM mientras no
+        se pide: se descomprime encima del lienzo, que es su sitio."""
+        self.assertEqual(self.q["crudo"], 6144)
+        self.assertTrue(self.q["zx0"])
+        self.assertLess(self.q["bytes"], self.q["crudo"] // 2)
+        self.assertEqual(self.q["destino"], 0x4000)
+        for o in self.plan["plan"]:
+            self.assertNotEqual(o.get("src"), self.q["src"],
+                                "el plan de carga copia el mapa a la RAM, y no hace falta")
+
+    def test_las_dos_cintas_dibujan_el_mismo_mapa(self):
+        """El parche de Araubi cambia textos, tiles y la ficha, pero no el mapa:
+        las dos cintas tienen que dar el mismo lienzo. Si algun dia lo tocara,
+        esto lo diria en vez de que la ROM parcheada llevara un mapa viejo."""
+        import mapa_general
+        if not os.path.isdir(CUERPOS_PARCHE):
+            raise unittest.SkipTest("no estan los cuerpos de la cinta parcheada")
+        self.assertEqual(mapa_general.dibuja_el_mapa(CUERPOS_PARCHE), self.dibujado())
+
+
 class TestLaVistaPorNombres(unittest.TestCase):
     """La vista de cerca por tabla de nombres (--vista): src/cartucho/nombres.asm.
 
@@ -801,12 +936,26 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_cinco_parches_son_los_que_dice(self):
-        """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225 y tres en
-        0x7758 (bloque medio) y cuatro en 0x044B (bloque bajo), y los cinco
-        caen sobre lo que la cinta trae."""
+    def test_los_siete_parches_son_los_que_dice(self):
+        """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225, tres en
+        0x7758, tres en 0x7F57 y uno en 0x6575 (bloque medio) y cuatro en
+        0x044B (bloque bajo), y los siete caen sobre lo que la cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
-        self.assertEqual(sorted(porque), [0x044B, 0x71A4, 0x7225, 0x75A5, 0x7758])
+        self.assertEqual(sorted(porque), [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57])
+        # EL GUANTE. El bucle de partida llama a MI_GUANTE en vez de subir un
+        # recuadro de 4x3 celdas, y MUEVE_EL_CURSOR deja de estamparlo.
+        g = self.v["guante"]
+        q = porque[0x7F57]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cdc307"),
+                         "0x7F57 tiene que ser `call REFRESCA_EL_CURSOR` (0x07C3)")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xCD]) + g["entrada"].to_bytes(2, "little"))
+        self.assertEqual(self.medio[0x7F57 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
+        q = porque[0x6575]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("e5"),
+                         "0x6575 tiene que ser el `push hl` con el que empieza el estampado")
+        self.assertEqual(bytes.fromhex(q["nuevo"]), bytes([0xC9]), "0x6575 tiene que pasar a ser un `ret`")
+        self.assertEqual(self.medio[0x6575 - 0x5E00:][:1], bytes.fromhex(q["orig"]))
         q = porque[0x7758]
         self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cd6d06"),
                          "0x7758 tiene que ser `call LEE_LOS_MANDOS` (0x066D)")
@@ -971,6 +1120,84 @@ class TestLaVistaPorNombres(unittest.TestCase):
                              "0x044B no deja puesta la direccion de escritura que le pidieron")
             self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x2345), "el guardian pisa BC, DE o HL")
             self.assertIs(z.di, False, "0x044B tiene que salir con las interrupciones abiertas, como siempre")
+
+    # ------------------------------------------ EL GUANTE DEL MAPA GENERAL
+    def test_el_guante_sale_del_png_y_el_png_del_dibujo_de_la_cinta(self):
+        """Los dos planos que van en la ROM son los del PNG, y el PNG, tal como
+        viene de fabrica, ensena EXACTAMENTE lo que la cinta estampa: dibujo
+        donde el dibujo tiene un bit, papel donde el dibujo no lo tiene y la
+        mascara tampoco, y nada donde la mascara deja ver el fondo."""
+        import guante
+        g = self.v["guante"]
+        patrones, colores, _avisos = guante.planos_del_png(
+            os.path.join(RAIZ, g["png"]))
+        self.assertEqual(patrones.hex(), g["planos"])
+        self.assertEqual(list(colores), g["planos_colores"])
+        # y el dibujo, contra los 32 bytes de la cinta
+        dib = self.medio[0x6345 - 0x5E00:][:16]
+        mas = self.medio[0x6355 - 0x5E00:][:16]
+        tinta, papel = guante.cursor.color_msx(guante.ATRIBUTO_MAPA)
+        visto = guante.dibuja(patrones, colores)
+        for y in range(16):
+            for x in range(16):
+                if y >= 8:
+                    esperado = None
+                else:
+                    bit = 0x8000 >> x
+                    d = (dib[y * 2] << 8) | dib[y * 2 + 1]
+                    m = (mas[y * 2] << 8) | mas[y * 2 + 1]
+                    esperado = tinta if d & bit else (None if m & bit else papel)
+                self.assertEqual(visto[y][x], esperado,
+                                 "el pixel (%d, %d) del guante no es el de la cinta" % (x, y))
+
+    def test_mi_guante_sube_los_patrones_una_vez_y_los_atributos_siempre(self):
+        """La primera vez despues de cada escondida sube los 64 bytes de los
+        dos planos; despues, solo los ocho atributos. Y el sitio es el que dice
+        el cursor del mapa, con la Y una linea por encima."""
+        import corre_nombres
+        g = self.v["guante"]
+        m = self.monta()
+        self.assertEqual(m.ram[g["puesto"]], 0, "el guante viaja en la ROM sin poner")
+        vdp, _z = corre_nombres.corre_guante(m, self.plan, col=0x50, fila=0x30)
+        self.assertEqual(vdp.escritos, 64 + 8)
+        self.assertEqual(bytes(vdp.vram[g["vram_patrones"]:g["vram_patrones"] + 64]),
+                         bytes.fromhex(g["planos"]), "los patrones del guante no son los del PNG")
+        self.assertEqual(m.ram[g["puesto"]], 1)
+        # los sprites 0 y 1 -el cursor de la vista- no se tocan
+        self.assertEqual(set(vdp.vram[0x1B00:0x1B08]), {0})
+        for col, fila in ((0x51, 0x31), (0xE8, 0xB8), (0, 0)):
+            vdp, _z = corre_nombres.corre_guante(m, self.plan, col, fila, vdp=vdp)
+            self.assertEqual(vdp.escritos, 8, "con los patrones puestos solo suben los ocho atributos")
+            self.assertEqual(vdp.direcciones, [(g["vram_atributos"], True)])
+            self.assertEqual(bytes(vdp.vram[g["vram_atributos"]:g["vram_atributos"] + 8]),
+                             corre_nombres.guante_esperado(self.plan, col, fila))
+        # la fila 0 da Y = 255, que el TMS9918 entiende como -1 y pinta desde
+        # la linea 0: es lo que hace falta para que el guante llegue arriba
+        self.assertEqual(vdp.vram[g["vram_atributos"]], 255)
+
+    def test_el_guardian_esconde_el_guante(self):
+        """Cualquiera que vaya a pintar pasa por 0x044B, y un sprite se
+        quedaria por delante de lo que venga: un menu, la ficha, la vista o una
+        pantalla final. El guardian lo aparca en Y = 209 y apunta que ya no
+        esta puesto, para que la vuelta siguiente del bucle de partida vuelva a
+        subir patrones y atributos."""
+        import corre_nombres
+        g = self.v["guante"]
+        m = self.monta()
+        vdp, z = corre_nombres.corre_guardian(m, self.plan, hl=0x2345, modo=0, puesto=1)
+        self.assertEqual(vdp.escritos, 8, "esconder el guante son ocho bytes y nada mas")
+        self.assertEqual(bytes(vdp.vram[g["vram_atributos"]:g["vram_atributos"] + 8]),
+                         bytes([209, 0, g["patron_a"], g["planos_colores"][0],
+                                209, 0, g["patron_b"], g["planos_colores"][1]]))
+        self.assertEqual(m.ram[g["puesto"]], 0)
+        self.assertEqual(vdp.direcciones[-1], (0x2345, True),
+                         "0x044B no deja puesta la direccion que le pidieron")
+        self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x2345),
+                         "esconder el guante pisa BC, DE o HL")
+        # y sin guante puesto no escribe nada
+        m = self.monta()
+        vdp, _z = corre_nombres.corre_guardian(m, self.plan, hl=0x2345, modo=0, puesto=0)
+        self.assertEqual(vdp.escritos, 0)
 
     # ------------------------------------- MI_PINTA: la cache del trozo y el cursor fijo
     # Las tres rutinas del juego que MI_PINTA llama (CELDA_DEL_MAPA,
@@ -1218,13 +1445,15 @@ class TestZX0(unittest.TestCase):
         lo que hace que esto valga como comprobacion y no como tautologia."""
         pantalla = lee(os.path.join(WORK, "pantalla.raw"))
         bajo = lee(os.path.join(WORK, "bajo.raw"))
+        import mapa_general
         esperado = {"patrones": pantalla[100:100 + 6144],
                     "colores": pantalla[100 + 6144:100 + 12288],
                     "final0": bajo[0x094F - 0x0190:][:6912],
-                    "final1": bajo[0x244F - 0x0190:][:6912]}
+                    "final1": bajo[0x244F - 0x0190:][:6912],
+                    "mapa": mapa_general.dibuja_el_mapa(WORK)}
         comprimidos = [n for n, d in self.plan["datos"].items() if d.get("zx0")]
         self.assertEqual(sorted(comprimidos), sorted(esperado),
-                         "no estan comprimidos los cuatro bloques que se esperaba")
+                         "no estan comprimidos los cinco bloques que se esperaba")
         for nombre in comprimidos:
             d = self.plan["datos"][nombre]
             salido = descomprime_desde(self.rom, d["rom"])

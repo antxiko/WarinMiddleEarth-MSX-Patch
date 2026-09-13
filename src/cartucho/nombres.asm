@@ -168,6 +168,13 @@ PASO_DEL_CURSOR equ 10          ; cuadros entre casilla y casilla con la tecla p
 DESPLAZA_ESQUINA equ -720       ; lo que resta 0x71B9 a la celda de (H+1, L)
 TAM_PANTALLA    equ 850         ; 25 filas de 34
 
+; El guante del mapa general
+GUANTE_COL      equ 06543h      ; la columna del cursor del mapa, en pixeles (operando de 0x6542)
+GUANTE_FILA     equ 06544h      ; y su fila; las dos las mueve MUEVE_EL_CURSOR (0x650D)
+GUANTE_PAT_A    equ 24          ; los dos planos van detras de los seis del cursor (192 B = patron 24)
+GUANTE_PAT_B    equ 28          ; en 16x16 el numero de patron va de cuatro en cuatro
+FUERA_DE_LA_PANTALLA equ 209    ; la Y con la que el cargador aparca los 32 sprites
+
 ; --------------------------------------------------------------------------
 ; La vista: 768 bytes a la tabla de nombres. Sustituye a 0x75A5.
 ;
@@ -380,6 +387,9 @@ COLOR_DE_ATRIBUTO:              ; A = atributo ZX -> A = byte de color, por la t
 ; --------------------------------------------------------------------------
 GUARDIAN:
                 di
+                ld a,(GUANTE_PUESTO)
+                or a
+                call nz,ESCONDE_EL_GUANTE
                 ld a,(MODO_NOMBRES)
                 or a
                 jr z,G_SIGUE
@@ -621,7 +631,80 @@ ME_TOQUES:      ld a,b
                 ret
 ULTIMA_ELECCION: defb 0                 ; el mando de la vuelta anterior del bucle de eleccion
 
+; --------------------------------------------------------------------------
+; MI_GUANTE: sustituye al `call REFRESCA_EL_CURSOR` (0x07C3) de 0x7F57, la
+; primera linea del bucle de partida. Sube los ocho bytes de atributos de los
+; sprites 2 y 3 -el guante- leyendo la posicion de donde la deja MUEVE_EL_CURSOR,
+; y los 64 de patrones la primera vez despues de cada escondida. Pisa AF, BC y
+; HL; el bucle de partida no lleva nada vivo en ese punto.
+;
+; El VDP pinta el sprite una linea POR DEBAJO de su Y, asi que Y = fila - 1; con
+; la fila 0 sale 255, que el TMS9918 entiende como -1 y pinta desde la linea 0.
+; --------------------------------------------------------------------------
+MI_GUANTE:
+                ld a,(GUANTE_PUESTO)
+                or a
+                call z,PON_EL_GUANTE
+                ld a,(GUANTE_FILA)
+                dec a
+                ld (GUANTE_AT),a
+                ld (GUANTE_AT+4),a
+                ld a,(GUANTE_COL)
+                ld (GUANTE_AT+1),a
+                ld (GUANTE_AT+5),a
+                ld hl,VRAM_SPRITES+8    ; los sprites 2 y 3: los 0 y 1 son el cursor de la vista
+                call DIRECCION_VRAM
+                ld hl,GUANTE_AT
+                ld b,8
+MG_BYTE:        ld a,(hl)               ; 7
+                out (098h),a            ; 11
+                inc hl                  ; 6
+                djnz MG_BYTE            ; 13 = 37 ciclos por byte
+                ret
+
+PON_EL_GUANTE:                  ; los dos planos, detras de los seis del cursor
+                ld hl,VRAM_SPRITES_PAT+CURSOR_COLORES-CURSOR_PATRONES
+                call DIRECCION_VRAM
+                ld hl,GUANTE_PATRONES
+                ld b,64
+PG_BYTE:        ld a,(hl)
+                out (098h),a
+                inc hl
+                djnz PG_BYTE            ; 37 ciclos por byte
+                ld a,1
+                ld (GUANTE_PUESTO),a
+                ret
+
+; El guante fuera de la pantalla. Lo llama el GUARDIAN: cualquiera que vaya a
+; pintar -un menu, la ficha, la vista, la batalla, una pantalla final- pasa por
+; 0x044B, y un sprite se quedaria por delante de lo que venga. Se vuelve a ver
+; en la vuelta siguiente del bucle de partida, que es la unica que lo pone.
+; Preserva BC y HL, que es lo que el guardian le debe a los llamadores de
+; 0x044B, y no abre las interrupciones: estamos dentro de 0x044B.
+ESCONDE_EL_GUANTE:
+                push bc
+                push hl
+                ld hl,VRAM_SPRITES+8
+                call PON_DIRECCION
+                ld hl,GUANTE_ESCONDIDO
+                ld b,8
+EG_BYTE:        ld a,(hl)
+                out (098h),a
+                inc hl
+                djnz EG_BYTE            ; 37 ciclos por byte
+                xor a
+                ld (GUANTE_PUESTO),a
+                pop hl
+                pop bc
+                ret
+
+GUANTE_PUESTO:  defb 0                  ; 1 mientras el guante este en la VRAM, patrones incluidos
+GUANTE_AT:      defb 0,0,GUANTE_PAT_A,GUANTE_COLOR_A, 0,0,GUANTE_PAT_B,GUANTE_COLOR_B
+GUANTE_ESCONDIDO: defb FUERA_DE_LA_PANTALLA,0,GUANTE_PAT_A,GUANTE_COLOR_A
+                defb FUERA_DE_LA_PANTALLA,0,GUANTE_PAT_B,GUANTE_COLOR_B
+
                 include "cursor.inc"    ; CURSOR_PATRONES (192 B) y CURSOR_COLORES (6), de cursor.png
+                include "guante.inc"    ; GUANTE_PATRONES (64 B) y sus dos colores, de guante.png
 
 CACHE:          defs TAM_PANTALLA       ; el trozo limpio; viaja en la ROM como ceros
 

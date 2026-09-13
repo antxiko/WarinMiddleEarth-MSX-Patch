@@ -25,6 +25,9 @@ CARGA_BAJO = 0x0190
 PANTALLAS = (("victoria", 0x094F, 6912), ("derrota", 0x244F, 6912))
 
 
+SPRITES = 0x1B00                # los atributos: R5 = 0x36
+
+
 def lee(ruta):
     with open(ruta, "rb") as f:
         return f.read()
@@ -63,11 +66,23 @@ def main(argv):
                 fallos += 1
                 continue
             va, vb = lee(a)[:0x4000], lee(b)[:0x4000]
-            d = [i for i in range(0x4000) if va[i] != vb[i]]
+            d = [i for i in range(0x4000) if va[i] != vb[i]
+                 and not (SPRITES <= i < SPRITES + 128)]
             print("  %-8s VRAM 0x0000-0x3FFF contra %s   %s"
                   % (nombre, os.path.basename(referencia),
                      "OK" if not d else "%d bytes distintos, p.ej. 0x%04X" % (len(d), d[0])))
             fallos += len(d)
+            # LOS ATRIBUTOS DE SPRITE NO SE COMPARAN BYTE A BYTE, y con razon.
+            # La ROM nueva deja los sprites APARCADOS -el cursor de la vista y
+            # el guante del mapa, en Y = 209- y la vieja los deja como estaban,
+            # que en esta sonda es a cero. Los dos son invisibles y eso es lo
+            # que se exige: que en una pantalla final no se vea ni un sprite.
+            for cual, v in ((os.path.basename(volcados), va), (os.path.basename(referencia), vb)):
+                visibles = [s for s in range(32)
+                            if v[SPRITES + s * 4] != 209 and v[SPRITES + s * 4 + 3] & 0x0F]
+                print("  %-8s sprites a la vista en %s   %s"
+                      % (nombre, cual, "ninguno" if not visibles else "LOS HAY: %s" % visibles))
+                fallos += len(visibles)
 
     print("RESULTADO: %s" % ("las dos pantallas son las de la cinta" if not fallos
                              else "%d diferencias" % fallos))

@@ -1073,8 +1073,170 @@ a pixel. Sin emulador, `tools/corre_nombres.py` ejecuta tambien `MI_ELECCION`
 y que los sprites no se mueven de (7, 5). Y `tools/omsx_paso_cursor.tcl`: 10
 casillas en 2 s con la derecha pulsada, en las dos maquinas.
 
-mide_vista`): la vuelta en reposo pasa de 83.037 a 83.544 ciclos, 42,8 vueltas
-por segundo.
+Y la medida (`make mide_vista`): la vuelta en reposo pasa de 83.037 a 83.544
+ciclos, 42,8 vueltas por segundo.
+
+
+### El mapa general, dibujado al montar la ROM — HECHO y VERIFICADO
+
+`DIBUJA_EL_MAPA` (0x8166) tarda **13.950.631 ciclos, 3,9 segundos**, y no se
+paga una vez: se paga **cada vez que se vuelve al mapa**, o sea cada vez que se
+sale de la vista de cerca. Medido por tramos, el 89 % es recorrer casillas
+estampando pixeles de dos en dos:
+
+    borrado del lienzo (0x4000-0x5AFF)   1.013.827    7 %
+    pasada de terreno alto (126 x 93)    5.217.626   38 %
+    pasada de terreno bajo (127 x 96)    6.927.925   51 %
+    sube el bitmap al VDP (0x05BD)         172.270   1,3 %
+    atributos (PINTA_TODOS_LOS_ATRIBUTOS)  364.348   2,7 %
+
+O sea que cambiar el FORMATO de la subida no arreglaria nada: subir la pantalla
+es el 1,3 %. Y **a tiles el mapa ocuparia MAS**, no menos: contadas sobre el
+volcado, las 768 celdas usan 455 patrones distintos (188/169/128 por tercio,
+que caben en los 256 de cada uno, o sea que seria posible), y son 3.880 B de
+patrones + 3.880 de color + 768 de nombres = **8.528 B frente a los 6.144 del
+bitmap**. En la vista de cerca la tabla de nombres ganaba porque la pantalla de
+caracteres YA existia en la RAM; aqui el mapa es un dibujo a media resolucion
+con tramas y casi ninguna celda se repite.
+
+Lo que si quita los 3,9 segundos es no dibujarlo: **llevarlo ya dibujado en la
+ROM**.
+
+#### Por que se puede
+
+El dibujo del terreno depende SOLO del nibble bajo del byte de mapa: las dos
+pasadas hacen `and 00fh` y los vecinos de `PINTA_CASILLA_UNIDA` tambien. Y lo
+que se mueve durante la partida -las unidades- no son pixeles sino ATRIBUTOS:
+`REPINTA_LOS_EJERCITOS` (0x6AAF) solo toca 0x5800-0x5AFF.
+
+Asi que la pregunta es si el nibble bajo cambia mientras se juega. **Medido, no
+supuesto** (`make verifica_terreno`): se reproduce la partida grabada de Araubi
+sobre la cinta, se vuelca el mapa (0xCC00, 13.260 bytes) al entrar en el bucle
+de partida y otra vez al final, y se comparan. Resultado: **ni un nibble bajo
+cambia** -ni entre el principio y el final, ni contra el mapa tal y como sale
+de la cinta-; cambian 28 casillas y solo en los bits 0x80 y 0x20, que son las
+banderas de unidad. Y del watchpoint: mientras se juega, en el mapa solo
+escribe el bucle de 0x7FF0, el que baja el bit 7.
+
+#### Quien lo dibuja: `tools/mapa_general.py`
+
+Los 6.144 bytes no se capturan del emulador: se DIBUJAN, transcribiendo las
+rutinas del juego instruccion a instruccion -`PINTA_TERRENO_ALTO` (0x80BD),
+`PINTA_TERRENO_BAJO` (0x8044), `PUNTO_A_DIRECCION` (0x7E4F), `PINTA_EL_PUNTO`
+(0x7E86), `PINTA_SIN_MOVER` (0x7EF5), `ELIGE_EL_RELLENO` (0x7E7A)- sobre el
+mapa que sale de la cinta. Lo que garantiza que la transcripcion es fiel no es
+leerla: es que el resultado se coteja **byte a byte con el volcado del emulador
+en 0x81C1**, que es donde el juego acaba de dibujarlo.
+
+**Y ahi aparecio una errata del juego.** La primera version daba 497 bytes
+distintos, todos en casillas de terreno 10. La causa: el bucle de 0x8188 hace
+
+    sub 00ah / inc b / call nc,PINTA_TERRENO_ALTO
+
+y el `inc b` **pisa el flag Z**. `PINTA_TERRENO_ALTO` lo guarda con `push af` y
+lo recupera con `pop af` creyendo que trae el del `sub`, asi que su primer
+`jr z` -el que elegiria el dibujo de 0x848F para el tipo 10- prueba en realidad
+si B+1 vale cero, cosa que no pasa nunca (B va de 93 a 1). Resultado: **el
+dibujo de 0x848F no se usa jamas** y el terreno 10 se pinta con el de 0x8477,
+el mismo que los tipos 14 y 15. Los tres `dec a` de despues si ponen el Z, y
+por eso los tipos 11, 12 y 13 aciertan. El acarreo, que es lo que mira el
+`call nc`, sobrevive al `inc b`: por eso el fallo solo se ve en el dibujo.
+
+#### Como se hace en el cartucho
+
+El lienzo viaja comprimido con ZX0 -**6.144 -> 3.034 bytes**- y lo descomprime
+la misma rutina que las pantallas finales (`src/cartucho/finales.asm`), que
+ahora tiene dos entradas y un cuerpo comun: traer el bloque de la ROM a un
+bufer de RAM cruzando de banco, y llamar a ZX0 con las cuatro paginas en RAM.
+
+El parche del juego son **tres bytes en 0x816B**: el `ld hl,04000h` del `ldir`
+que ponia el lienzo a cero, por un `jp MAPA`. `MAPA` hace lo unico de
+0x816B-0x81C0 que se nota fuera -`BORRA_PANTALLA` con atributo 0 y la trama de
+arranque en el operando de 0x7E75-, descomprime y sigue en 0x81C1, que es donde
+el juego sube el lienzo al VDP. El `ldir` sobraba: `BORRA_PANTALLA`, dos
+instrucciones mas alla, borra ese mismo tramo.
+
+    DIBUJA_EL_MAPA   13.950.631 -> 2.496.488 ciclos   (3,897 s -> 0,697 s)
+
+y de esos 2,5 millones, la mitad es el borrado de la pantalla que ya estaba:
+
+    BORRA_PANTALLA     853.964      la VRAM y el lienzo a cero, como antes
+    copia del banco    236.944      los 3.034 bytes de la ROM al bufer
+    dzx0               591.874      los 6.144 del lienzo
+    0x81C1 a 0x81E7    813.525      subir el bitmap, los atributos y los paneles
+
+#### Verificado
+
+- `tools/mapa_general.py` == el volcado del emulador en 0x81C1, **byte a byte**,
+  y la ROM nueva deja ese mismo lienzo (`make verifica_mapa`, exit 0 en la
+  VG-8020 y en el NMS 8250; `make verifica_mapa_parche`, exit 0).
+- Sin emulador: `tools/corre_finales.py` EJECUTA la rutina del cartucho -con su
+  mapper, sus ranuras y su ZX0- y lo que deja en 0x4000 es el lienzo dibujado,
+  con el cartucho en cualquiera de las cuatro ranuras primarias, sin tocar
+  nunca la pila con el cartucho puesto y sin pasarse de los 6.144 bytes.
+- El bloque de la ROM, descomprimido con la otra implementacion de ZX0, da
+  exactamente ese lienzo (`test_cada_bloque_de_la_rom_devuelve_lo_que_traia_la_cinta`).
+- Las dos cintas -la original y la de Araubi- dibujan el MISMO mapa: el parche
+  cambia textos, tiles y la ficha, pero no el terreno.
+
+### El guante del mapa, como sprite — HECHO y VERIFICADO
+
+En el mapa general el cursor es un guante que senala, y en la cinta es un
+**sprite por software**: ocho lineas de dos bytes de dibujo (0x6345) con su
+mascara (0x6355), desplazadas al pixel y estampadas en el lienzo de 0x4000,
+guardando antes los 24 bytes de fondo que tapan (0x62FF) para devolverlos al
+moverse. Y por eso el bucle de partida subia un recuadro de 4x3 celdas a la
+VRAM **en cada vuelta** (`REFRESCA_EL_CURSOR`, 0x07C3). Medido en un NMS 8250:
+
+    REFRESCA_EL_CURSOR        3.935 ciclos, en TODAS las vueltas
+    estampar el guante        6.375 ciclos, en las vueltas en que se mueve
+
+Ahora son **dos sprites de hardware**, uno por color, con su dibujo en un PNG
+que cualquiera puede repintar (`src/cartucho/guante.png`, `tools/guante.py`),
+igual que el cursor de la vista de cerca. Son los sprites 2 y 3, detras de los
+dos de la vista, y sus patrones van detras de los seis de aquel.
+
+Dos parches del juego, cuatro bytes en total:
+
+- **0x7F57**, la primera linea del bucle de partida: el `call REFRESCA_EL_CURSOR`
+  pasa a llamar a `MI_GUANTE`, que sube ocho bytes de atributos de sprite -Y =
+  fila menos 1, porque el VDP pinta el sprite una linea por debajo de su Y- y,
+  la primera vez despues de cada escondida, los 64 de patrones.
+- **0x6575**, dentro de `MUEVE_EL_CURSOR`: el `push hl` con el que empezaba el
+  estampado pasa a ser un `ret`. Lo de antes se queda -la cuenta de la direccion
+  de pantalla, que 0x7F8B lee de 0x64DA para saber si el disparo cae en un
+  panel-; lo que se va es meter el dibujo en el lienzo, guardar el fondo y armar
+  el borrado de 0x64D9, que asi se queda en `ret` para siempre.
+
+**El guante no se queda flotando sobre lo que venga.** Cualquiera que vaya a
+pintar pasa por `VRAM_A_ESCRIBIR` (0x044B), que ya lleva el guardian de la
+vista: ahi se aparca el guante en Y = 209 y se apunta que hay que volver a
+subirlo. La vuelta siguiente del bucle de partida lo vuelve a poner, asi que en
+el mapa esta siempre y fuera de el no esta nunca.
+
+Lo unico que cambia de aspecto: el sprite lleva SU color y ya no el de la celda
+que tapa, asi que sobre los paneles -atributo 0x78, papel blanco- el guante se
+ve amarillo y no blanco. Sobre el mapa, que es atributo 0x30 en las 768 celdas,
+no se distingue: el cotejo pixel a pixel da CERO diferencias.
+
+    una vuelta del bucle de partida   69.009 -> 60.156 ciclos
+                                      51,9 -> 59,5 vueltas por segundo
+
+#### Verificado
+
+- `make verifica_mapa` (exit 0): en tres instantes del bucle de partida, el
+  lienzo de la ROM nueva es el de la vieja **con el guante borrado** -lo que
+  haria `BORRA_EL_CURSOR` con los 24 bytes de 0x62FF-, los sprites 2 y 3 estan
+  donde dice el cursor, sus patrones son los de `guante.png`, y **lo que se ve
+  en pantalla es identico pixel a pixel**, compuesto como lo compone el VDP.
+- De paso, lo que nadie mira: la VRAM de cada ROM es exactamente su lienzo
+  subido. Con la pantalla encendida NO lo es, ni en una ni en otra: el
+  `call 005bdh` del juego va mas rapido de lo que el TMS9918 admite y pierde
+  bytes, con cartucho y sin el. Por eso la sonda apaga la pantalla.
+- Sin emulador, `tools/corre_nombres.py` ejecuta `MI_GUANTE` y el guardian: la
+  primera vez sube 64 + 8 bytes y despues solo 8; la fila 0 da Y = 255, que el
+  TMS9918 entiende como -1; y el guardian lo aparca y apunta que hay que volver
+  a ponerlo, sin pisar BC, DE ni HL.
 
 
 ## Lo que queda abierto

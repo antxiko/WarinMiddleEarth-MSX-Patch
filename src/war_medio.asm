@@ -3855,24 +3855,24 @@ SALE_SIN_PINTAR:		; Recupera A y vuelve
 ; ----------------------------------------------------------------------
 ; Los tipos 10..15 del mapa: en vez de trama de 2 bits llevan un dibujo de 8x8
 ; ----------------------------------------------------------------------
-PINTA_TERRENO_ALTO:		; A = tipo menos 10; escoge uno de los cinco dibujos de 8 bytes de 0x846F
+PINTA_TERRENO_ALTO:		; A = tipo menos 10; escoge un dibujo de 8 bytes y pinta una cruz de cinco pixeles dobles
 	push af			;80bd
 	ld a,b			;80be
 	cp 061h		;80bf   ; De la fila 0x61 para abajo no se pinta
 	jr nc,SALE_SIN_PINTAR		;80c1
 	pop af			;80c3
-	ld hl,0848fh		;80c4   ; A = 0: el dibujo de 0x848F
+	ld hl,0848fh		;80c4   ; Este jr z NO prueba el tipo: el `inc b` de 0x818F ya piso el Z del `sub 00ah`, y B+1 nunca vale cero. 0x848F es dibujo MUERTO y el tipo 10 acaba en 0x80DB
 	jr z,PINTA_CON_DIBUJO		;80c7
 	dec a			;80c9
-	ld hl,0847fh		;80ca   ; A = 1: el de 0x847F
+	ld hl,0847fh		;80ca   ; A = 1 (tipo 11): el de 0x847F. De aqui en adelante el Z si es el del dec a de al lado, asi que 11, 12 y 13 aciertan
 	jr z,PINTA_CON_DIBUJO		;80cd
 	dec a			;80cf
-	ld hl,08487h		;80d0   ; A = 2: el de 0x8487
+	ld hl,08487h		;80d0   ; A = 2 (tipo 12): el de 0x8487
 	jr z,PINTA_CON_DIBUJO		;80d3
 	dec a			;80d5
-	ld hl,0846fh		;80d6   ; A = 3: el de 0x846F
+	ld hl,0846fh		;80d6   ; A = 3 (tipo 13): el de 0x846F
 	jr z,PINTA_CON_DIBUJO		;80d9
-	ld hl,08477h		;80db   ; Y los demas, el de 0x8477
+	ld hl,08477h		;80db   ; Y los demas, el de 0x8477: los tipos 14 y 15 ... y tambien el 10, por lo del Z pisado
 PINTA_CON_DIBUJO:		; Mete el dibujo elegido en los operandos de 0x7E96/0x7E99 y pinta cinco pixeles en cruz
 	ld a,l			;80de
 	ld (07e97h),a		;80df   ; 0x7E97 es el operando del add a,nn de 0x7E96: el byte bajo del dibujo
@@ -3989,7 +3989,7 @@ CASILLA_DE_TERRENO_ALTO:		; Pinta la casilla si su nibble bajo es 10 o mas
 	ld a,(iy+000h)		;8188
 	and 00fh		;818b   ; El nibble bajo del byte del mapa es el tipo de terreno
 	sub 00ah		;818d   ; Menos 10: sin acarreo son los tipos 10..15
-	inc b			;818f   ; B es la fila, y se pasa una mas
+	inc b			;818f   ; B es la fila, y se pasa una mas. OJO: `inc b` PISA EL FLAG Z, y de eso vive la errata de 0x80C4; el acarreo del `sub`, que es lo que mira el call, si sobrevive
 	call nc,PINTA_TERRENO_ALTO		;8190
 	dec b			;8193
 	dec iy		;8194   ; Atras una casilla: dentro de la columna se va hacia abajo
@@ -4368,36 +4368,66 @@ FIN_DEL_JUEGO:		; Bucle cerrado sobre si mismo. El unico modo de salir es apagar
 	jr FIN_DEL_JUEGO		;83f6
 
 ; ----------------------------------------------------------------------
-; DATOS textos_de_los_paneles: Textos y marcos de los paneles:
-;   "Volver/Cargar/Salvar", "Pulsa Fuego", File/Memo/Time, numeros romanos
-;   I..VII, "El Anillo corrompe al que lo usa", "Ningun mensaje" (los leen
-;   0x7E81-0x7EA0 y 0x8280)
-;   0x83f8..0x8572  (378 bytes)
+; DATOS rellenos_del_mapa: Los cuatro rellenos de ELIGE_EL_RELLENO (0x7E7A),
+;   que los mete en el operando de 0x7E75: 0x00, 0xFF, 0xAA y 0x55
+;   0x83f8..0x83fc  (4 bytes)
+DATA_rellenos_del_mapa:
+	defb 000h,0ffh,0aah,055h	; 83f8
+
+; ----------------------------------------------------------------------
+; DATOS tramas_de_pinta_el_punto: Las cuatro que PINTA_EL_PUNTO (0x7E86)
+;   indexa con los dos bits de abajo de L ... y se pisa antes de usarlas
+;   (0x7E92): son datos MUERTOS
+;   0x83fc..0x8400  (4 bytes)
+DATA_tramas_de_pinta_el_punto:
+	defb 003h,00ch,030h,0c0h	; 83fc
+
+; ----------------------------------------------------------------------
+; DATOS textos_de_los_paneles: Textos y marcos: "Volver/Cargar/Salvar", "Pulsa
+;   Fuego" y los cuatro espacios de 0x846A con los que 0x820A borra el rotulo
+;   0x8400..0x846f  (111 bytes)
 DATA_textos_de_los_paneles:
-	defb 000h,0ffh,0aah,055h,003h,00ch,030h,0c0h,003h,00bh,056h,06fh,06ch,076h,065h,072h	; 83f8  ...U..0...Volver
-	defb 0b7h,0b7h,043h,061h,072h,067h,061h,072h,020h,020h,020h,0b7h,0b7h,053h,061h,06ch	; 8408  ..Cargar   ..Sal
-	defb 076h,061h,072h,020h,020h,020h,0b7h,0b7h,056h,06fh,06ch,076h,065h,072h,000h,0c0h	; 8418  var   ..Volver..
-	defb 000h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h	; 8428  .               
-	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h	; 8438                  
-	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,050h,075h,06ch,073h,061h	; 8448             Pulsa
-	defb 020h,046h,075h,065h,067h,06fh,02eh,020h,020h,020h,020h,020h,020h,020h,020h,020h	; 8458   Fuego.         
-	defb 020h,000h,020h,020h,020h,020h,000h,044h,0aah,0eeh,044h,022h,055h,077h,022h,0ddh	; 8468   .    .D..D"Uw".
-	defb 0beh,06eh,0c4h,09bh,07dh,0f7h,0e3h,022h,077h,077h,000h,022h,077h,077h,000h,0aah	; 8478  .n..}.."ww."ww..
-	defb 055h,0aah,055h,0aah,055h,0aah,055h,022h,041h,091h,03bh,064h,082h,008h,01ch,000h	; 8488  U.U.U.U"A.;d....
-	defb 000h,0c8h,060h,023h,022h,022h,022h,022h,023h,0b7h,021h,020h,020h,020h,020h,021h	; 8498  ..`#""""#.!    !
-	defb 0b7h,021h,020h,07bh,07dh,020h,021h,0b7h,021h,020h,07eh,07fh,020h,021h,0b7h,021h	; 84a8  .! {} !.! ~. !.!
-	defb 046h,069h,06ch,065h,021h,0b7h,021h,020h,020h,020h,020h,021h,0b7h,021h,020h,07bh	; 84b8  File!.!    !.! {
-	defb 07dh,020h,021h,0b7h,021h,020h,07eh,07fh,020h,021h,0b7h,021h,04dh,065h,06dh,06fh	; 84c8  } !.! ~. !.!Memo
-	defb 021h,0b7h,021h,020h,020h,020h,020h,021h,000h,0d0h,0a0h,021h,054h,069h,06dh,065h	; 84d8  !.!    !...!Time
-	defb 023h,022h,022h,022h,022h,022h,022h,022h,022h,022h,023h,0b7h,021h,020h,020h,020h	; 84e8  #"""""""""#.!   
-	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,021h,0b7h,023h,022h,022h	; 84f8             !.#""
-	defb 022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,023h,000h,0c9h,020h	; 8508  """"""""""""#.. 
-	defb 020h,020h,049h,0c9h,020h,020h,049h,049h,0c9h,020h,049h,0d6h,020h,020h,0d6h,020h	; 8518    I.  II. I.  . 
-	defb 020h,020h,056h,0c9h,020h,020h,056h,049h,0c9h,020h,056h,049h,049h,0c9h,049h,0d8h	; 8528    V.  VI. VII.I.
-	defb 049h,0cch,045h,06ch,020h,041h,06eh,069h,06ch,06ch,06fh,020h,063h,06fh,072h,072h	; 8538  I.El Anillo corr
-	defb 06fh,06dh,070h,065h,020h,061h,06ch,020h,071h,075h,065h,020h,06ch,06fh,020h,075h	; 8548  ompe al que lo u
-	defb 073h,061h,02eh,020h,020h,000h,04eh,069h,06eh,067h,075h,06eh,020h,06dh,065h,06eh	; 8558  sa.  .Ningun men
-	defb 073h,061h,06ah,065h,020h,020h,020h,02eh,020h,000h	; 8568  saje   . .
+	defb 003h,00bh,056h,06fh,06ch,076h,065h,072h,0b7h,0b7h,043h,061h,072h,067h,061h,072h	; 8400  ..Volver..Cargar
+	defb 020h,020h,020h,0b7h,0b7h,053h,061h,06ch,076h,061h,072h,020h,020h,020h,0b7h,0b7h	; 8410     ..Salvar   ..
+	defb 056h,06fh,06ch,076h,065h,072h,000h,0c0h,000h,020h,020h,020h,020h,020h,020h,020h	; 8420  Volver...       
+	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h	; 8430                  
+	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h	; 8440                  
+	defb 020h,020h,020h,050h,075h,06ch,073h,061h,020h,046h,075h,065h,067h,06fh,02eh,020h	; 8450     Pulsa Fuego. 
+	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,000h,020h,020h,020h,020h,000h	; 8460           .    .
+
+; ----------------------------------------------------------------------
+; DATOS dibujos_del_terreno_alto: Cinco dibujos de 8x8 con los que
+;   PINTA_TERRENO_ALTO (0x80BD) recorta sus cinco pixeles dobles: 0x846F el
+;   tipo 13, 0x8477 los tipos 10, 14 y 15, 0x847F el 11, 0x8487 el 12 y 0x848F
+;   NINGUNO (ver la errata del Z pisado en 0x80C4)
+;   0x846f..0x8497  (40 bytes)
+DATA_dibujos_del_terreno_alto:
+	defb 044h,0aah,0eeh,044h,022h,055h,077h,022h	; 846f  D..D"Uw"
+	defb 0ddh,0beh,06eh,0c4h,09bh,07dh,0f7h,0e3h	; 8477  ..n..}..
+	defb 022h,077h,077h,000h,022h,077h,077h,000h	; 847f  "ww."ww.
+	defb 0aah,055h,0aah,055h,0aah,055h,0aah,055h	; 8487  .U.U.U.U
+	defb 022h,041h,091h,03bh,064h,082h,008h,01ch	; 848f  "A.;d...
+
+; ----------------------------------------------------------------------
+; DATOS textos_de_los_paneles_2: File/Memo/Time, numeros romanos I..VII, "El
+;   Anillo corrompe al que lo usa", "Ningun mensaje" (los leen 0x8280 y
+;   0x81C9)
+;   0x8497..0x8572  (219 bytes)
+DATA_textos_de_los_paneles_2:
+	defb 000h,000h,0c8h,060h,023h,022h,022h,022h,022h,023h,0b7h,021h,020h,020h,020h,020h	; 8497  ...`#""""#.!    
+	defb 021h,0b7h,021h,020h,07bh,07dh,020h,021h,0b7h,021h,020h,07eh,07fh,020h,021h,0b7h	; 84a7  !.! {} !.! ~. !.
+	defb 021h,046h,069h,06ch,065h,021h,0b7h,021h,020h,020h,020h,020h,021h,0b7h,021h,020h	; 84b7  !File!.!    !.! 
+	defb 07bh,07dh,020h,021h,0b7h,021h,020h,07eh,07fh,020h,021h,0b7h,021h,04dh,065h,06dh	; 84c7  {} !.! ~. !.!Mem
+	defb 06fh,021h,0b7h,021h,020h,020h,020h,020h,021h,000h,0d0h,0a0h,021h,054h,069h,06dh	; 84d7  o!.!    !...!Tim
+	defb 065h,023h,022h,022h,022h,022h,022h,022h,022h,022h,022h,023h,0b7h,021h,020h,020h	; 84e7  e#"""""""""#.!  
+	defb 020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h,021h,0b7h,023h,022h	; 84f7              !.#"
+	defb 022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,022h,023h,000h,0c9h	; 8507  """""""""""""#..
+	defb 020h,020h,020h,049h,0c9h,020h,020h,049h,049h,0c9h,020h,049h,0d6h,020h,020h,0d6h	; 8517     I.  II. I.  .
+	defb 020h,020h,020h,056h,0c9h,020h,020h,056h,049h,0c9h,020h,056h,049h,049h,0c9h,049h	; 8527     V.  VI. VII.I
+	defb 0d8h,049h,0cch,045h,06ch,020h,041h,06eh,069h,06ch,06ch,06fh,020h,063h,06fh,072h	; 8537  .I.El Anillo cor
+	defb 072h,06fh,06dh,070h,065h,020h,061h,06ch,020h,071h,075h,065h,020h,06ch,06fh,020h	; 8547  rompe al que lo 
+	defb 075h,073h,061h,02eh,020h,020h,000h,04eh,069h,06eh,067h,075h,06eh,020h,06dh,065h	; 8557  usa.  .Ningun me
+	defb 06eh,073h,061h,06ah,065h,020h,020h,020h,02eh,020h,000h	; 8567  nsaje   . .
 
 ; ======================================================================
 ; CODIGO 0x8572..0x8a51  (1247 bytes)

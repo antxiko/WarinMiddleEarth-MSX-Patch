@@ -1,6 +1,6 @@
 ; ==========================================================================
-; WAR IN MIDDLE EARTH - de cinta a cartucho: LAS DOS PANTALLAS FINALES,
-; DESCOMPRIMIDAS DE LA ROM CUANDO EL JUEGO LAS PIDE
+; WAR IN MIDDLE EARTH - de cinta a cartucho: LO QUE SE DESCOMPRIME DE LA ROM
+; CUANDO EL JUEGO LO PIDE: LAS DOS PANTALLAS FINALES Y EL MAPA GENERAL
 ;
 ; QUE PROBLEMA RESUELVE
 ;
@@ -13,6 +13,18 @@
 ; Aqui se quedan solo en la ROM, comprimidas con ZX0, y se descomprimen a
 ; 0x4000 -que es a donde el juego las copiaba- en el momento de pintarlas.
 ;
+; Y POR EL MISMO CAMINO, EL MAPA GENERAL (con --mapa)
+;
+; DIBUJA_EL_MAPA (0x8166) tarda 3,9 segundos en recorrer 23.500 casillas
+; estampando pixeles de dos en dos, y lo hace CADA VEZ que se vuelve al mapa
+; -o sea cada vez que se sale de la vista de cerca-. Pero ese dibujo no cambia
+; nunca: solo depende del nibble bajo del byte de mapa, y lo que se mueve -las
+; unidades- son ATRIBUTOS, que pinta REPINTA_LOS_EJERCITOS (0x6AAF) aparte.
+; Asi que el lienzo va ya dibujado en la ROM, comprimido con ZX0, y aqui se
+; descomprime en su sitio: los mismos 6.144 bytes, en una decima parte del
+; tiempo. Quien lo dibuja al montar la ROM es tools/mapa_general.py, que es una
+; transcripcion de las rutinas del juego cotejada byte a byte con el emulador.
+;
 ; QUIEN LA LLAMA
 ;
 ; El juego, en PINTA_LA_PANTALLA_FINAL (0x83E7), donde los cuatro finales
@@ -24,6 +36,14 @@
 ; 0x094F o con 0x244F, o sea que la rutina sabe cual le piden sin tocar
 ; VICTORIA ni DERROTA. Lo que viene detras -los dos `call` que suben la
 ; pantalla al VDP, el `di` y el bucle cerrado- no se toca.
+;
+; Y para el mapa, DIBUJA_EL_MAPA: sus tres bytes de 0x816B -el `ld hl,04000h`
+; del `ldir` que ponia el lienzo a cero- pasan a ser `jp MAPA`. MAPA hace lo
+; mismo que hacian 0x816B-0x81C0 -borrar la pantalla y dejar elegida la trama
+; de arranque, que es lo unico de ahi que se nota fuera- descomprime el lienzo
+; y sigue en 0x81C1, que es donde el juego lo sube al VDP. El `ldir` de 0x816B
+; sobraba: BORRA_PANTALLA, dos instrucciones mas alla, vuelve a poner a cero
+; ese mismo tramo.
 ;
 ; POR QUE EN DOS PASOS Y NO EN UNO
 ;
@@ -60,7 +80,61 @@
 
 DESTINO         equ 04000h      ; donde el juego copiaba la pantalla y donde la lee 0x05BD
 
+; Las tres direcciones del juego que usa MAPA
+BORRA_PANTALLA  equ 07F12h      ; A = atributo ZX: bitmap a cero y los 768 atributos a A, en RAM y en VRAM
+ELIGE_EL_RELLENO equ 07E7Ah     ; A y 3: deja uno de los cuatro rellenos de 0x83F8 en el operando de 0x7E75
+SIGUE_EL_MAPA   equ 081C1h      ; el `call 005bdh` que sube el lienzo al VDP: por ahi sigue DIBUJA_EL_MAPA
+
+; --------------------------------------------------------------------------
+; Las dos pantallas finales. HL trae 0x094F o 0x244F, que es donde el juego
+; iba a buscarlas.
+; --------------------------------------------------------------------------
 FINALES:
+                ld a,h
+                cp F1_DIR / 256
+                jr nc,F_DERROTA
+                ld a,F0_BANCO
+                ld hl,F0_SRC
+                ld bc,F0_TAM
+                jp TRAE_Y_DESCOMPRIME
+F_DERROTA:
+                ld a,F1_BANCO
+                ld hl,F1_SRC
+                ld bc,F1_TAM
+                jp TRAE_Y_DESCOMPRIME
+
+                IF HAY_MAPA
+; --------------------------------------------------------------------------
+; EL MAPA GENERAL. Entra por el `jp` que sustituye al `ld hl,04000h` de
+; 0x816B y sale por 0x81C1, o sea que ocupa el sitio de 0x816B-0x81C0: el
+; borrado del lienzo, la trama de arranque y las dos pasadas de terreno.
+;
+; De todo eso solo se nota fuera lo que se hace aqui: BORRA_PANTALLA -que deja
+; la VRAM y el lienzo a cero y, de paso, pasa por el guardian de 0x044B, que
+; devuelve la tabla de nombres a la identidad si se venia de la vista- y la
+; trama de arranque, que se queda en el operando de 0x7E75 y la usaria quien
+; pintara despues sin elegir la suya. El `ldir` de 0x816B no hace falta:
+; BORRA_PANTALLA borra ese mismo tramo dos instrucciones mas alla.
+; --------------------------------------------------------------------------
+MAPA:
+                xor a                   ; como 0x8177: pantalla en negro
+                call BORRA_PANTALLA
+                ld a,3                  ; como 0x817B: trama 3 y 3 = 3, 0x55
+                call ELIGE_EL_RELLENO
+                ld a,M_BANCO
+                ld hl,M_SRC
+                ld bc,M_TAM
+                call TRAE_Y_DESCOMPRIME
+                jp SIGUE_EL_MAPA
+                ENDIF
+
+; --------------------------------------------------------------------------
+; A = banco, HL = donde se ve el bloque en la ventana de 0x8000, BC = lo que
+; ocupa comprimido. Lo trae a la RAM y lo descomprime en 0x4000.
+; --------------------------------------------------------------------------
+TRAE_Y_DESCOMPRIME:
+                ld (F_BANCO),a
+                ld de,BUFER_ZX0
                 di
 
                 ; --- los tres valores de 0xA8 que hacen falta, calculados una
@@ -76,23 +150,6 @@ F_RANURA2:
 F_RANURA1:
                 or 000h                 ; <- ... y aqui la primaria<<2
                 ld (F_A8_CART12),a      ; ROM en las dos: solo para el registro
-
-                ; --- cual de las dos piden. HL trae la direccion a la que el
-                ; juego iba a ir a buscarla.
-                ld a,h
-                cp F1_DIR / 256
-                jr nc,F_DERROTA
-                ld a,F0_BANCO
-                ld hl,F0_SRC
-                ld bc,F0_TAM
-                jr F_ELEGIDA
-F_DERROTA:
-                ld a,F1_BANCO
-                ld hl,F1_SRC
-                ld bc,F1_TAM
-F_ELEGIDA:
-                ld (F_BANCO),a
-                ld de,BUFER_ZX0
 
                 ; --- el banco a la ventana de 0x8000 (cartucho un momento en
                 ; la pagina 1) y la ROM asomada en la pagina 2

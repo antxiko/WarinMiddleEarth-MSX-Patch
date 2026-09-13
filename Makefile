@@ -253,9 +253,9 @@ war.rom: extract $(CARTUCHO) tools/haz_rom.py
 # lectura del nivel y el `ldir` de 0x83E7-, y por eso es un fichero aparte:
 # war.rom se queda intacta y cotejada.
 rom_musica: war_musica.rom
-war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
+war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa
 
 # La misma ROM SIN la vista por tabla de nombres: es la referencia contra la
 # que se coteja y se mide. Va a work/sin_vista para no pisar el plan de la otra.
@@ -293,9 +293,9 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 # son identicos en las dos cintas (comprobado), y cursor.png sale de los
 # cuerpos PARCHEADOS, que el parche repinta el cursor de batalla.
 rom_parche_musica: war_parche_musica.rom
-war_parche_musica.rom: war_parche.rom tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
+war_parche_musica.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --salidas work/parche_musica
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --salidas work/parche_musica
 
 # Su referencia SIN la vista, para el cotejo y la medida.
 work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
@@ -306,6 +306,12 @@ work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musi
 .PHONY: cursor
 cursor: war_parche.rom
 	python3 tools/cursor.py saca work/cuerpos_parche src/cartucho/cursor.png $(if $(REHAZ),--rehaz)
+
+# Y el guante del mapa general, de los 32 bytes de dibujo y mascara de la
+# cinta (0x6345 y 0x6355), que son los mismos en las dos. Igual: no pisa.
+.PHONY: guante
+guante:
+	python3 tools/guante.py saca work src/cartucho/guante.png $(if $(REHAZ),--rehaz)
 
 # Lo que deja la cinta al llegar a 0x5E00 (VRAM, VDP, PSG), del estado que
 # guarda omsx_arranque.tcl: es lo que el cartucho tiene que reproducir.
@@ -423,6 +429,59 @@ verifica_vista: war_musica.rom work/war_sin_vista.rom
 	@cat work/vista_nueva/coteja_vista.log
 	python3 tools/coteja_vista.py work/vista_nueva work/vista_ref work/vista_png --plan work/musica/plan.json --work work --roms war_musica.rom work/war_sin_vista.rom --encendida work/vista_encendida
 
+# EL MAPA GENERAL Y EL GUANTE. Los dos cambios que se ven en la otra pantalla:
+# el lienzo ya dibujado -que la ROM descomprime en vez de recorrer 23.500
+# casillas- y el guante, que era un sprite por software estampado en ese mismo
+# lienzo y ahora son dos sprites de verdad.
+#
+# Las dos ROMs se llevan a los mismos instantes del bucle de partida (contados
+# por VUELTAS, que van a distinta velocidad) y se vuelca el lienzo, la VRAM
+# entera y el estado del guante. tools/coteja_mapa.py exige TRES cosas: que el
+# lienzo de la vieja sea el que dibuja tools/mapa_general.py, que el que
+# descomprime la nueva sea el mismo byte a byte, y que lo que se ve en pantalla
+# -compuesto como lo compone el VDP, sprites incluidos- sea identico pixel a
+# pixel. De paso comprueba que la VRAM de cada una es su lienzo subido, que es
+# lo que cazaria un byte perdido por el VDP.
+#
+# El corte es 0x7F5A y no 0x7F57: ahi la vieja ya ha subido su recuadro y la
+# nueva ya ha puesto sus sprites, asi que las dos se miran en el mismo punto.
+.PHONY: verifica_mapa verifica_mapa_parche
+verifica_mapa: war_musica.rom work/war_sin_vista.rom
+	@cmp -s war_musica.rom work/war_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
+	@rm -rf work/lienzo_ref work/lienzo_nuevo work/lienzo_png
+	WAR_OUT="$(abspath work/lienzo_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_sin_vista.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
+	WAR_OUT="$(abspath work/lienzo_nuevo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
+	@echo "ANTES, recorriendo las casillas ($(MAQUINA)):"
+	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzo_ref/lienzo.log
+	@echo "DESPUES, descomprimiendo el lienzo:"
+	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzo_nuevo/lienzo.log
+	python3 tools/coteja_mapa.py work/lienzo_nuevo work/lienzo_ref work/lienzo_png --plan work/musica/plan.json --work work
+
+# ¿CAMBIA EL TERRENO MIENTRAS SE JUEGA? Es lo que sostiene que el mapa pueda
+# viajar dibujado. Se reproduce la partida grabada de Araubi -sobre la CINTA,
+# que la pregunta es del juego y no del cartucho-, se vuelca el mapa al empezar
+# y al acabar, y se comparan los nibbles bajos, que es lo unico que se dibuja.
+# El log dice ademas quien escribe en el mapa mientras se juega.
+.PHONY: verifica_terreno
+verifica_terreno: work/replay/war_replay.omr
+	@rm -rf work/terreno_quieto
+	WAR_REPLAY="$(abspath work/replay/war_replay.omr)" WAR_OUT="$(abspath work/terreno_quieto)" 	  $(OPENMSX) -machine $(MAQUINA) -script tools/omsx_terreno_quieto.tcl
+	@grep -v loadreplay work/terreno_quieto/terreno_quieto.log
+	python3 tools/coteja_terreno.py work/terreno_quieto work
+
+work/replay/war_replay.omr: WarInMiddleEarth.omr war.tsx tools/prepara_replay.py
+	@mkdir -p work/replay
+	python3 tools/prepara_replay.py WarInMiddleEarth.omr war.tsx $@
+
+# Lo mismo con la cinta PARCHEADA, que es la que se juega.
+verifica_mapa_parche: war_parche_musica.rom work/war_parche_sin_vista.rom
+	@cmp -s war_parche_musica.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva"; exit 1; } || true
+	@rm -rf work/lienzop_ref work/lienzop_nuevo work/lienzop_png
+	WAR_OUT="$(abspath work/lienzop_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_parche_sin_vista.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
+	WAR_OUT="$(abspath work/lienzop_nuevo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
+	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzop_ref/lienzo.log work/lienzop_nuevo/lienzo.log
+	python3 tools/coteja_mapa.py work/lienzop_nuevo work/lienzop_ref work/lienzop_png --plan work/parche_musica/plan.json --work work/cuerpos_parche
+
 # Y LA MEDIDA: ciclos por vuelta de la vista y vueltas por segundo, antes y
 # despues, con la misma sonda. Un numero, no una impresion.
 mide_vista: war_musica.rom work/war_sin_vista.rom
@@ -439,7 +498,7 @@ mide_vista: war_musica.rom work/war_sin_vista.rom
 # parpadea el cursor- y MOVIENDO el cursor -cambia el trozo entero-. Y el cotejo
 # por pixel de la de sombra contra la referencia, que ahorrar no vale si pinta
 # otra cosa.
-work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png
+work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista-sombra --salidas work/sombra
 
 .PHONY: mide_sombra

@@ -57,6 +57,7 @@ BITMAPS = ("menu_r", "menu_ordenes", "mapa")
 PANTALLA = 0x5E00
 NOMBRES = slice(0x1800, 0x1B00)
 VISIBLE = slice(0x0000, 0x3800)  # patrones, nombres, sprites y colores: todo lo que se ve
+VISIBLE_RANGO = range(0x0000, 0x3800)
 SPRITES = 0x1B00
 SPRITES_PAT = 0x3800
 ORG_MEDIO = 0x5E00
@@ -351,12 +352,26 @@ def main(argv):
             d = diferencia(pn, pr, os.path.join(pngs, inst + "_DIFERENCIA.png"))
             if d:
                 falla("%s: las dos imagenes no son iguales: %d pixeles (ver %s_DIFERENCIA.png)" % (inst, d, inst))
-            if vram_n[VISIBLE] != vram_r[VISIBLE]:
-                primero = next(j for j in range(0x3800) if vram_n[j] != vram_r[j])
+            # Fuera de los atributos de sprite, identica byte a byte. Los
+            # atributos no se comparan byte a byte y con razon: la nueva deja
+            # ahi el guante del mapa APARCADO -Y = 209, con su patron y su
+            # color- y la vieja los 32 como los dejo el cargador. Los dos son
+            # invisibles, y eso es lo que se exige.
+            distintos = [j for j in range(len(VISIBLE_RANGO))
+                         if vram_n[VISIBLE][j] != vram_r[VISIBLE][j]
+                         and not (SPRITES <= VISIBLE_RANGO[j] < SPRITES + 128)]
+            if distintos:
+                primero = VISIBLE_RANGO[distintos[0]]
                 falla("%s: en modo bitmap la VRAM tiene que ser identica byte a byte; difiere desde 0x%04X"
                       % (inst, primero))
             else:
-                print("  %-13s bitmap: VRAM identica byte a byte, sprites escondidos incluidos" % inst)
+                print("  %-13s bitmap: VRAM identica byte a byte fuera de los atributos de sprite" % inst)
+            for cual, v in (("nueva", vram_n), ("vieja", vram_r)):
+                visibles = [n for n in range(32)
+                            if v[SPRITES + n * 4] != 209 and v[SPRITES + n * 4 + 3] & 0x0F]
+                if visibles:
+                    falla("%s: la ROM %s ensena los sprites %s en una pantalla de bitmap"
+                          % (inst, cual, visibles))
             if vram_n[NOMBRES] != identidad():
                 falla("%s: la ROM nueva no ha devuelto la tabla de nombres a la identidad" % inst)
             if vram_n[SPRITES:SPRITES + 8] != ESCONDIDOS:
@@ -394,8 +409,13 @@ def main(argv):
         if vram_n[SPRITES:SPRITES + 8] != esperados:
             falla("%s: los atributos de los sprites son %s y tenian que ser %s (celda %d,%d)"
                   % (inst, vram_n[SPRITES:SPRITES + 8].hex(), esperados.hex(), q["ci"], q["ri"]))
-        if vram_n[SPRITES + 8:SPRITES + 128] != b"".join(bytes([209, 0, n, 1]) for n in range(2, 32)):
-            falla("%s: los otros 30 sprites no estan como los dejo el cargador" % inst)
+        # Los otros 30 tienen que estar APARCADOS, no identicos a como los dejo
+        # el cargador: los sprites 2 y 3 son el guante del mapa general y llevan
+        # su patron y su color, aunque en la vista esten en Y = 209.
+        fuera = [n for n in range(2, 32)
+                 if vram_n[SPRITES + n * 4] != 209 or vram_n[SPRITES + n * 4 + 1] != 0]
+        if fuera:
+            falla("%s: los sprites %s no estan aparcados en Y = 209" % (inst, fuera))
         if vram_n[SPRITES_PAT:SPRITES_PAT + len(planos)] != planos:
             falla("%s: los patrones de los sprites no son los de cursor.png" % inst)
 

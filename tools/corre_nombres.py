@@ -145,6 +145,12 @@ class Z80(corre_finales.Z80):
             if self.z:
                 self.push(self.pc)
                 self.pc = destino
+        elif op == 0xC4:                                # call nz,nn
+            self.n()
+            destino = self.nn()
+            if not self.z:
+                self.push(self.pc)
+                self.pc = destino
         elif op == 0xD5:                                # push de
             self.n(); self.push(self.de)
         elif op == 0xD1:                                # pop de
@@ -361,11 +367,42 @@ def corre_vista(m, plan, pantalla, modo, sp=0x5BFF, vdp=None):
     return vdp, z
 
 
-def corre_guardian(m, plan, hl, modo, sp=0x5BFF):
+def guante_esperado(plan, col, fila):
+    """Los ocho bytes de GUANTE_AT con el guante en (col, fila) en pixeles: Y
+    una linea por encima de la fila -el VDP pinta el sprite por debajo de su
+    Y-, X, y el patron y el color de cada uno de los dos planos."""
+    g = plan["vista"]["guante"]
+    colores = g["planos_colores"]
+    y = (fila - 1) & 0xFF
+    return bytes([y, col, g["patron_a"], colores[0], y, col, g["patron_b"], colores[1]])
+
+
+def corre_guante(m, plan, col, fila, puesto=None, sp=0x5BFF, vdp=None):
+    """MI_GUANTE, como lo llama la primera linea del bucle de partida (0x7F57),
+    con la posicion del cursor del mapa en 0x6543/0x6544. Con `vdp` se sigue
+    sobre la VRAM de una llamada anterior, con la cuenta de escrituras a cero."""
+    g = plan["vista"]["guante"]
+    m.ram[g["col"]], m.ram[g["fila"]] = col, fila
+    if puesto is not None:
+        m.ram[g["puesto"]] = puesto
+    if vdp is None:
+        vdp = Vdp()
+    vdp.escritos, vdp.direcciones = 0, []
+    z = Z80(m, vdp, g["entrada"], sp)
+    z.push(CENTINELA)
+    z.corre()
+    return vdp, z
+
+
+def corre_guardian(m, plan, hl, modo, sp=0x5BFF, puesto=None):
     """VRAM_A_ESCRIBIR (0x044B), ya parcheado, como lo llama el juego: con la
-    direccion en HL. BC y DE llevan valores conocidos para ver si salen igual."""
+    direccion en HL. BC y DE llevan valores conocidos para ver si salen igual.
+    Con `puesto` se dice si el guante del mapa esta en la VRAM, que es lo que
+    decide si el guardian lo esconde."""
     v = plan["vista"]
     m.ram[v["modo"]] = modo
+    if puesto is not None:
+        m.ram[v["guante"]["puesto"]] = puesto
     vdp = Vdp()
     z = Z80(m, vdp, 0x044B, sp)
     z.hl, z.bc, z.de = hl, 0x1234, 0x5678
@@ -408,6 +445,22 @@ def main(argv):
               % (modo, vdp.escritos,
                  "OK" if bytes(vdp.vram[0x1800:0x1B00]) == bytes(range(256)) * 3 else "no",
                  m.ram[plan["vista"]["modo"]], vdp.direcciones[-1]))
+    # EL GUANTE: la primera vez sube los 64 bytes de patrones y los 8 de
+    # atributos; la segunda, solo los 8. Y el guardian lo esconde.
+    g = plan["vista"]["guante"]
+    m = monta(rom, plan, bajo, alto)
+    vdp, z = corre_guante(m, plan, col=0x50, fila=0x30)
+    primera = vdp.escritos
+    patrones_ok = bytes(vdp.vram[g["vram_patrones"]:g["vram_patrones"] + 64]) == bytes.fromhex(g["planos"])
+    vdp, z = corre_guante(m, plan, col=0x51, fila=0x31, vdp=vdp)
+    at = bytes(vdp.vram[g["vram_atributos"]:g["vram_atributos"] + 8])
+    print("MI_GUANTE: %d bytes la primera vez y %d la segunda; patrones %s, atributos %s"
+          % (primera, vdp.escritos, "OK" if patrones_ok else "MAL",
+             "OK" if at == guante_esperado(plan, 0x51, 0x31) else "MAL"))
+    vdp, z = corre_guardian(m, plan, 0x2345, 0, puesto=1)
+    at = bytes(vdp.vram[g["vram_atributos"]:g["vram_atributos"] + 8])
+    print("   y el guardian lo esconde: Y = %d y %d, puesto queda en %d"
+          % (at[0], at[4], m.ram[g["puesto"]]))
     return 0
 
 

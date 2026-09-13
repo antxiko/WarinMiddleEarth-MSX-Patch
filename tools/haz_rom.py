@@ -96,6 +96,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cursor                           # noqa: E402
+import guante                           # noqa: E402
+import mapa_general                     # noqa: E402
 import zx0                              # noqa: E402
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -237,6 +239,42 @@ MANDO_EN_LA_ELECCION_ORIG = bytes.fromhex("cd6d06")
 PASO_DEL_CURSOR = 10
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
+#
+# Y EL GUANTE DEL MAPA GENERAL, que va con lo mismo: otros dos sitios.
+#
+#   0x7F57, la primera linea de BUCLE_DE_PARTIDA, bloque medio: el
+#     `call REFRESCA_EL_CURSOR` (0x07C3) -que subia un recuadro de 4x3 celdas a
+#     la VRAM en CADA vuelta, 4.135 ciclos- pasa a llamar a MI_GUANTE, que sube
+#     ocho bytes de atributos de sprite.
+#   0x6575, dentro de MUEVE_EL_CURSOR: el `push hl` con el que empieza el
+#     estampado del sprite por software pasa a ser un `ret`. Lo de antes se
+#     queda -la cuenta de la direccion de pantalla, que 0x7F8B lee de 0x64DA
+#     para saber si el disparo cae en un panel-; lo que se va es meter el
+#     dibujo en el lienzo, guardar los 24 bytes de fondo en 0x62FF y armar el
+#     borrado de 0x64D9, que asi se queda en `ret` para siempre.
+GUANTE_COL = 0x6543         # la columna del cursor del mapa, en pixeles
+GUANTE_FILA = 0x6544        # y su fila: las dos las mueve MUEVE_EL_CURSOR (0x650D)
+GUANTE_PAT_A = 24           # los dos planos, detras de los seis del cursor de la vista
+GUANTE_PAT_B = 28
+REFRESCA_EL_GUANTE = 0x7F57
+REFRESCA_EL_GUANTE_ORIG = bytes.fromhex("cdc307")
+ESTAMPA_EL_GUANTE = 0x6575
+ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("e5")
+GUANTE_PNG = os.path.join(SRC, "guante.png")
+
+# EL MAPA GENERAL YA DIBUJADO (--mapa). DIBUJA_EL_MAPA (0x8166) tarda 3,9
+# segundos en recorrer 23.500 casillas estampando pixeles, y lo hace cada vez
+# que se vuelve al mapa. El dibujo no cambia nunca -solo depende del nibble
+# bajo del byte de mapa; las unidades son ATRIBUTOS-, asi que va ya dibujado en
+# la ROM, comprimido con ZX0, y la rutina de finales.asm lo descomprime en
+# 0x4000. Quien lo dibuja al montar la ROM es tools/mapa_general.py, que
+# transcribe las rutinas del juego y se coteja byte a byte con el emulador.
+#
+# El parche son los tres bytes del `ld hl,04000h` de 0x816B -el del `ldir` que
+# ponia el lienzo a cero, que sobra porque BORRA_PANTALLA lo vuelve a borrar
+# dos instrucciones mas alla-, por un `jp MAPA`.
+DIBUJA_EL_MAPA = 0x816B
+DIBUJA_EL_MAPA_ORIG = bytes.fromhex("210040")
 
 
 class Plan:
@@ -327,6 +365,7 @@ def main(argv):
     comprimir = False
     finales_rom = False
     vista = False
+    mapa = False
     sombra = False
     salidas_pedidas = None
     i = 3
@@ -343,6 +382,8 @@ def main(argv):
             finales_rom = True; i += 1
         elif argv[i] == "--vista":
             vista = True; i += 1
+        elif argv[i] == "--mapa":
+            mapa = True; i += 1
         elif argv[i] == "--vista-sombra":
             # La misma vista pero con la sombra de 768 B: solo se suben las
             # filas que cambian. Es la variante que se monta para MEDIR.
@@ -361,6 +402,10 @@ def main(argv):
     # Y la vista vive en esa misma RAM liberada, detras de los bufers.
     assert not vista or comprimir, "--vista necesita --comprime"
     assert not vista or musica, "--vista necesita --musica: el contador de cuadros del paso del cursor vive en el puente"
+    # Y el mapa ya dibujado viaja comprimido y lo descomprime la rutina de las
+    # finales, que es donde estan ZX0 y el cruce de banco.
+    assert not mapa or comprimir, "--mapa necesita --comprime: el lienzo viaja con ZX0"
+    assert not mapa or finales_rom, "--mapa necesita --finales-rom: la rutina que lo descomprime vive ahi"
 
     # Los cuerpos se leen de `work`, pero lo que se GENERA -el plan, el stub
     # ensamblado, los .sym- va aparte cuando hay musica: las dos ROMs salen de
@@ -437,6 +482,12 @@ def main(argv):
          que="bloque medio: EL JUEGO (menu, mapa, batalla, textos)")
     mete("alto", alto, crudo=len(alto), zx0=False,
          que="bloque alto: graficos, mapa comprimido y tablas")
+    if mapa:
+        # El lienzo del mapa general, dibujado aqui con las rutinas del juego
+        # transcritas. Va el ULTIMO de los datos: asi anadirlo no mueve ni un
+        # byte de lo demas.
+        mete_z("mapa", mapa_general.dibuja_el_mapa(work, medio=medio, alto=alto),
+               "el mapa general ya dibujado: los 6.144 bytes del lienzo de 0x4000")
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
     # ---------------------------------------------------------------- musica
@@ -495,7 +546,14 @@ def main(argv):
     if finales_rom:
         equs = [("FINALES_ORG", finales_ram),
                 ("BANCO_VUELVE", banco_musica if musica else 0),
-                ("BUFER_ZX0", BUFER_Z)]
+                ("BUFER_ZX0", BUFER_Z),
+                ("HAY_MAPA", 1 if mapa else 0)]
+        if mapa:
+            d = disposicion["mapa"]
+            assert d.get("zx0"), "el lienzo del mapa no esta comprimido"
+            equs += [("M_BANCO", d["rom"] // TAM_BANCO),
+                     ("M_SRC", VENTANA_8000 + d["rom"] % TAM_BANCO),
+                     ("M_TAM", d["bytes"])]
         for n, (dir_, _tam, _que) in enumerate(FINALES):
             d = disposicion["final%d" % n]
             assert d.get("zx0"), "la pantalla final %d no esta comprimida" % n
@@ -521,6 +579,7 @@ def main(argv):
     # cargador escribe ahi, y tiene que acabar antes del bloque medio.
     bloque_nombres = None
     cursor_planos = None
+    guante_planos = None
     if vista:
         # Los dibujos del cursor, del PNG al include que nombres.asm mete.
         assert os.path.exists(CURSOR_PNG), \
@@ -528,6 +587,12 @@ def main(argv):
         cursor_planos = cursor.escribe_inc(CURSOR_PNG, os.path.join(salidas, "cursor.inc"))
         for aviso in cursor_planos[2]:
             print("cursor.png:" + aviso)
+        # Y el guante del mapa general, igual.
+        assert os.path.exists(GUANTE_PNG), \
+            "falta %s: `python3 tools/guante.py saca work %s` lo saca del dibujo de la cinta" % (GUANTE_PNG, GUANTE_PNG)
+        guante_planos = guante.escribe_inc(GUANTE_PNG, os.path.join(salidas, "guante.inc"))
+        for aviso in guante_planos[2]:
+            print("guante.png:" + aviso)
         bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
                                os.path.join(salidas, "nombres.bin"),
                                os.path.join(salidas, "nombres.sym"),
@@ -732,6 +797,14 @@ def main(argv):
             PINTA_LA_FINAL, PINTA_LA_FINAL_ORIG,
             bytes([0xCD]) + sim_finales["FINALES"].to_bytes(2, "little") + bytes(5),
             "los cuatro finales llaman a la rutina en vez de copiar de la RAM")
+    parche_mapa = None
+    if mapa:
+        # El `ld hl,04000h` del `ldir` que ponia el lienzo a cero, por un `jp`
+        # a la rutina: descomprime el mapa ya dibujado y sigue en 0x81C1.
+        parche_mapa = parchea(
+            DIBUJA_EL_MAPA, DIBUJA_EL_MAPA_ORIG,
+            bytes([0xC3]) + sim_finales["MAPA"].to_bytes(2, "little"),
+            "DIBUJA_EL_MAPA descomprime el lienzo de la ROM en vez de recorrer 23.500 casillas")
     parches_vista = []
     if vista:
         # El `ld hl,04000h` con el que arranca 0x75A5, por un `jp` a la rutina:
@@ -767,6 +840,17 @@ def main(argv):
             MANDO_EN_LA_ELECCION, MANDO_EN_LA_ELECCION_ORIG,
             bytes([0xCD]) + sim_nombres["MI_ELECCION"].to_bytes(2, "little"),
             "en el menu de la casilla, arriba y abajo cambian de unidad por toque (MI_ELECCION)"))
+        # EL GUANTE DEL MAPA GENERAL. El `call REFRESCA_EL_CURSOR` de la primera
+        # linea del bucle de partida, por `call MI_GUANTE`.
+        parches_vista.append(parchea(
+            REFRESCA_EL_GUANTE, REFRESCA_EL_GUANTE_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_GUANTE"].to_bytes(2, "little"),
+            "el bucle de partida sube ocho bytes de sprite en vez de un recuadro de 4x3 celdas"))
+        # Y el `push hl` con el que empezaba el estampado del guante en el
+        # lienzo, por un `ret`: el guante ya no se dibuja, se pone.
+        parches_vista.append(parchea(
+            ESTAMPA_EL_GUANTE, ESTAMPA_EL_GUANTE_ORIG, bytes([0xC9]),
+            "MUEVE_EL_CURSOR deja de estampar el guante por software: ahora son dos sprites"))
     with open(salida, "wb") as f:
         f.write(rom)
 
@@ -837,7 +921,34 @@ def main(argv):
                 planos=cursor_planos[0].hex(), planos_colores=list(cursor_planos[1]),
                 vram_atributos=0x1B00, vram_patrones=0x3800, r1=vdp_regs[1],
                 ventana=dict(cursor_col=7, cursor_fila=5),
-                modos={"0x10": 0, "0x12": 1, "0x17": 2}))
+                modos={"0x10": 0, "0x12": 1, "0x17": 2}),
+            # Y EL GUANTE del mapa general: los dos sprites que sustituyen al
+            # sprite por software, con el dibujo que sale de guante.png.
+            guante=dict(
+                entrada=sim_nombres["MI_GUANTE"],
+                pon=sim_nombres["PON_EL_GUANTE"],
+                esconde=sim_nombres["ESCONDE_EL_GUANTE"],
+                puesto=sim_nombres["GUANTE_PUESTO"],
+                atributos=sim_nombres["GUANTE_AT"],
+                escondido=sim_nombres["GUANTE_ESCONDIDO"],
+                patrones=sim_nombres["GUANTE_PATRONES"],
+                col=GUANTE_COL, fila=GUANTE_FILA,
+                sprites=[2, 3], patron_a=GUANTE_PAT_A, patron_b=GUANTE_PAT_B,
+                vram_atributos=0x1B08, vram_patrones=0x3800 + 192,
+                png=os.path.relpath(GUANTE_PNG, RAIZ).replace(os.sep, "/"),
+                planos=guante_planos[0].hex(), planos_colores=list(guante_planos[1]),
+                parches=[q for q in parches_vista
+                         if q["dir"] in (REFRESCA_EL_GUANTE, ESTAMPA_EL_GUANTE)]))
+    if mapa:
+        # El mapa ya dibujado: donde viaja, cuanto ocupa y el parche. La
+        # entrada es la de finales.asm, que es quien lo descomprime.
+        d = disposicion["mapa"]
+        resumen["mapa"] = dict(
+            rom=d["rom"], bytes=d["bytes"], crudo=d["crudo"], zx0=d["zx0"],
+            banco=d["rom"] // TAM_BANCO, src=VENTANA_8000 + d["rom"] % TAM_BANCO,
+            destino=0x4000, entrada=sim_finales["MAPA"],
+            trae=sim_finales["TRAE_Y_DESCOMPRIME"],
+            sigue=0x81C1, parche=parche_mapa)
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
         # la rutina, donde corre, de donde lee cada pantalla y el parche que la
@@ -880,7 +991,9 @@ def main(argv):
                       "TABLA_IDENTIDAD", "MODO_NOMBRES", "NOMBRES_FIN",
                       "MI_PINTA", "CACHE", "CACHE_VALIDA", "POSICION_H", "POSICION_L",
                       "ULTIMO_MODO", "ATRIBUTOS", "CURSOR_PATRONES", "MI_MUEVE", "ULTIMO_PASO",
-                      "MI_ELECCION", "ULTIMA_ELECCION"):
+                      "MI_ELECCION", "ULTIMA_ELECCION",
+                      "MI_GUANTE", "PON_EL_GUANTE", "ESCONDE_EL_GUANTE",
+                      "GUANTE_PUESTO", "GUANTE_AT", "GUANTE_PATRONES"):
                 f.write("set ::%-22s 0x%04X\n" % (k, sim_nombres[k]))
 
     print("%s: %d bytes, %s" % (salida, TAM_ROM, resumen["mapper"]))
@@ -910,6 +1023,12 @@ def main(argv):
         print("     0x%04X del bloque medio: %s -> %s, %s"
               % (q["dir"], q["orig"], q["nuevo"], q["que"]))
         print("     RAM liberada: %d bytes" % sum(q["crudo"] for q in f["pantallas"]))
+    if mapa:
+        q = resumen["mapa"]
+        print("  el mapa general va ya dibujado: %d B crudos -> %d con ZX0, desde el banco %d, 0x%04X"
+              % (q["crudo"], q["bytes"], q["banco"], q["src"]))
+        print("     0x%04X del bloque medio: %s -> %s, %s"
+              % (q["parche"]["dir"], q["parche"]["orig"], q["parche"]["nuevo"], q["parche"]["que"]))
     if vista:
         v = resumen["vista"]
         print("  la vista de cerca va por tabla de nombres: %d B de rutina de ROM 0x%05X a RAM 0x%04X"
@@ -919,6 +1038,9 @@ def main(argv):
         c = v["cursor"]
         print("     el cursor como sprite: MI_PINTA 0x%04X, cache de %d B en 0x%04X, dibujos de %s; R1 = 0x%02X"
               % (c["pinta"], c["cache_bytes"], c["cache"], c["png"], c["r1"]))
+        g = v["guante"]
+        print("     el guante del mapa, sprites %d y %d: MI_GUANTE 0x%04X, dibujos de %s"
+              % (g["sprites"][0], g["sprites"][1], g["entrada"], g["png"]))
         for q in v["parches"]:
             print("     0x%04X del bloque %s: %s -> %s, %s"
                   % (q["dir"], q["bloque"], q["orig"], q["nuevo"], q["que"]))

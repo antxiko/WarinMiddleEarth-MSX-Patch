@@ -165,6 +165,27 @@ cotejada contra la de antes (`make verifica_vista_parche`). Una cosa que la
 vuelta rapida rompio y esta arreglada: en el menu que pasa de una unidad a
 otra de la misma casilla, arriba y abajo van por toque, no mientras se
 mantiene la tecla.
+
+Y **el mapa general ya no se dibuja: se descomprime**. Recorrer sus 23.500
+casillas estampando pixeles costaba 3,9 segundos, y se pagaban cada vez que se
+volvia de la vista de cerca. Pero ese dibujo no cambia nunca -depende solo del
+nibble bajo del byte de mapa, y las unidades son atributos, no pixeles-, asi
+que el cartucho lo lleva ya dibujado, comprimido con ZX0 (6.144 bytes en
+3.034), y lo descomprime en su sitio: **de 3,9 a 0,7 segundos**. Lo dibuja
+`tools/mapa_general.py`, que transcribe las rutinas del juego y se coteja byte
+a byte con el emulador; que el terreno no cambia mientras se juega esta medido
+sobre la partida grabada de Araubi (`make verifica_terreno`), no supuesto. De
+paso, ese cotejo destapo una errata del juego de 1988: un `inc b` pisa el flag
+que elige el dibujo del terreno, y por eso uno de los cinco dibujos de 8x8 no
+se usa nunca.
+
+Y **el guante del mapa es un sprite de verdad**. Era un sprite por software
+estampado en el lienzo, con sus 24 bytes de fondo guardados y un recuadro de
+4x3 celdas subido a la VRAM en cada vuelta; ahora son dos sprites de hardware,
+editables en `src/cartucho/guante.png`. La vuelta del bucle de partida pasa de
+51,9 a 59,5 por segundo, y lo que se ve es identico pixel a pixel
+(`make verifica_mapa`).
+
 La ROM que se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 

@@ -182,14 +182,16 @@ def _mas_parecido(rgb):
     return mejor
 
 
-def lee_png(ruta):
-    """El PNG -> (indices 16x48, avisos). Transparente es el pixel con alfa a
-    cero o el del color del fondo; cualquier otro, su color del MSX."""
+def lee_png(ruta, ancho_png=ANCHO_PNG, alto_png=ALTO_PNG, que="tres de 16x16 seguidos"):
+    """El PNG -> (indices alto_png x ancho_png, avisos). Transparente es el
+    pixel con alfa a cero o el del color del fondo; cualquier otro, su color
+    del MSX. El tamano se pasa porque de aqui tira tambien tools/guante.py,
+    que solo lleva un sprite."""
     ancho, alto, filas, opacos = lienzos.lee_png(ruta)
-    if (ancho, alto) != (ANCHO_PNG, ALTO_PNG):
-        raise ErrorDeCursor("el cursor tiene que medir %dx%d (tres de 16x16 seguidos) y mide %dx%d. "
+    if (ancho, alto) != (ancho_png, alto_png):
+        raise ErrorDeCursor("el dibujo tiene que medir %dx%d (%s) y mide %dx%d. "
                             "No lo escales: un pixel del PNG es un pixel del juego."
-                            % (ANCHO_PNG, ALTO_PNG, ancho, alto))
+                            % (ancho_png, alto_png, que, ancho, alto))
     indices, sustituidos = [], {}
     for y in range(alto):
         fila = []

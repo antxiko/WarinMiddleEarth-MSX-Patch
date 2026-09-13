@@ -30,7 +30,14 @@ F 0x8030 w1
 # --- textos y datos del juego -------------------------------------------------
 D 0x6AF5 0x6DE7 textos_y_tablas_del_anillo Textos ("El Anillo se ha perdido.") y tablas (0x6B13, 0x6B34, 0x6B3D, 0x6B46, 0x6BE4 los apuntan; formato pendiente)
 D 0x77A0 0x7E4F textos_y_tablas_de_batalla Textos de batalla ("Comienza la Batalla") y tablas (0x7554, 0x76C1, 0x76DE, 0x7702, 0x76DB, 0x76BE las apuntan; formato pendiente)
-D 0x83F8 0x8572 textos_de_los_paneles Textos y marcos de los paneles: "Volver/Cargar/Salvar", "Pulsa Fuego", File/Memo/Time, numeros romanos I..VII, "El Anillo corrompe al que lo usa", "Ningun mensaje" (los leen 0x7E81-0x7EA0 y 0x8280)
+D 0x83F8 0x83FC rellenos_del_mapa Los cuatro rellenos de ELIGE_EL_RELLENO (0x7E7A), que los mete en el operando de 0x7E75: 0x00, 0xFF, 0xAA y 0x55
+F 0x83F8 4
+D 0x83FC 0x8400 tramas_de_pinta_el_punto Las cuatro que PINTA_EL_PUNTO (0x7E86) indexa con los dos bits de abajo de L ... y se pisa antes de usarlas (0x7E92): son datos MUERTOS
+F 0x83FC 4
+D 0x8400 0x846F textos_de_los_paneles Textos y marcos: "Volver/Cargar/Salvar", "Pulsa Fuego" y los cuatro espacios de 0x846A con los que 0x820A borra el rotulo
+D 0x846F 0x8497 dibujos_del_terreno_alto Cinco dibujos de 8x8 con los que PINTA_TERRENO_ALTO (0x80BD) recorta sus cinco pixeles dobles: 0x846F el tipo 13, 0x8477 los tipos 10, 14 y 15, 0x847F el 11, 0x8487 el 12 y 0x848F NINGUNO (ver la errata del Z pisado en 0x80C4)
+F 0x846F 8
+D 0x8497 0x8572 textos_de_los_paneles_2 File/Memo/Time, numeros romanos I..VII, "El Anillo corrompe al que lo usa", "Ningun mensaje" (los leen 0x8280 y 0x81C9)
 D 0x93D9 0x93E5 punteros_de_los_mensajes Seis punteros a los mensajes de abajo (0x9180, 0x9189, 0x925B)
 F 0x93D9 w1
 D 0x93E5 0x94B7 mensajes_de_abajo Mensajes: "La Batalla ha comenzado/finalizado", "Elige el enemigo a atacar", "No puedes atacar a un amigo", "No pertenece a tu Alianza", "Nuevo destino elegido", "Aqui no hay nadie"
@@ -1293,13 +1300,13 @@ C 0x80AF Coordenadas por dos, igual que en 0x8071
 C 0x80B6 Un solo pixel y se acabo
 L 0x80BB SALE_SIN_PINTAR  Recupera A y vuelve
 B 0x80BD Los tipos 10..15 del mapa: en vez de trama de 2 bits llevan un dibujo de 8x8
-L 0x80BD PINTA_TERRENO_ALTO  A = tipo menos 10; escoge uno de los cinco dibujos de 8 bytes de 0x846F
+L 0x80BD PINTA_TERRENO_ALTO  A = tipo menos 10; escoge un dibujo de 8 bytes y pinta una cruz de cinco pixeles dobles
 C 0x80BF De la fila 0x61 para abajo no se pinta
-C 0x80C4 A = 0: el dibujo de 0x848F
-C 0x80CA A = 1: el de 0x847F
-C 0x80D0 A = 2: el de 0x8487
-C 0x80D6 A = 3: el de 0x846F
-C 0x80DB Y los demas, el de 0x8477
+C 0x80C4 Este jr z NO prueba el tipo: el `inc b` de 0x818F ya piso el Z del `sub 00ah`, y B+1 nunca vale cero. 0x848F es dibujo MUERTO y el tipo 10 acaba en 0x80DB
+C 0x80CA A = 1 (tipo 11): el de 0x847F. De aqui en adelante el Z si es el del dec a de al lado, asi que 11, 12 y 13 aciertan
+C 0x80D0 A = 2 (tipo 12): el de 0x8487
+C 0x80D6 A = 3 (tipo 13): el de 0x846F
+C 0x80DB Y los demas, el de 0x8477: los tipos 14 y 15 ... y tambien el 10, por lo del Z pisado
 L 0x80DE PINTA_CON_DIBUJO  Mete el dibujo elegido en los operandos de 0x7E96/0x7E99 y pinta cinco pixeles en cruz
 C 0x80DF 0x7E97 es el operando del add a,nn de 0x7E96: el byte bajo del dibujo
 C 0x80E3 0x7E9A el del adc a,nn de 0x7E99: el byte alto
@@ -1365,7 +1372,7 @@ C 0x8186 0x5D = 93 filas por columna
 L 0x8188 CASILLA_DE_TERRENO_ALTO  Pinta la casilla si su nibble bajo es 10 o mas
 C 0x818B El nibble bajo del byte del mapa es el tipo de terreno
 C 0x818D Menos 10: sin acarreo son los tipos 10..15
-C 0x818F B es la fila, y se pasa una mas
+C 0x818F B es la fila, y se pasa una mas. OJO: `inc b` PISA EL FLAG Z, y de eso vive la errata de 0x80C4; el acarreo del `sub`, que es lo que mira el call, si sobrevive
 C 0x8194 Atras una casilla: dentro de la columna se va hacia abajo
 C 0x8198 -9: las 93 filas mas esto son los 0x66 bytes de una columna
 C 0x81A0 Segunda pasada, ahora los tipos 1..9, empezando dos casillas mas alla

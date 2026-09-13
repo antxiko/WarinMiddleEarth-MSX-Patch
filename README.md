@@ -164,8 +164,27 @@ original. Measured on an NMS 8250: from 3.2 to 43.2 loops per second at rest,
 with the cursor at five cells per second and the picture checked against the
 old one (`make verifica_vista_parche`). One thing the faster loop broke and is
 fixed: in the menu that cycles through the units sharing a cell, up and down
-act on the key press, not while the key is held. The ROM to
-play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
+act on the key press, not while the key is held.
+
+And **the overview map is no longer drawn: it is decompressed**. Walking its
+23,500 cells stamping pixels took 3.9 seconds, and you paid it every time you
+came back from the close-up view. But that drawing never changes -it depends
+only on the low nibble of the map byte, and units are attributes, not pixels-
+so the cartridge carries it ready-made, compressed with ZX0 (6,144 bytes into
+3,034), and unpacks it in place: **from 3.9 to 0.7 seconds**. It is drawn by
+`tools/mapa_general.py`, a transcription of the game's own routines checked
+byte for byte against the emulator; that the terrain does not change while you
+play is measured on Araubi's recorded game (`make verifica_terreno`), not
+assumed. That check also turned up a 1988 bug: an `inc b` clobbers the flag
+that picks the terrain drawing, so one of the five 8x8 drawings is never used.
+
+And **the map's pointing hand is a real sprite**. It used to be a software
+sprite stamped into the canvas, with its 24 background bytes saved and a 4x3
+cell box pushed to VRAM on every loop; now it is two hardware sprites, editable
+in `src/cartucho/guante.png`. The game loop goes from 51.9 to 59.5 loops per
+second, and what you see is identical pixel for pixel (`make verifica_mapa`).
+
+The ROM to play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 
 ## What is still missing
