@@ -7,10 +7,9 @@
 # hay en la ventana:
 #
 #   entrada.png      recien entrado en la vista
-#   movido.png       dos casillas a la derecha y una abajo: el cursor se ha
-#                    movido dentro de la ventana, que sigue quieta
-#   recentrado.png   cuatro mas a la derecha: se salio del margen y el trozo
-#                    se ha recentrado
+#   movido.png       dos casillas a la derecha y una abajo: el mapa se ha
+#                    movido bajo el cursor, que sigue en el centro
+#   lejos.png        cuatro mas a la derecha
 #
 # Las teclas van por vueltas del bucle (breakpoint en 0x721F) como en la
 # sonda del cotejo, porque con el acelerador puesto una pulsacion de reloj de
@@ -70,7 +69,7 @@ debug set_bp 0x721F {} {
         switch $::n {
             1 - 3 - 5 - 7 { abajo $::DERECHA }
             2 - 4 - 6 - 8 { arriba $::DERECHA }
-            10 { set ::paso 0; after realtime 3 { captura recentrado; say "FIN"; exit 0 } }
+            10 { set ::paso 0; after realtime 3 { captura lejos; say "FIN"; exit 0 } }
         }
     }
 }

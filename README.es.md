@@ -158,10 +158,14 @@ subir 12.288 bytes a la VRAM en cada vuelta, sube los 768 de la tabla de
 nombres, porque el byte de cada celda ya es el indice de patron; y el trozo de
 mapa solo se repinta cuando el cursor -dos sprites de 16x16, editables en
 `src/cartucho/cursor.png` con `tools/editor_cursor.html`, que se abre en el
-navegador- se acerca al borde. Medido en un NMS 8250: de 3,2 a
-43,1 vueltas por segundo, con el cursor a cinco casillas por segundo y la
-imagen cotejada contra la de antes (`make verifica_vista_parche`). La ROM que
-se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta
+navegador- se mueve: el cursor se queda en el centro y lo que se mueve es el
+mapa, como en el original. Medido en un NMS 8250: de 3,2 a 43,2 vueltas por
+segundo en reposo, con el cursor a cinco casillas por segundo y la imagen
+cotejada contra la de antes (`make verifica_vista_parche`). Una cosa que la
+vuelta rapida rompio y esta arreglada: en el menu que pasa de una unidad a
+otra de la misma casilla, arriba y abajo van por toque, no mientras se
+mantiene la tecla.
+La ROM que se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 
 ## Lo que falta

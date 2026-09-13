@@ -7,11 +7,11 @@ pintado, antes de las ventanas) con la posicion del cursor, el modo y si se
 ejecuto DIBUJA_EL_TROZO_DE_MAPA; y en los instantes elegidos, el estado
 entero (VRAM, registros, RAM).
 
-La ROM nueva ya no ensena lo mismo que la vieja en cuanto el cursor se mueve:
-la ventana del trozo se queda quieta hasta que el cursor se acerca al borde.
-Asi que aqui va un MODELO de esa regla (la misma que MI_PINTA: margen 3 en
-una ventana de 16 x 13 con el cursor en la celda (7, 5) al recentrar; se
-repinta al cambiar de modo y tras un menu) y lo que se exige es:
+La ROM nueva no repinta el trozo en todas las vueltas: solo cuando el cursor
+se mueve o cambia el modo, y en la primera vuelta tras un menu (el guardian
+invalida la cache). Asi que aqui va un MODELO de esa regla (la misma que
+MI_PINTA: el cursor siempre en la celda (7, 5), y el trozo de la cache mientras
+la posicion y el modo no cambien) y lo que se exige es:
 
   1. que las dos ROMs siguieran el mismo camino: la misma posicion y el
      mismo modo en cada vuelta;
@@ -26,8 +26,8 @@ repinta al cambiar de modo y tras un menu) y lo que se exige es:
      caracteres, los dos sprites del cursor llevan la Y, la X, el patron y el
      color que tocan, sus patrones son los de cursor.png y R1 lleva el
      tamano 16x16;
-  5. pixel a pixel, donde el encuadre coincide (recien entrado, tras un menu
-     y tras cada recentrado): lo que ensena la nueva SIN el sprite es lo que
+  5. pixel a pixel, en todos los instantes (el encuadre es siempre el mismo,
+     que el cursor no se mueve del centro): lo que ensena la nueva SIN el sprite es lo que
      ensena la vieja fuera del cursor; con el sprite, es la vieja con el
      cursor de cursor.png encima; y si cursor.png es el de fabrica, IDENTICAS
      cuando la vieja tiene el cursor encendido;
@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cursor                                               # noqa: E402
 import render_vram                                          # noqa: E402
 
-VISTAS = tuple("vista_" + c for c in "abckdefghij")
+VISTAS = tuple("vista_" + c for c in "abckdefghijlmno")
 BITMAPS = ("menu_r", "menu_ordenes", "mapa")
 PANTALLA = 0x5E00
 NOMBRES = slice(0x1800, 0x1B00)
@@ -89,14 +89,16 @@ def lee_vueltas(d):
             if p[0] == "vuelta":
                 s = dict(tipo="vuelta", k=int(p[1]), hl=int(p[3], 16), modo=int(p[5], 16),
                          dibujado=int(p[7]))
-                if "esquina" in p:
-                    s["esquina"] = int(p[p.index("esquina") + 1], 16)
+                if "posicion" in p:
+                    s["posicion"] = int(p[p.index("posicion") + 1], 16)
                     s["valida"] = int(p[p.index("valida") + 1])
                 sucesos.append(s)
             elif p[0] == "estado":
                 sucesos.append(dict(tipo="estado", nombre=p[1], k=int(p[2])))
             elif p[0] == "menu":
                 sucesos.append(dict(tipo="menu"))
+            elif p[0] == "eleccion":
+                sucesos.append(dict(tipo="eleccion", toques=int(p[2]), pulsada=int(p[4]), cambios=int(p[6])))
     return sucesos
 
 
@@ -117,10 +119,12 @@ def identidad():
 
 
 def modelo(sucesos, ventana):
-    """Por vuelta: la esquina que la nueva tiene que llevar, si repinta, en
-    que vuelta repinto por ultima vez y donde cae el cursor en la ventana."""
-    ancho, alto = ventana["ancho"], ventana["alto"]
-    ccol, cfila, margen = ventana["cursor_col"], ventana["cursor_fila"], ventana["margen"]
+    """Por vuelta: la posicion con la que la nueva tiene que llevar pintado el
+    trozo, si repinta, en que vuelta repinto por ultima vez y donde cae el
+    cursor (siempre en el centro). La nueva repinta cuando cambia la posicion
+    o el modo y en la primera vuelta tras un menu (el guardian invalida la
+    cache); el resto lo saca de la cache."""
+    ccol, cfila = ventana["cursor_col"], ventana["cursor_fila"]
     valida, h0, l0, modo0, k0 = False, None, None, None, None
     por_vuelta = {}
     for s in sucesos:
@@ -128,14 +132,11 @@ def modelo(sucesos, ventana):
             valida = False
         elif s["tipo"] == "vuelta":
             h, l = (s["hl"] >> 8) & 0x7F, s["hl"] & 0x7F
-            repinta = (not valida or s["modo"] != modo0
-                       or not (margen <= l - l0 + ccol <= ancho - 1 - margen)
-                       or not (margen <= h - h0 + cfila <= alto - 1 - margen))
+            repinta = not valida or s["modo"] != modo0 or (h, l) != (h0, l0)
             if repinta:
                 h0, l0, modo0, valida, k0 = h, l, s["modo"], True, s["k"]
             por_vuelta[s["k"]] = dict(h0=h0, l0=l0, repinta=repinta, k0=k0,
-                                      ci=l - l0 + ccol, ri=h - h0 + cfila, modo=s["modo"],
-                                      h=h, l=l)
+                                      ci=ccol, ri=cfila, modo=s["modo"], h=h, l=l)
     return por_vuelta
 
 
@@ -263,11 +264,23 @@ def main(argv):
         print("  la nueva pinta el trozo %d veces en %d vueltas (%s); la referencia, %d veces"
               % (len(pintadas), len(vn), ", ".join(str(k) for k in pintadas), len(vr)))
     for s in vn:
-        if "esquina" in s:
+        if "posicion" in s:
             q = m[s["k"]]
-            if s["esquina"] != (q["h0"] << 8 | q["l0"]) or s["valida"] != 1:
-                falla("vuelta %d: la nueva lleva esquina %04X y cache %d, y el modelo dice %02X%02X"
-                      % (s["k"], s["esquina"], s["valida"], q["h0"], q["l0"]))
+            if s["posicion"] != (q["h0"] << 8 | q["l0"]) or s["valida"] != 1:
+                falla("vuelta %d: la nueva lleva la posicion %04X y cache %d, y el modelo dice %02X%02X"
+                      % (s["k"], s["posicion"], s["valida"], q["h0"], q["l0"]))
+    # el menu de la casilla: cambiar de unidad va por toque en la nueva
+    en, er = ([s for s in ss if s["tipo"] == "eleccion"] for ss in (sn, sr))
+    if not en or not er:
+        falla("el recorrido no paso por el menu de la casilla (no hay linea `eleccion` en vueltas.txt)")
+    else:
+        en, er = en[0], er[0]
+        if en["cambios"] != en["toques"]:
+            falla("menu de la casilla: con %d toques de arriba (uno de %d vueltas) la nueva cambio de unidad %d veces; tenian que ser %d, una por toque"
+                  % (en["toques"], en["pulsada"], en["cambios"], en["toques"]))
+        else:
+            print("  menu de la casilla: %d toques de arriba (uno de %d vueltas) son %d cambios de unidad en la nueva; en la referencia, %d"
+                  % (en["toques"], en["pulsada"], en["cambios"], er["cambios"]))
 
     # --------------------------------------------- 3: el trozo puro, caracter a caracter
     hl_ref = {s["k"]: s["hl"] for s in vr}
@@ -332,7 +345,7 @@ def main(argv):
         guarda_png(vram_r, regs_r, os.path.join(pngs, inst + "_referencia.png"))
         if inst in BITMAPS:
             # (la pantalla de caracteres de 0x5E00 ya NO es la misma en las
-            # dos: la nueva lleva la ventana fija y no escribe el cursor en
+            # dos: la nueva no escribe el cursor en
             # ella; lo que tiene que ser identico es lo que se ve)
             pn, pr = pixeles(vram_n, regs_n), pixeles(vram_r, regs_r)
             d = diferencia(pn, pr, os.path.join(pngs, inst + "_DIFERENCIA.png"))
@@ -379,7 +392,7 @@ def main(argv):
         y, x = (16 * q["ri"] - 1) & 0xFF, 16 * q["ci"]
         esperados = bytes([y, x, mi * 8, colores[mi * 2], y, x, mi * 8 + 4, colores[mi * 2 + 1]])
         if vram_n[SPRITES:SPRITES + 8] != esperados:
-            falla("%s: los atributos de los sprites son %s y tenian que ser %s (celda %d,%d de la ventana)"
+            falla("%s: los atributos de los sprites son %s y tenian que ser %s (celda %d,%d)"
                   % (inst, vram_n[SPRITES:SPRITES + 8].hex(), esperados.hex(), q["ci"], q["ri"]))
         if vram_n[SPRITES + 8:SPRITES + 128] != b"".join(bytes([209, 0, n, 1]) for n in range(2, 32)):
             falla("%s: los otros 30 sprites no estan como los dejo el cargador" % inst)
@@ -418,7 +431,7 @@ def main(argv):
                 else:
                     print("  %-13s encuadre igual y cursor apagado en la referencia: IDENTICAS sin el sprite, y el sprite encima" % inst)
         else:
-            print("  %-13s encuadre distinto (cursor en la celda %d,%d de la ventana fija): trozo, ventanas y sprite comprobados"
+            falla("%s: el encuadre de la nueva no es el de la referencia (cursor en la celda %d,%d): tiene que estar siempre en el centro"
                   % (inst, q["ci"], q["ri"]))
         if vram_n[VISIBLE] == vram_r[VISIBLE]:
             falla("%s: las dos VRAM son iguales byte a byte: el cotejo seria trivial" % inst)
@@ -466,7 +479,7 @@ def main(argv):
     if fallos:
         print("  %d fallos" % fallos)
         return 1
-    print("  todo lo exigido coincide: la ventana fija con el cursor como sprite ensena lo que tiene que ensenar")
+    print("  todo lo exigido coincide: la cache del trozo con el cursor como sprite ensena lo que tiene que ensenar")
     return 0
 
 

@@ -163,6 +163,11 @@ class Z80(corre_finales.Z80):
             self.n(); self.h = (self.h + 1) & 0xFF; self.z = self.h == 0
         elif op == 0xC3:                                # jp nn
             self.n(); self.pc = self.nn()
+        # --- y las de la eleccion por toque (MI_ELECCION)
+        elif op == 0x2F:                                # cpl (no toca Z ni C)
+            self.n(); self.a ^= 0xFF
+        elif op == 0xA0:                                # and b
+            self.n(); self.a &= self.b; self.z = self.a == 0; self.cy = False
         else:
             super().paso()
 
@@ -263,17 +268,17 @@ def trampas_del_juego(relleno=None):
     return {CELDA_DEL_MAPA: celda, DIBUJA_EL_TROZO: dibuja, TAPA_LOS_BORDES: tapa}
 
 
-def corre_pinta(m, plan, hl, modo, cache_valida=0, esquina=(0, 0), ultimo_modo=0,
+def corre_pinta(m, plan, hl, modo, cache_valida=0, posicion=(0, 0), ultimo_modo=0,
                 cache=None, sp=0x5BFF, desde=None):
     """MI_PINTA con el cursor en HL y el modo en 0x71CF, con el estado de la
-    rutina que se diga: si la cache vale, la esquina del ultimo repintado, el
+    rutina que se diga: si la cache vale, la posicion del ultimo repintado, el
     modo de entonces y los 850 bytes de la cache. Entra por 0x71A4 -el `jp`
     del parche- si el bloque medio esta en RAM, o directo a MI_PINTA.
     Devuelve la CPU, con las llamadas a las trampas apuntadas."""
     c = plan["vista"]["cursor"]
     m.ram[MODO_DE_LA_VISTA] = modo
     m.ram[c["cache_valida"]] = cache_valida
-    m.ram[c["esquina_h"]], m.ram[c["esquina_l"]] = esquina
+    m.ram[c["posicion_h"]], m.ram[c["posicion_l"]] = posicion
     m.ram[c["ultimo_modo"]] = ultimo_modo
     if cache is not None:
         m.ram[c["cache"]:c["cache"] + 850] = cache
@@ -302,6 +307,28 @@ def corre_mueve(m, plan, hl, mando, cuadros, ultimo, sp=0x5BFF):
 
     z = Z80(m, Vdp(), c["mueve"], sp, {MUEVE_POR_EL_MAPA: mueve})
     z.a, z.hl = mando, hl
+    z.push(CENTINELA)
+    z.corre()
+    return z
+
+
+LEE_LOS_MANDOS = 0x066D
+
+
+def corre_eleccion(m, plan, mando, ultima, sp=0x5BFF):
+    """MI_ELECCION con el mando que LEE_LOS_MANDOS (0x066D, con trampa)
+    devolveria y lo apuntado de la vuelta anterior en ULTIMA_ELECCION. BC, DE y
+    HL llevan valores conocidos para ver si salen igual. Devuelve la CPU: A es
+    lo que ve el bucle de eleccion."""
+    c = plan["vista"]["cursor"]
+    m.ram[c["ultima_eleccion"]] = ultima
+
+    def lee(z):
+        z.a = mando
+        return ("a", mando)
+
+    z = Z80(m, Vdp(), c["eleccion"], sp, {LEE_LOS_MANDOS: lee})
+    z.bc, z.de, z.hl = 0x1234, 0x5678, 0x9ABC
     z.push(CENTINELA)
     z.corre()
     return z

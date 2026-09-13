@@ -1,6 +1,6 @@
 # ¿A CUANTAS CASILLAS POR SEGUNDO VA EL CURSOR CON LA TECLA PULSADA?
 #
-# Con la ventana fija la vuelta de la vista va a mas de 40 por segundo, y el
+# Con la cache del trozo la vuelta de la vista va a mas de 40 por segundo, y el
 # cursor avanzaba una casilla por vuelta: MI_MUEVE lo limita a una casilla
 # cada diez cuadros. Aqui se entra en la vista, se mantiene la derecha pulsada
 # DOS SEGUNDOS de tiempo emulado y se cuenta cuantas columnas avanzo HL. A

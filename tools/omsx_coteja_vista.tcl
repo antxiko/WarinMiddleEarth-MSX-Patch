@@ -2,11 +2,12 @@
 #
 # Sirve para cotejar la ROM con la vista por tabla de nombres y el cursor como
 # sprite contra la ROM de antes. Las dos VRAM ya no se parecen byte a byte -una
-# lleva bitmap y la otra nombres- y, desde el cursor como sprite, ni siquiera
-# la pantalla de caracteres de 0x5E00 es la misma: en la nueva la ventana del
-# trozo se queda quieta mientras el cursor se mueve dentro. Asi que la sonda
-# vuelca lo que tools/coteja_vista.py necesita para reconstruir lo que la
-# nueva TIENE que ensenar a partir de lo que ensena la vieja:
+# lleva bitmap y la otra nombres- y la pantalla de caracteres de 0x5E00 tampoco
+# es la misma del todo: la vieja escribe el cursor en el centro y la nueva no
+# (es un sprite), y la nueva solo repinta el trozo cuando el cursor se mueve o
+# cambia el modo. Asi que la sonda vuelca lo que tools/coteja_vista.py
+# necesita para reconstruir lo que la nueva TIENE que ensenar a partir de lo
+# que ensena la vieja:
 #
 #   - en CADA vuelta del bucle de la vista, el trozo PURO: la pantalla de
 #     caracteres justo despues de PINTA_LA_VISTA_DE_CERCA (0x71FC), antes de
@@ -27,31 +28,48 @@
 # sprite (bit 1) y hay que conservarlo. Con WAR_PANTALLA=encendida no se apaga:
 # es la pasada que comprueba que a la ROM nueva no se le cae ningun byte.
 #
-# El recorrido, pensado para que el cursor salga de la ventana fija por los
-# tres lados que caben (margen 3: 10 columnas y 7 filas de recorrido):
+# El recorrido: pasos a la derecha, abajo y arriba (cada paso repinta el trozo
+# en la nueva, como en la vieja; entre paso y paso, la cache), un menu de
+# bitmap en medio, un teleporte a una casilla con unidades y el menu de la
+# casilla:
 #
 #   vista_a  vuelta 3   recien entrado
-#   vista_b  vuelta 6   una casilla a la derecha (dentro de la ventana)
+#   vista_b  vuelta 6   una casilla a la derecha
 #   menu_r              el menu de entrega del Anillo, que es de bitmap
 #   vista_c  vuelta 9   de vuelta del menu: el trozo se repinta
 #   vista_k  vuelta 10  lo mismo, una vuelta despues: la vieja lleva el cursor
 #                       ENCENDIDO (parpadea por vuelta: en las pares) y las dos
 #                       imagenes tienen que ser identicas, sprite incluido
-#   vista_e  vuelta 21  cinco mas a la derecha: la ultima columna que cabe
-#   vista_f  vuelta 25  una mas: se sale y se recentra
-#   vista_g  vuelta 35  cuatro abajo: la ultima fila que cabe
-#   vista_h  vuelta 39  una mas: se recentra
-#   vista_i  vuelta 45  dos arriba: la primera fila que cabe
-#   vista_j  vuelta 49  una mas: se recentra; y se sale con fuego
-#   mapa                el mapa general, de bitmap (o menu_ordenes y vista_d
-#                       si habia una unidad bajo el cursor)
+#   vista_e  vuelta 21  cinco mas a la derecha
+#   vista_f  vuelta 25  una mas
+#   vista_g  vuelta 35  cuatro abajo
+#   vista_h  vuelta 39  una mas
+#   vista_i  vuelta 45  dos arriba
+#   vista_j  vuelta 49  una mas. Y el cursor se TELEPORTA (reg HL, igual en
+#                       las dos ROMs) a la casilla de encima de las cuatro
+#                       unidades de (fila 15, columna 23), las mas cercanas a
+#                       la entrada
+#   vista_l  vuelta 51  ahi, quieto; y se pulsa abajo
+#   vista_m  vuelta 52  la vuelta antes de moverse (la tecla se lee una vuelta
+#                       despues de pulsarla)
+#   vista_n  vuelta 53  sobre las unidades: el mapa se ha movido una casilla,
+#                       el cursor sigue en el centro y la ficha debajo
+#   (vuelta 54)         fuego: el menu de la casilla. Ahi se pulsa ARRIBA cinco
+#                       vueltas seguidas, se suelta, y se vuelve a pulsar una:
+#                       se cuenta cuantas veces cambia de unidad (0x776B). En
+#                       la nueva tienen que ser DOS, una por toque; en la
+#                       vieja, una por vuelta con la tecla pulsada: seis. Como
+#                       en la casilla hay CUATRO unidades, 6 y 2 dejan elegida
+#                       la misma (la tercera), y las fichas de despues coinciden
+#   vista_o  vuelta 57  de vuelta en la vista; y se sale con fuego: el menu de
+#                       ordenes (menu_ordenes, bitmap) y de vuelta (vista_d)
 #
 #   WAR_OUT=<dir> [WAR_PANTALLA=encendida] [WAR_DIRS=<vista.tcl>] \
 #       openmsx -machine <maq> -carta <rom> -romtype ascii16 -script tools/omsx_coteja_vista.tcl
 #
 # WAR_DIRS es el fichero de direcciones que genera haz_rom.py para la ROM
-# nueva (work/musica/vista.tcl): con el, cada vuelta apunta ademas la esquina
-# y la validez de la cache, para leerlas en el informe.
+# nueva (work/musica/vista.tcl): con el, cada vuelta apunta ademas la posicion
+# con la que se pinto el trozo y la validez de la cache, para leerlas en el informe.
 
 set OUT $::env(WAR_OUT)
 file mkdir $OUT
@@ -104,8 +122,8 @@ proc vuelca_trozo {} {
     close $f
     set extra ""
     if {$::CON_DIRS} {
-        set extra [format " esquina %02X%02X valida %d" \
-                       [debug read memory $::ESQUINA_H] [debug read memory $::ESQUINA_L] \
+        set extra [format " posicion %02X%02X valida %d" \
+                       [debug read memory $::POSICION_H] [debug read memory $::POSICION_L] \
                        [debug read memory $::CACHE_VALIDA]]
     }
     apunta [format "vuelta %d hl %04X modo %02X dibujado %d%s" \
@@ -128,6 +146,11 @@ set ::eligiendo 0
 set ::tras_salir 0
 set ::entrar 0
 set ::apagada 0
+set ::eleccion_iter 0
+set ::cambios 0
+# La casilla de encima de las cuatro unidades 0x1A-0x1D (fila 15, columna 23):
+# fila 14, columna 23. Las posiciones estan en 0xB900 (columna) y 0xBA00 (fila).
+set ::ENCIMA_DE_LAS_UNIDADES 0x0E17
 
 # La entrada a la vista: la pantalla se apaga (una vez, y solo el bit 6) y se
 # suelta el fuego, que ENTRA_EN_LA_VISTA espera a que se suelte.
@@ -181,8 +204,13 @@ proc vuelta {} {
         45 { vuelca vista_i }
         46 { pulsa $::ARRIBA }
         47 { suelta $::ARRIBA }
-        49 { vuelca vista_j; pulsa $::ESPACIO; set ::tras_salir 1 }
-        52 { vuelca vista_d; say "FIN"; exit 0 }
+        49 { vuelca vista_j; reg HL $::ENCIMA_DE_LAS_UNIDADES; say "teleporte: HL = [format %04X [reg HL]]" }
+        51 { vuelca vista_l; pulsa $::ABAJO }
+        52 { suelta $::ABAJO; vuelca vista_m }
+        53 { vuelca vista_n }
+        54 { pulsa $::ESPACIO }
+        57 { vuelca vista_o; pulsa $::ESPACIO; set ::tras_salir 1 }
+        60 { vuelca vista_d; say "FIN"; exit 0 }
     }
 }
 debug set_bp 0x721F {} { vuelta }
@@ -199,9 +227,29 @@ debug set_bp 0x6478 {} {
         abajo $::ESPACIO
     }
 }
-# MANDO_DE_LA_ELECCION: si habia unidad bajo el cursor, fuego la elige.
+# MANDO_DE_LA_ELECCION, una vez por vuelta del menu de la casilla. La primera
+# vez que se entra (vuelta 54, con las cuatro unidades debajo): ARRIBA pulsada
+# cinco vueltas seguidas, suelta una, pulsada otra, suelta, y fuego. Se cuenta
+# cuantas veces se paso a la unidad siguiente. La segunda (vuelta 57): fuego,
+# que sin haber cambiado nada abre el menu de ordenes.
+debug set_bp 0x776B {} { incr ::cambios }
 debug set_bp 0x7758 {} {
-    if {!$::eligiendo} { set ::eligiendo 1; abajo $::ESPACIO }
+    if {$::tras_salir} {
+        if {!$::eligiendo} { set ::eligiendo 1; abajo $::ESPACIO }
+        return
+    }
+    incr ::eleccion_iter
+    switch $::eleccion_iter {
+        1 { abajo $::ARRIBA }
+        6 { arriba $::ARRIBA }
+        7 { abajo $::ARRIBA }
+        8 { arriba $::ARRIBA }
+        9 {
+            apunta "eleccion toques 2 vueltas_pulsada 5 cambios $::cambios"
+            say "menu de la casilla: dos toques de ARRIBA (uno de cinco vueltas), $::cambios cambios de unidad"
+            abajo $::ESPACIO
+        }
+    }
 }
 # BUCLE_DE_PARTIDA: al principio, para entrar en la vista; al final, el mapa.
 debug set_bp 0x7F57 {} {

@@ -62,13 +62,15 @@ La vista de cerca expandia su pantalla de caracteres a bitmap y subia 12.288
 bytes a la VRAM en cada vuelta. Con esta opcion una rutina de la pagina 0
 (src/cartucho/nombres.asm) sube solo la tabla de nombres -768 bytes-, porque
 el byte de cada celda YA es el indice de patron. Y el cursor pasa a ser un
-SPRITE de 16x16 (dos, uno por color, dibujados en src/cartucho/cursor.png) con
-la ventana del trozo QUIETA: el trozo se guarda en una cache y solo se repinta
-cuando el cursor se acerca al borde. Son diez bytes mas del juego: tres en
-0x75A5 (un `jp` a la rutina), cuatro en 0x044B, en el bloque BAJO, donde un
+SPRITE de 16x16 (dos, uno por color, dibujados en src/cartucho/cursor.png),
+siempre en el centro, y el trozo se guarda en una cache: solo se repinta cuando
+el cursor se mueve o cambia el modo. Son dieciseis bytes mas del juego: tres
+en 0x75A5 (un `jp` a la rutina), cuatro en 0x044B, en el bloque BAJO, donde un
 guardian devuelve la tabla de nombres a la identidad en cuanto alguien vuelve
-a pintar en bitmap, y tres en 0x71A4 (un `jp` a MI_PINTA). Pide --comprime:
-vive en la RAM que liberan las finales, detras de los bufers de ZX0.
+a pintar en bitmap, tres en 0x71A4 (un `jp` a MI_PINTA), tres en 0x7225 (el
+paso del cursor, `call MI_MUEVE`) y tres en 0x7758 (cambiar de unidad por
+toque, `call MI_ELECCION`). Pide --comprime: vive en la RAM que liberan las
+finales, detras de los bufers de ZX0.
 
 Uso: haz_rom.py <work> <salida.rom> [--espera N] [--sin-pantalla]
                                     [--comprime] [--finales-rom] [--vista]
@@ -210,9 +212,10 @@ NOMBRES_RAM = BUFER_D + TAM_BUFER_D
 #
 #   0x71A4, PINTA_LA_VISTA_DE_CERCA, bloque medio: sus tres primeros bytes
 #     (`push hl / push hl / exx`) pasan a ser `jp MI_PINTA`, que cubre a sus
-#     tres llamadores (0x71F9, 0x7547 y 0x778A). MI_PINTA deja la ventana del
-#     trozo quieta y guarda el trozo en una cache; el cursor son dos sprites de
-#     16x16 cuyos dibujos salen de src/cartucho/cursor.png (tools/cursor.py).
+#     tres llamadores (0x71F9, 0x7547 y 0x778A). MI_PINTA guarda el trozo en
+#     una cache y solo lo repinta si cambia la posicion o el modo; el cursor son
+#     dos sprites de 16x16, fijos en el centro, cuyos dibujos salen de
+#     src/cartucho/cursor.png (tools/cursor.py).
 #
 # El tamano 16x16 de los sprites lo pone el plan en R1 (bit 1): el juego no
 # escribe R1 nunca, asi que se queda.
@@ -224,6 +227,13 @@ PINTA_LA_VISTA_ORIG = bytes.fromhex("e5e5d9")
 # asi que --vista necesita --musica.
 MUEVE_EN_LA_VISTA = 0x7225
 MUEVE_EN_LA_VISTA_ORIG = bytes.fromhex("cd4b73")
+# Y el cambio de unidad POR TOQUE: el `call LEE_LOS_MANDOS` (0x066D) de 0x7758,
+# el del bucle de ELIGE_ENTRE_LAS_DE_LA_CASILLA, pasa a llamar a MI_ELECCION,
+# que solo deja pasar arriba y abajo en la vuelta en que se pulsan. Con la
+# cache ese bucle va a mas de 40 vueltas por segundo y con la tecla pulsada
+# era imposible parar en la unidad que se queria.
+MANDO_EN_LA_ELECCION = 0x7758
+MANDO_EN_LA_ELECCION_ORIG = bytes.fromhex("cd6d06")
 PASO_DEL_CURSOR = 10
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
@@ -739,18 +749,24 @@ def main(argv):
             "VRAM_A_ESCRIBIR pasa por el guardian, que devuelve la tabla de nombres a la identidad",
             bloque="bajo"))
         # Y `push hl / push hl / exx` de PINTA_LA_VISTA_DE_CERCA por `jp
-        # MI_PINTA`: la ventana del trozo se queda quieta y el cursor es un
-        # sprite. El resto de 0x71A4 queda sin ejecutar.
+        # MI_PINTA`: el trozo va por cache y el cursor es un sprite, fijo en el
+        # centro. El resto de 0x71A4 queda sin ejecutar.
         parches_vista.append(parchea(
             PINTA_LA_VISTA, PINTA_LA_VISTA_ORIG,
             bytes([0xC3]) + sim_nombres["MI_PINTA"].to_bytes(2, "little"),
-            "PINTA_LA_VISTA_DE_CERCA salta a MI_PINTA: ventana fija, cache del trozo y el cursor como sprite"))
+            "PINTA_LA_VISTA_DE_CERCA salta a MI_PINTA: cache del trozo y el cursor como sprite, fijo en el centro"))
         # Y el `call MUEVE_POR_EL_MAPA` de la vuelta de la vista por `call
         # MI_MUEVE`: una casilla cada PASO cuadros con la tecla pulsada.
         parches_vista.append(parchea(
             MUEVE_EN_LA_VISTA, MUEVE_EN_LA_VISTA_ORIG,
             bytes([0xCD]) + sim_nombres["MI_MUEVE"].to_bytes(2, "little"),
             "el cursor se mueve una casilla cada %d cuadros con la tecla pulsada" % PASO_DEL_CURSOR))
+        # Y el `call LEE_LOS_MANDOS` del bucle de eleccion de unidad por `call
+        # MI_ELECCION`: arriba y abajo por toque, no por tiempo.
+        parches_vista.append(parchea(
+            MANDO_EN_LA_ELECCION, MANDO_EN_LA_ELECCION_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_ELECCION"].to_bytes(2, "little"),
+            "en el menu de la casilla, arriba y abajo cambian de unidad por toque (MI_ELECCION)"))
     with open(salida, "wb") as f:
         f.write(rom)
 
@@ -804,22 +820,23 @@ def main(argv):
             modo=sim_nombres["MODO_NOMBRES"],
             sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
             parches=parches_vista,
-            # El cursor como sprite y la ventana fija: donde esta cada cosa
+            # El cursor como sprite y la cache del trozo: donde esta cada cosa
             # en la rutina, y los dibujos que van en la ROM, del PNG.
             cursor=dict(
                 pinta=sim_nombres["MI_PINTA"],
                 cache=sim_nombres["CACHE"], cache_bytes=850,
                 cache_valida=sim_nombres["CACHE_VALIDA"],
                 ultimo_modo=sim_nombres["ULTIMO_MODO"],
-                esquina_h=sim_nombres["ESQUINA_H"], esquina_l=sim_nombres["ESQUINA_L"],
+                posicion_h=sim_nombres["POSICION_H"], posicion_l=sim_nombres["POSICION_L"],
                 atributos=sim_nombres["ATRIBUTOS"],
                 mueve=sim_nombres["MI_MUEVE"], ultimo_paso=sim_nombres["ULTIMO_PASO"],
                 cuadros=sim_puente["CUADROS"], paso=PASO_DEL_CURSOR,
+                eleccion=sim_nombres["MI_ELECCION"], ultima_eleccion=sim_nombres["ULTIMA_ELECCION"],
                 patrones=sim_nombres["CURSOR_PATRONES"], colores=sim_nombres["CURSOR_COLORES"],
                 png=os.path.relpath(CURSOR_PNG, RAIZ).replace(os.sep, "/"),
                 planos=cursor_planos[0].hex(), planos_colores=list(cursor_planos[1]),
                 vram_atributos=0x1B00, vram_patrones=0x3800, r1=vdp_regs[1],
-                ventana=dict(ancho=16, alto=13, cursor_col=7, cursor_fila=5, margen=3),
+                ventana=dict(cursor_col=7, cursor_fila=5),
                 modos={"0x10": 0, "0x12": 1, "0x17": 2}))
     if finales_rom:
         # Lo que hace falta para comprobar esto sin arrancar nada: donde viaja
@@ -861,8 +878,9 @@ def main(argv):
             f.write("# generado por tools/haz_rom.py: no editar\n")
             for k in ("CARACTERES_A_NOMBRES", "PONE_LOS_PATRONES", "GUARDIAN",
                       "TABLA_IDENTIDAD", "MODO_NOMBRES", "NOMBRES_FIN",
-                      "MI_PINTA", "CACHE", "CACHE_VALIDA", "ESQUINA_H", "ESQUINA_L",
-                      "ULTIMO_MODO", "ATRIBUTOS", "CURSOR_PATRONES", "MI_MUEVE", "ULTIMO_PASO"):
+                      "MI_PINTA", "CACHE", "CACHE_VALIDA", "POSICION_H", "POSICION_L",
+                      "ULTIMO_MODO", "ATRIBUTOS", "CURSOR_PATRONES", "MI_MUEVE", "ULTIMO_PASO",
+                      "MI_ELECCION", "ULTIMA_ELECCION"):
                 f.write("set ::%-22s 0x%04X\n" % (k, sim_nombres[k]))
 
     print("%s: %d bytes, %s" % (salida, TAM_ROM, resumen["mapper"]))

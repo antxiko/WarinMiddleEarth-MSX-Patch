@@ -932,15 +932,17 @@ escritos encima del centro- y la ventana se desplazaba con el. La idea del
 usuario: *siendo un sprite no pintariamos el mapa*.
 
 Ahora el cursor son **dos sprites de 16x16 solapados**, uno por color (el
-dibujo y el bloque de detras), y la **ventana del trozo se queda quieta**: el
-cursor se mueve dentro sin repintar nada, y el trozo solo se vuelve a dibujar
-cuando el cursor se acerca a menos de tres celdas del borde (diez columnas y
-siete filas de recorrido), recentrandolo como lo pintaria el original. La
-pantalla de caracteres limpia se guarda en una cache de 850 bytes y en las
-vueltas sin repintado se restaura con un `ldir`; las ventanas de posicion,
-ficha y sitio se dibujan encima como siempre. El cursor ya no parpadea.
+dibujo y el bloque de detras), **siempre en el centro**: lo que se mueve es el
+mapa, como en el original. El trozo solo se vuelve a dibujar cuando cambia la
+posicion del cursor o el modo; la pantalla de caracteres limpia se guarda en
+una cache de 850 bytes y en las vueltas sin repintado -el reposo, que es donde
+se iba el 91 % del tiempo- se restaura con un `ldir`; las ventanas de
+posicion, ficha y sitio se dibujan encima como siempre. El cursor ya no
+parpadea. (Hubo una version intermedia con la ventana del trozo quieta y el
+cursor moviendose dentro, con un margen de tres celdas; se cuenta mas abajo, y
+se quito.)
 
-Tres decisiones del usuario: el margen de tres celdas, el cursor **editable**
+Tres decisiones del usuario: el cursor fijo en el centro, el cursor **editable**
 -`src/cartucho/cursor.png`, 48 x 16, los tres cursores (mirar, elegir
 destino, batalla) con hasta dos colores mas el transparente; `tools/cursor.py`
 lo saca de los tiles de la cinta parcheada y lo vuelve a leer como planos de
@@ -953,9 +955,11 @@ Los cuadros los cuenta el gancho de la interrupcion: cuando la musica calla, el
 puente lo deja apuntando a `CUENTA_CUADROS` (cuatro bytes) en vez de al `ret`
 vacio.
 
-Son **cuatro parches del juego, trece bytes**: los siete de la vista, tres en
-0x71A4 (`push hl / push hl / exx` por un `jp MI_PINTA`) y tres en 0x7225 (el
-`call MUEVE_POR_EL_MAPA` de la vuelta por `call MI_MUEVE`). En 0x71C6 NO se
+Son **cinco parches del juego, dieciseis bytes**: los siete de la vista, tres
+en 0x71A4 (`push hl / push hl / exx` por un `jp MI_PINTA`), tres en 0x7225 (el
+`call MUEVE_POR_EL_MAPA` de la vuelta por `call MI_MUEVE`) y tres en 0x7758
+(el `call LEE_LOS_MANDOS` del menu de la casilla por `call MI_ELECCION`, ver
+mas abajo). En 0x71C6 NO se
 puede poner un salto, porque 0x752E escribe en 0x71C7 (el operando del
 parpadeo): MI_PINTA replica 0x71A7-0x71C5 llamando a las mismas rutinas
 (`CELDA_DEL_MAPA` con la fila mas uno, la esquina 720 bytes atras,
@@ -980,26 +984,29 @@ con los colores de la cinta original.
 
 **Medido en el NMS 8250** (`tools/omsx_vista.tcl`, `war_parche_musica.rom`):
 
-    en reposo                363.884 ->  83.037 ciclos por vuelta    9,8 -> 43,1 vueltas por segundo
-    moviendo sin soltar      623.715 ->  95.490                      5,7 -> 37,5 (cada diez casillas hay un recentrado)
+    en reposo                363.884 ->  82.772 ciclos por vuelta    9,8 -> 43,2 vueltas por segundo
+    moviendo sin soltar      623.715 -> 367.761 de media             5,7 ->  9,7: la mitad de las vueltas repintan
+                                                                     (658.702 de media, y crece con el terreno:
+                                                                     de 404.144 a 684.378 entrando en las montanas)
+                                                                     y la otra mitad viene de la cache (82.757)
 
 Y el paso del cursor (`tools/omsx_paso_cursor.tcl`, dos segundos con la derecha
 pulsada, VG-8020): 10 casillas, cinco por segundo; la ROM sin la vista, tres.
 
 **Verificado** (`make verifica_vista` y `make verifica_vista_parche`, exit 0 en
-la VG-8020, y la parcheada tambien en el NMS 8250). Como la nueva ya no ensena
-lo mismo que la vieja en cuanto el cursor se mueve, `tools/coteja_vista.py`
-lleva un **modelo del paginado** y la sonda vuelca el trozo puro de cada
-vuelta: se exige que la nueva pinte el trozo exactamente en las vueltas que
-dice el modelo (5 de 50: al entrar, tras el menu y en los tres recentrados,
-mientras la vieja lo pinta en las 50), que caracter a caracter el trozo sea el
-que la vieja pinto en el ultimo repintado y las ventanas las de cada vuelta,
-que los atributos y patrones de los sprites sean los que tocan, y, donde el
-encuadre coincide, **pixel a pixel con la vieja**: en `vista_k`, con el cursor
+la VG-8020, y la parcheada tambien en el NMS 8250). Como la nueva no repinta
+el trozo en todas las vueltas, `tools/coteja_vista.py` lleva un **modelo de
+la cache** y la sonda vuelca el trozo puro de cada vuelta: se exige que la
+nueva pinte el trozo exactamente en las vueltas que dice el modelo (20 de 60:
+al entrar, tras cada menu y en cada paso del cursor, mientras la vieja lo
+pinta en las 60), que caracter a caracter el trozo sea el que la vieja pinto
+en el ultimo repintado y las ventanas las de cada vuelta, que los atributos y
+patrones de los sprites sean los que tocan, y, en todos los instantes,
+**pixel a pixel con la vieja**: en `vista_k`, con el cursor
 de la vieja encendido, las dos imagenes son identicas, sprite incluido. En los
 instantes de bitmap la VRAM entera es identica byte a byte, sprites escondidos
 incluidos. Sin emulador, `tools/corre_nombres.py` ejecuta MI_PINTA y MI_MUEVE
-con trampas en las tres rutinas del juego (151 tests). Y como los PNG del
+con trampas en las tres rutinas del juego (152 tests). Y como los PNG del
 cotejo los dibuja la propia herramienta, `make captura_vista` saca tres
 capturas del emulador de verdad, con el renderer encendido.
 
@@ -1007,6 +1014,67 @@ capturas del emulador de verdad, con el renderer encendido.
 la cinta parcheada de Araubi con la musica, ZX0, las finales en la ROM y la
 vista con el cursor. `cursor.png` sale de sus cuerpos (`make cursor`) porque
 el parche repinta el cursor de batalla.
+
+### Dos fallos vistos jugando, y la vuelta del cursor al centro
+
+Los dos salieron el 2026-09-13 con la ROM en la mano, y los dos eran hijos de
+la misma cosa: la vuelta iba cuatro veces mas rapida y el cursor ya no estaba
+siempre en el centro.
+
+**El cursor se metia debajo de la ficha.** En el original el cursor se
+escribia en la pantalla de caracteres ANTES de las ventanas, asi que una
+ventana lo tapaba; y en la practica no pasaba nunca, porque el cursor estaba
+siempre en la celda (7, 5) y la ficha -24 x 10 con marco, desde la fila 13 de
+caracteres (0x5FBD)- queda por debajo. El sprite, en cambio, va por delante de
+todo, y con la ventana quieta el cursor bajaba hasta la fila 9: se veia encima
+del texto de la ficha. Se arreglo primero escondiendo el sprite cuando una
+ventana tapaba sus cuatro celdas (comparandolas con la cache) y recentrando en
+la vuelta siguiente; y con eso a la vista el usuario decidio **volver a que el
+cursor este en el centro y no se mueva nunca: solo se mueve el mapa**, como en
+el original, y quitar el paginado de diez columnas y siete filas. Asi que la
+ventana quieta, el margen y aquel arreglo se retiraron: MI_PINTA repinta el
+trozo cuando cambia la posicion o el modo y lo saca de la cache en las demas
+vueltas, y los dos sprites llevan siempre Y = 79 y X = 112. En el centro no
+lo tapa ninguna ventana: la ficha va de la fila 13 para abajo (en los modos
+0x12 y 0x17, en la 20) y los carteles de posicion, destino y sitio no pasan
+de la fila 3. El precio, que el usuario acepto: moviendo el cursor cada paso
+repinta, como antes; y como MI_MUEVE lo limita a cinco casillas por segundo,
+la sensacion es la de siempre.
+
+**Cambiar de unidad en el menu de la casilla iba disparado.** Con fuego sobre
+una casilla con varias unidades, `ELIGE_ENTRE_LAS_DE_LA_CASILLA` (0x7751)
+entra en un bucle en el que arriba y abajo pasan de una unidad a otra y cada
+paso repinta la vista; en el original cada vuelta de ese bucle costaba un
+repintado entero (tres por segundo), y con la cache -la posicion no cambia- va
+a mas de cuarenta: con la tecla pulsada era imposible parar en la que se
+queria. Decision del usuario: *que solo reaccione al primer toque, y hasta que
+no se deje de pulsar y se vuelva a pulsar la tecla, no vuelva a reaccionar*.
+`MI_ELECCION` sustituye al `call LEE_LOS_MANDOS` (0x066D) de 0x7758 y solo deja
+pasar arriba y abajo en la vuelta en que se pulsan (guarda el mando de la
+vuelta anterior y pasa lo pulsado ahora y no entonces); fuego y la tecla 1, que
+son las dos salidas del bucle, pasan tal cual y borran lo apuntado, asi que la
+proxima entrada empieza de cero. Tres bytes mas del juego.
+
+**Verificado.** El recorrido de la sonda (`tools/omsx_coteja_vista.tcl`) se
+alargo de 50 a 60 vueltas: en la 49 el cursor se *teleporta* (`reg HL`, igual
+en las dos ROMs) a la casilla de encima de las cuatro unidades de (fila 15,
+columna 23), las mas cercanas a la entrada, baja una casilla sobre ellas -la
+ficha debajo, el cursor en el centro- y entra en el menu de la casilla, donde
+se pulsa arriba cinco vueltas seguidas, se suelta y se vuelve a pulsar una.
+Resultado (`make verifica_vista_parche`, exit 0 en la VG-8020 y en el NMS
+8250; `make verifica_vista`, exit 0): la nueva pinta el trozo 20 veces en 60
+vueltas -al entrar, tras cada menu y en cada paso-, todos los instantes con el
+mismo encuadre que la vieja, y en el menu de la casilla los dos toques son **2
+cambios de unidad en la nueva y 6 en la referencia** (una por vuelta con la
+tecla pulsada). Como en esa casilla hay cuatro unidades, 6 y 2 dejan elegida
+la misma, y las fichas de despues -`vista_o`, `vista_d`- salen identicas pixel
+a pixel. Sin emulador, `tools/corre_nombres.py` ejecuta tambien `MI_ELECCION`
+(diez combinaciones de mando y estado) y comprueba que cualquier paso repinta
+y que los sprites no se mueven de (7, 5). Y `tools/omsx_paso_cursor.tcl`: 10
+casillas en 2 s con la derecha pulsada, en las dos maquinas.
+
+mide_vista`): la vuelta en reposo pasa de 83.037 a 83.544 ciclos, 42,8 vueltas
+por segundo.
 
 
 ## Lo que queda abierto

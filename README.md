@@ -159,9 +159,12 @@ bitmap and pushing 12,288 bytes to VRAM on every loop, it pushes the 768 bytes
 of the name table, because each cell's byte already is the pattern index; and
 the map chunk is only redrawn when the cursor (two 16x16 sprites, editable in
 `src/cartucho/cursor.png` with `tools/editor_cursor.html`, which opens in the
-browser) gets close to the edge. Measured on an NMS 8250: from
-3.2 to 43.1 loops per second, with the cursor at five cells per second and the
-picture checked against the old one (`make verifica_vista_parche`). The ROM to
+browser) moves: the cursor stays in the centre and the map moves, as in the
+original. Measured on an NMS 8250: from 3.2 to 43.2 loops per second at rest,
+with the cursor at five cells per second and the picture checked against the
+old one (`make verifica_vista_parche`). One thing the faster loop broke and is
+fixed: in the menu that cycles through the units sharing a cell, up and down
+act on the key press, not while the key is held. The ROM to
 play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 

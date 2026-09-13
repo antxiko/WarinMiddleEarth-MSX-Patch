@@ -58,25 +58,25 @@
 ; siempre (identidad), 1 la de la vista. Lo pone PONE_LOS_PATRONES y lo
 ; quita el guardian.
 ;
-; EL CURSOR COMO SPRITE, Y LA VENTANA FIJA
+; EL CURSOR COMO SPRITE, Y LA CACHE DEL TROZO
 ;
 ; Con la tabla de nombres la vuelta bajo de 1.132.000 a 363.884 ciclos, y de
 ; esos, 330.031 eran DIBUJA_EL_TROZO_DE_MAPA (0x7643): repintar las 16 x 13
 ; celdas del trozo EN CADA VUELTA, aunque el cursor no se moviera. Y se
 ; repintaba porque el cursor iba dentro de la pantalla de caracteres -cuatro
-; caracteres de 0x77B5+modo*4 escritos encima del centro- y la ventana del
-; trozo se desplazaba con el (el cursor siempre en la celda (7,5) de la
-; ventana).
+; caracteres de 0x77B5+modo*4 escritos encima del centro- y parpadeaba.
 ;
 ; Ahora el cursor es un SPRITE de 16x16 -dos, uno por color, solapados: el
-; dibujo y el bloque de detras, que salen de src/cartucho/cursor.png- y la
-; ventana del trozo se queda QUIETA: el cursor se mueve dentro sin repintar
-; nada, y el trozo solo se vuelve a dibujar cuando el cursor se acerca a menos
-; de MARGEN celdas del borde, recentrandolo como lo pintaria el original (10
-; columnas y 7 filas de recorrido entre repintados). La pantalla de
-; caracteres limpia -el trozo sin ventanas- se guarda en CACHE (850 B) y en
-; las vueltas sin repintado se restaura con un `ldir`: las ventanas de
-; posicion, ficha y sitio se dibujan encima como siempre.
+; dibujo y el bloque de detras, que salen de src/cartucho/cursor.png-, SIEMPRE
+; en el centro, la celda (7, 5) del trozo, como en el original: lo que se
+; mueve es el mapa. El trozo solo se repinta cuando cambia la posicion del
+; cursor o el modo; en las demas vueltas -el reposo, que es donde se iba el
+; 91 % del tiempo, y el menu de la casilla- la pantalla de caracteres limpia
+; (el trozo sin ventanas) vuelve de CACHE (850 B) con un `ldir`, y las
+; ventanas de posicion, ficha y sitio se dibujan encima como siempre. (Hubo
+; una version con la ventana del trozo quieta y el cursor moviendose dentro,
+; con un margen de tres celdas; el usuario prefirio el cursor fijo y el mapa
+; moviendose, que es como se juega al original, y se quito.)
 ;
 ; MI_PINTA sustituye a PINTA_LA_VISTA_DE_CERCA (0x71A4): sus tres primeros
 ; bytes pasan a ser un `jp` aqui, y eso cubre a sus tres llamadores (0x71F9,
@@ -87,18 +87,34 @@
 ; y da igual que 0x752E siga escribiendo en 0x71C7). El cursor no parpadea:
 ; esta siempre visible.
 ;
-; La cache vale mientras no cambie la esquina, ni el modo (0x71CF: el trozo
+; La cache vale mientras no cambie la posicion, ni el modo (0x71CF: el trozo
 ; lleva la marca de la casilla de partida de una orden, que se quita al volver
 ; al modo mirar), ni haya pasado el guardian (todo menu es de bitmap y por el
 ; pasa; y las ordenes marcan la casilla justo despues de un menu). El reloj
 ; del juego no corre en la vista: solo lo mueve BUCLE_DE_PARTIDA.
 ;
-; Los atributos de los dos sprites (Y, X, patron, color) se calculan aqui y
-; los sube CARACTERES_A_NOMBRES detras de los nombres, en cada vuelta; los
-; 192 bytes de patrones los sube PONE_LOS_PATRONES al entrar. El tamano 16x16
-; lo pone el cargador en R1 (0xE2): el juego nunca escribe R1. El guardian, al
+; Los atributos de los dos sprites -Y = 79 y X = 112, la celda (7, 5), y el
+; patron y el color segun el modo- los deja MI_PINTA en ATRIBUTOS y los sube
+; CARACTERES_A_NOMBRES detras de los nombres, en cada vuelta; los 192 bytes
+; de patrones los sube PONE_LOS_PATRONES al entrar. El tamano 16x16 lo pone
+; el cargador en R1 (0xE2): el juego nunca escribe R1. El guardian, al
 ; devolver la identidad, deja los dos sprites como los dejo el cargador
-; (Y=209: fuera de la pantalla).
+; (Y=209: fuera de la pantalla). En el centro no lo tapa ninguna ventana: la
+; ficha va de la fila 13 de caracteres para abajo (0x5FBD; en los modos 0x12
+; y 0x17, en la fila 20) y los carteles de posicion, destino y sitio no pasan
+; de la fila 3. En el original tampoco lo tapaba nada.
+;
+; ELEGIR ENTRE LAS UNIDADES DE LA CASILLA, POR TOQUE
+;
+; Con fuego sobre una casilla con varias unidades, ELIGE_ENTRE_LAS_DE_LA_CASILLA
+; (0x7751) entra en un bucle en el que arriba y abajo pasan de una unidad a
+; otra y cada paso repinta la vista. En el original una vuelta de ese bucle
+; era un repintado entero (3 por segundo); con la cache va a mas de 40, y con
+; la tecla pulsada era imposible parar en la unidad que se queria. Decision
+; del usuario: arriba y abajo van por TOQUE, no por tiempo. MI_ELECCION
+; sustituye al `call LEE_LOS_MANDOS` de 0x7758 y solo deja pasar esos dos
+; bits en la vuelta en que se pulsan: hasta soltar y volver a pulsar no hay
+; otro paso.
 ;
 ; EL RITMO DEL VDP
 ;
@@ -141,12 +157,12 @@ MODO_DE_LA_VISTA equ 071CFh     ; el operando de 0x71CE: 0x10 mirar, 0x12 elegir
 CELDA_DEL_MAPA  equ 08108h      ; H = fila, L = columna -> IX = la casilla en el mapa
 DIBUJA_EL_TROZO equ 07643h      ; las 16 x 13 celdas desde la esquina IX
 TAPA_LOS_BORDES equ 07129h      ; y lo que se sale del mapa, a 0xD5
-ANCHO_VENTANA   equ 16          ; celdas de mapa
-ALTO_VENTANA    equ 13
-CURSOR_COL      equ 7           ; donde cae el cursor en la ventana cuando se recentra
+CURSOR_COL      equ 7           ; la celda del trozo (16 x 13) en la que cae el cursor: el centro
 CURSOR_FILA     equ 5           ; (0x71B5 hace `inc h` y resta 720 = 7 columnas y 6 filas)
-MARGEN          equ 3           ; a menos de esto del borde se recentra
+CURSOR_X        equ 16*CURSOR_COL       ; los sprites: 16 pixels por celda
+CURSOR_Y        equ 16*CURSOR_FILA-1    ; y el VDP pinta el sprite una linea por debajo de Y
 MUEVE_POR_EL_MAPA equ 0734Bh    ; A = mando, HL = posicion; mueve una casilla
+LEE_LOS_MANDOS  equ 0066Dh      ; A = el mando: bits 0-3 direcciones, 4 fuego, 5 la tecla 1, 6 la R
 PASO_DEL_CURSOR equ 10          ; cuadros entre casilla y casilla con la tecla pulsada: 5 por segundo a 50 Hz (6 a 60)
                                 ; CUADROS lo lleva el gancho de la interrupcion (puente.asm) y llega como --equ
 DESPLAZA_ESQUINA equ -720       ; lo que resta 0x71B9 a la celda de (H+1, L)
@@ -259,7 +275,7 @@ N_CELDA:        ld a,(hl)               ; 7
                 ENDIF
 
 ; Detras de los nombres, los ocho atributos de los dos sprites del cursor, que
-; MI_PINTA dejo calculados en ATRIBUTOS: Y, X, patron y color de cada uno.
+; MI_PINTA dejo en ATRIBUTOS: Y, X, patron y color de cada uno.
 SUBE_EL_CURSOR: ld hl,VRAM_SPRITES
                 call DIRECCION_VRAM
                 ld hl,ATRIBUTOS
@@ -436,11 +452,11 @@ MODO_NOMBRES:   defb 0                  ; 0 = la VRAM esta como siempre; 1 = com
 ; con HL = la posicion del cursor (H fila, L columna; el bit 7 de cada uno es
 ; una bandera y no cuenta) y vuelve con HL intacto, como el original.
 ;
-; Si la cache vale, el modo es el de entonces y el cursor sigue a MARGEN o mas
-; celdas del borde de la ventana, la pantalla vuelve a ser el trozo limpio de
-; la cache. Si no, se repinta como lo hacia 0x71A7-0x71C5, con la esquina en
-; (H-5, L-7), y se guarda. Y en los dos casos se dejan calculados los ocho
-; atributos de los dos sprites del cursor.
+; Si la cache vale y la posicion y el modo son los de la ultima vez, la
+; pantalla vuelve a ser el trozo limpio de la cache. Si no, se repinta como
+; lo hacia 0x71A7-0x71C5 y se guarda. Y en los dos casos se dejan en
+; ATRIBUTOS el patron y el color de los dos sprites segun el modo; Y y X no
+; cambian nunca: el cursor esta siempre en el centro.
 ; --------------------------------------------------------------------------
 MI_PINTA:
                 ld a,(CACHE_VALIDA)
@@ -454,24 +470,16 @@ MI_PINTA:
                 ld a,l
                 and 07fh
                 ld b,a
-                ld a,(ESQUINA_L)        ; la columna del cursor cuando se recentro
-                ld c,a
-                ld a,b
-                sub c                   ; columna - la de entonces: de -4 a 5 si sigue dentro
-                add a,CURSOR_COL-MARGEN ; de 0 a 9; fuera de ahi, sin signo, es grande
-                cp ANCHO_VENTANA-2*MARGEN
-                jr nc,MP_REPINTA
+                ld a,(POSICION_L)
+                cp b
+                jr nz,MP_REPINTA
                 ld a,h
                 and 07fh
                 ld b,a
-                ld a,(ESQUINA_H)
-                ld c,a
-                ld a,b
-                sub c                   ; fila - la de entonces: de -2 a 4
-                add a,CURSOR_FILA-MARGEN
-                cp ALTO_VENTANA-2*MARGEN
-                jr nc,MP_REPINTA
-                push hl                 ; dentro: el trozo limpio, de la cache
+                ld a,(POSICION_H)
+                cp b
+                jr nz,MP_REPINTA
+                push hl                 ; la misma casilla y el mismo modo: el trozo limpio, de la cache
                 ld hl,CACHE
                 ld de,PANTALLA
                 ld bc,TAM_PANTALLA
@@ -482,10 +490,10 @@ MP_REPINTA:     ld a,(MODO_DE_LA_VISTA)
                 ld (ULTIMO_MODO),a
                 ld a,l
                 and 07fh
-                ld (ESQUINA_L),a
+                ld (POSICION_L),a
                 ld a,h
                 and 07fh
-                ld (ESQUINA_H),a
+                ld (POSICION_H),a
                 push hl
                 ld hl,PANTALLA          ; como 0x71A7: las 850 celdas a 0x80, el fondo de la vista
                 ld de,PANTALLA+1
@@ -511,38 +519,7 @@ MP_REPINTA:     ld a,(MODO_DE_LA_VISTA)
                 pop hl
                 ld a,1
                 ld (CACHE_VALIDA),a
-MP_CURSOR:      ; X = 16 * (columna - esquina + 7); Y = 16 * (fila - esquina + 5) - 1, que el VDP
-                ; pinta el sprite una linea por debajo de Y
-                ld a,l
-                and 07fh
-                ld b,a
-                ld a,(ESQUINA_L)
-                ld c,a
-                ld a,b
-                sub c
-                add a,CURSOR_COL
-                add a,a
-                add a,a
-                add a,a
-                add a,a
-                ld (ATRIBUTOS+1),a
-                ld (ATRIBUTOS+5),a
-                ld a,h
-                and 07fh
-                ld b,a
-                ld a,(ESQUINA_H)
-                ld c,a
-                ld a,b
-                sub c
-                add a,CURSOR_FILA
-                add a,a
-                add a,a
-                add a,a
-                add a,a
-                dec a
-                ld (ATRIBUTOS+0),a
-                ld (ATRIBUTOS+4),a
-                ld a,(MODO_DE_LA_VISTA) ; el dibujo segun el modo: 0x10 -> 0, 0x12 -> 1, 0x17 -> 2
+MP_CURSOR:      ld a,(MODO_DE_LA_VISTA) ; el dibujo segun el modo: 0x10 -> 0, 0x12 -> 1, 0x17 -> 2
                 ld c,0
                 cp 010h
                 jr z,MP_MODO
@@ -574,16 +551,17 @@ MP_MODO:        ld a,c
                 pop hl
                 ret
 
-CACHE_VALIDA:   defb 0                  ; 1 mientras CACHE sea el trozo de ESQUINA con ULTIMO_MODO
+CACHE_VALIDA:   defb 0                  ; 1 mientras CACHE sea el trozo de POSICION con ULTIMO_MODO
 ULTIMO_MODO:    defb 0
-ESQUINA_H:      defb 0                  ; la posicion del cursor la ultima vez que se repinto
-ESQUINA_L:      defb 0
-ATRIBUTOS:      defb 209,0,0,1, 209,0,1,1       ; los dos sprites: Y, X, patron, color
+POSICION_H:     defb 0                  ; la posicion del cursor con la que se pinto el trozo de la cache
+POSICION_L:     defb 0
+ATRIBUTOS:      defb CURSOR_Y,CURSOR_X,0,1, CURSOR_Y,CURSOR_X,1,1   ; los dos sprites: Y, X, patron, color
 
 ; --------------------------------------------------------------------------
 ; MI_MUEVE: sustituye al `call MUEVE_POR_EL_MAPA` de 0x7225. Con la vuelta a
-; mas de 40 por segundo, el cursor -que avanza una casilla POR VUELTA con la
-; tecla pulsada- iria a 25-43 casillas por segundo. Se limita a una casilla
+; mas de 40 por segundo en reposo -y a unas 10 moviendo, que cada paso repinta
+; el trozo-, el cursor, que avanza una casilla POR VUELTA con la tecla
+; pulsada, iria disparado. Se limita a una casilla
 ; cada PASO_DEL_CURSOR cuadros, contados por el gancho de la interrupcion.
 ; Sin ninguna direccion pulsada el contador se deja listo, asi que una
 ; pulsacion suelta mueve al instante: lo que se limita es MANTENER pulsado.
@@ -608,6 +586,40 @@ MM_DIRECCION:   ld a,(ULTIMO_PASO)
                 ld a,b
                 jp MUEVE_POR_EL_MAPA
 ULTIMO_PASO:    defb 0                  ; el cuadro del ultimo paso del cursor
+
+; --------------------------------------------------------------------------
+; MI_ELECCION: sustituye al `call LEE_LOS_MANDOS` de 0x7758, el del bucle de
+; ELIGE_ENTRE_LAS_DE_LA_CASILLA (ver la cabecera). Arriba y abajo (bits 0 y
+; 1) solo pasan en la vuelta en que se pulsan: un toque es un paso, y hasta
+; soltar y volver a pulsar no hay otro. Fuego y la tecla 1 (bits 4 y 5), que
+; son las dos salidas del bucle, pasan tal cual, y al salir se olvida lo
+; pulsado: la proxima entrada empieza sin nada apretado. Devuelve A como
+; LEE_LOS_MANDOS, y como ella no toca BC, DE ni HL.
+; --------------------------------------------------------------------------
+MI_ELECCION:
+                call LEE_LOS_MANDOS
+                push bc
+                ld b,a                  ; el mando de ahora
+                ld a,(ULTIMA_ELECCION)
+                cpl
+                and b                   ; pulsado ahora y no en la vuelta anterior
+                and 003h                ; solo arriba y abajo van por toque
+                ld c,a
+                ld a,b
+                ld (ULTIMA_ELECCION),a
+                and 030h                ; fuego o la tecla 1: se sale del bucle
+                jr z,ME_TOQUES
+                xor a
+                ld (ULTIMA_ELECCION),a  ; la proxima entrada, de cero
+                ld a,b                  ; y el mando entero: 0x775B y 0x7760 miran esos bits
+                pop bc
+                ret
+ME_TOQUES:      ld a,b
+                and 0FCh                ; el resto de bits, tal cual
+                or c                    ; y arriba/abajo solo si acaban de pulsarse
+                pop bc
+                ret
+ULTIMA_ELECCION: defb 0                 ; el mando de la vuelta anterior del bucle de eleccion
 
                 include "cursor.inc"    ; CURSOR_PATRONES (192 B) y CURSOR_COLORES (6), de cursor.png
 
