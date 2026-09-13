@@ -716,4 +716,56 @@ ALINEA:         defs (256 - (ALINEA and 255)) and 255
 SOMBRA_BUF:     defs 768
                 ENDIF
 
+; --------------------------------------------------------------------------
+; MI_FUERZA: sustituye el calculo de FUERZA_DE_LA_TROPA (0x8DE4), que estaba
+; roto de fabrica.
+;
+; QUE HACIA EL ORIGINAL. Al montar una batalla, cada figura nace con una vida
+; que sale de restarle algo a 255 (0x8D40), y ese algo tenia que ser lo que a
+; su tipo de tropa le cuesta el terreno donde se pelea: la tabla de 0x6D47,
+; diez fichas de dieciseis bytes, la misma que se consulta para andar.
+;
+; Pero la rutina NO recibe el tipo de tropa. 0x8D37 le pasa en A el 0xC200 de
+; la unidad -lo que le queda de andar-, lo multiplica por ocho, le suma 0x47 y
+; le mete el terreno con un `or`, asi que la direccion recorre toda la pagina
+; 0x6D00: cae dentro de la tabla, en el bufer de la ficha en curso (0x6D37),
+; en la red de caminos chica o en el codigo que empieza en 0x6DE7. Ejecutada
+; con las 4.096 parejas posibles devuelve ONCE valores distintos (medido con
+; tools/omsx_barre_fuerza.tcl, en el repositorio del desensamblado): un 3 en
+; dos de cada tres casos, porque la tabla esta llena de treses, y ademas 40,
+; 57, 65, 66, 71, 72, 78, 88, 205 y 217.
+;
+; QUE HACE ESTA. Lo que se pretendia, y lo que hace bien el otro lector de esa
+; misma tabla, TECLA_R_EN_LA_BATALLA (0x9296): coger el tipo de tropa de
+; 0xBD00 -el llamador deja HL en 0xC200+n, asi que L ya trae el numero de
+; unidad-, apuntar a su ficha con tipo*16 y leer dentro con el terreno. Un
+; tipo sin ficha (de 10 arriba, que la cinta no usa) cae en la primera, para
+; no leer fuera de la tabla.
+;
+; Devuelve en A el byte de la tabla, que es lo que 0x8DF1 espera, y como la
+; original no toca ni DE ni la pila. B se usa de paso: el llamador no lo
+; necesita (0x8D40-0x8D46 solo miran A, C y D).
+; --------------------------------------------------------------------------
+TERRENO_DE_LA_BATALLA:  equ 08deah      ; el nibble del terreno, que escribe 0x902F
+
+MI_FUERZA:
+                ld h,0bdh               ; L trae el numero de unidad: 0xBD00+n
+                ld a,(hl)
+                and 00fh                ; el tipo de tropa
+                cp 00ah
+                jr c,MF_CON_FICHA
+                xor a                   ; de 10 arriba no hay ficha: la primera
+MF_CON_FICHA:   add a,a
+                add a,a
+                add a,a
+                add a,a                 ; por dieciseis: el principio de su ficha
+                ld b,a
+                ld a,(TERRENO_DE_LA_BATALLA)
+                add a,b                 ; + el terreno donde se pelea
+                add a,047h              ; 0x6D47 + tipo*16 + terreno
+                ld l,a
+                ld h,06dh               ; 9*16 + 15 + 0x47 = 230: nunca hay acarreo
+                ld a,(hl)
+                ret
+
 NOMBRES_FIN:

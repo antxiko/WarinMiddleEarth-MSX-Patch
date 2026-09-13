@@ -531,14 +531,17 @@ class TestLaMusica(unittest.TestCase):
                 permitidos.add(q["carga"])
         vista = self.plan.get("vista")
         if vista:
-            # La rutina de la vista, en la misma zona liberada, y sus SIETE
-            # parches: veinte bytes, dieciseis del bloque medio y cuatro del
-            # bajo. Los dos ultimos son los del guante del mapa general.
+            # La rutina de la vista, en la misma zona liberada, y sus OCHO
+            # parches: treinta y tres bytes, veintinueve del bloque medio y
+            # cuatro del bajo. Los dos del guante del mapa general, y el de
+            # 0x8DE4 -la fuerza de la tropa- que se lleva trece el solo, porque
+            # sustituye el calculo entero por un salto y un `call MI_FUERZA`.
             permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 20, "los parches de la vista tienen que ser veinte bytes")
+            self.assertEqual(len(de_la_vista), 33,
+                             "los parches de la vista tienen que ser treinta y tres bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -1030,12 +1033,31 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_siete_parches_son_los_que_dice(self):
+    def test_los_ocho_parches_son_los_que_dice(self):
         """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225, tres en
-        0x7758, tres en 0x7F57 y uno en 0x6575 (bloque medio) y cuatro en
-        0x044B (bloque bajo), y los siete caen sobre lo que la cinta trae."""
+        0x7758, tres en 0x7F57, uno en 0x6575 y trece en 0x8DE4 (bloque medio)
+        y cuatro en 0x044B (bloque bajo), y los ocho caen sobre lo que la cinta
+        trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
-        self.assertEqual(sorted(porque), [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57])
+        self.assertEqual(sorted(porque),
+                         [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57, 0x8DE4])
+        # LA FUERZA DE LA TROPA. El calculo roto de 0x8DE4 pasa a ser un `jr`
+        # que se salta los ocho bytes donde vive el operando del terreno -que no
+        # puede ejecutarse- y un `call MI_FUERZA` en los tres ultimos.
+        q = porque[0x8DE4]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("878787c647f6006fce6d95677e"),
+                         "0x8DE4 tiene que ser el calculo original de FUERZA_DE_LA_TROPA")
+        nuevo = bytes.fromhex(q["nuevo"])
+        self.assertEqual(len(nuevo), 13)
+        self.assertEqual(nuevo[:2], bytes([0x18, 0x08]),
+                         "el parche empieza con un `jr` que salta ocho bytes")
+        self.assertEqual(nuevo[2:10], bytes(8),
+                         "los ocho bytes saltados van a cero: ahi escribe 0x902F el terreno")
+        self.assertEqual(nuevo[10], 0xCD, "y los tres ultimos son un `call`")
+        destino = int.from_bytes(nuevo[11:13], "little")
+        self.assertTrue(self.v["ram"] <= destino < self.v["ram"] + self.v["bytes"],
+                        "MI_FUERZA tiene que caer dentro de la rutina de la vista")
+        self.assertEqual(self.medio[0x8DE4 - 0x5E00:][:13], bytes.fromhex(q["orig"]))
         # EL GUANTE. El bucle de partida llama a MI_GUANTE en vez de subir un
         # recuadro de 4x3 celdas, y MUEVE_EL_CURSOR deja de estamparlo.
         g = self.v["guante"]

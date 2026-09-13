@@ -236,6 +236,15 @@ MUEVE_EN_LA_VISTA_ORIG = bytes.fromhex("cd4b73")
 # era imposible parar en la unidad que se queria.
 MANDO_EN_LA_ELECCION = 0x7758
 MANDO_EN_LA_ELECCION_ORIG = bytes.fromhex("cd6d06")
+# Y LA FUERZA DE LA TROPA EN LA BATALLA, que estaba rota de fabrica: el calculo
+# de FUERZA_DE_LA_TROPA (0x8DE4) no recibe el tipo de tropa sino el 0xC200 de la
+# unidad, y termina leyendo un byte cualquiera de la pagina 0x6D00 (medido: once
+# valores distintos en las 4.096 parejas posibles). Sus trece bytes pasan a ser
+# un salto sobre el hueco -donde vive el operando del terreno, que 0x902F sigue
+# escribiendo en 0x8DEA- y un `call MI_FUERZA` al final, que devuelve en A el
+# byte que la rutina iba a buscar: 0x6D47 + tipo*16 + terreno.
+FUERZA_DE_LA_TROPA = 0x8DE4
+FUERZA_DE_LA_TROPA_ORIG = bytes.fromhex("878787c647f6006fce6d95677e")
 PASO_DEL_CURSOR = 10
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
@@ -888,6 +897,18 @@ def main(argv):
             MANDO_EN_LA_ELECCION, MANDO_EN_LA_ELECCION_ORIG,
             bytes([0xCD]) + sim_nombres["MI_ELECCION"].to_bytes(2, "little"),
             "en el menu de la casilla, arriba y abajo cambian de unidad por toque (MI_ELECCION)"))
+        # LA FUERZA DE LA TROPA. Los trece bytes de 0x8DE4 pasan a: un `jr` de
+        # dos bytes que se salta los ocho siguientes -ahi vive el operando del
+        # terreno, en 0x8DEA, que 0x902F sigue escribiendo y que NO puede
+        # ejecutarse: como opcode, un terreno 8 seria un `ex af,af'` y se
+        # llevaria por delante el valor devuelto- y el `call MI_FUERZA` en los
+        # tres ultimos, que deja en A lo que espera 0x8DF1.
+        salto = bytes([0x18, 0x08]) + bytes(8)
+        parches_vista.append(parchea(
+            FUERZA_DE_LA_TROPA, FUERZA_DE_LA_TROPA_ORIG,
+            salto + bytes([0xCD]) + sim_nombres["MI_FUERZA"].to_bytes(2, "little"),
+            "la fuerza de la tropa se lee de la ficha de SU tipo en el terreno "
+            "donde se pelea (MI_FUERZA), en vez de un byte cualquiera de 0x6D00"))
         # EL GUANTE DEL MAPA GENERAL. El `call REFRESCA_EL_CURSOR` de la primera
         # linea del bucle de partida, por `call MI_GUANTE`.
         parches_vista.append(parchea(
