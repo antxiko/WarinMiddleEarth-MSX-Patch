@@ -186,6 +186,14 @@ editables en `src/cartucho/guante.png`. La vuelta del bucle de partida pasa de
 51,9 a 59,5 por segundo, y lo que se ve es identico pixel a pixel
 (`make verifica_mapa`).
 
+Y **el panel File/Memo/Time toma el color de la vista**. En la cinta parcheada
+el texto de la vista de cerca va en amarillo claro y el panel del mapa se
+quedaba en blanco; ahora los dos son el mismo. No es un byte sino cuatro,
+porque el atributo del panel es como el juego lo reconoce -para saber si el
+disparo cae ahi y para respetarlo al limpiar- y porque ese amarillo era el de
+la marca de unidad: los dos atributos se intercambian, asi que las unidades
+pasan a blanco y se ven mucho mejor sobre el amarillo del mapa.
+
 La ROM que se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 

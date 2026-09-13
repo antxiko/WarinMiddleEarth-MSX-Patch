@@ -1239,6 +1239,46 @@ no se distingue: el cotejo pixel a pixel da CERO diferencias.
   a ponerlo, sin pisar BC, DE ni HL.
 
 
+### El panel File/Memo/Time, con el color de la vista — HECHO y VERIFICADO
+
+En la cinta parcheada de Araubi el texto de la vista de cerca se escribe con el
+atributo **0x70** -negro sobre amarillo claro, el operando de 0x763E- y el panel
+del mapa general se quedaba en el **0x78** de la cinta original, negro sobre
+blanco. Dos pantallas del mismo juego con dos colores de panel.
+
+Ahora el panel toma el de la vista, leido de 0x763F: en la cinta original los
+dos ya son 0x78 y no cambia nada; en la parcheada son cuatro bytes.
+
+**Y son cuatro, no uno, porque el atributo del panel es como el juego lo
+reconoce:**
+
+    0x8167   el operando del `ld a,078h` de 0x8166: con el se escriben los textos
+    0x7F9A   el del `cp 078h` de 0x7F99 (PULSA_EN_EL_PANEL): si el disparo cae en
+             una celda con ese atributo, es un panel. Sin esto los paneles dejan
+             de responder
+    0x6AB6   el del `ld a,078h` de 0x6AB5 (REPINTA_LOS_EJERCITOS): el UNICO
+             atributo que se respeta al limpiar; todo lo demas vuelve a 0x30.
+             Sin esto el panel pierde el color en el primer repintado
+    0x6AE1   el del `ld a,070h` de 0x6AE0: la marca de unidad
+
+El cuarto es una **colision**: 0x70, el atributo de la vista, es tambien con el
+que se marca donde hay una unidad. Si el panel se lo queda, la marca tiene que
+irse a otro, y el que se queda libre es justamente el del panel, 0x78. O sea
+que los dos atributos se INTERCAMBIAN: el panel pasa a amarillo claro, como la
+vista, y las unidades a blanco. Y ganan: antes eran amarillo claro sobre el
+amarillo oscuro del mapa y apenas se distinguian.
+
+#### Verificado
+
+`make verifica_mapa_parche` (exit 0): las dos pantallas siguen siendo IDENTICAS
+pixel a pixel despues de aplicarle a la ROM vieja esa permutacion de dos
+atributos -y solo esa- sobre los atributos de la RAM y sobre la tabla de color
+de la VRAM. O sea que el cambio es exactamente el intercambio y nada mas.
+`make verifica_mapa` (la cinta original, donde no cambia nada) tambien exit 0.
+Y siete tests, sobre las DOS cintas: que el atributo sale de 0x763F y no de una
+constante, que la marca se aparta solo si choca, y que los cuatro sitios van
+juntos y caen sobre lo que la cinta trae.
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo

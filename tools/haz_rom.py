@@ -262,6 +262,36 @@ ESTAMPA_EL_GUANTE = 0x6575
 ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("e5")
 GUANTE_PNG = os.path.join(SRC, "guante.png")
 
+# EL PANEL FILE/MEMO/TIME, CON EL COLOR DE LA VISTA (--panel). En la cinta
+# parcheada de Araubi el texto de la vista de cerca se escribe con el atributo
+# 0x70 -negro sobre amarillo claro, el operando de 0x763E- y el panel del mapa
+# general se queda en el 0x78 de la cinta original, negro sobre blanco. Con
+# esto el panel toma el mismo que la vista; en la cinta original los dos ya son
+# 0x78 y no cambia nada.
+#
+# Y hay que tocar TRES sitios, no uno, porque el atributo del panel es lo que
+# el juego usa para reconocerlo:
+#
+#   0x8167  el operando del `ld a,078h` de 0x8166: con el se escriben los textos
+#   0x7F9A  el del `cp 078h` de 0x7F99 (PULSA_EN_EL_PANEL): si el disparo cae
+#           en una celda con ese atributo, es un panel. Sin esto los paneles
+#           dejan de responder.
+#   0x6AB6  el del `ld a,078h` de 0x6AB5 (REPINTA_LOS_EJERCITOS): el unico
+#           atributo que se respeta al limpiar; todo lo demas vuelve a 0x30.
+#           Sin esto el panel pierde el color en el primer repintado.
+#
+# Y UNA COLISION: 0x70 es tambien con lo que se marca donde hay una unidad
+# (0x6AE0). Si el panel se lo queda, la marca pasa al que el panel deja libre,
+# 0x78 -blanco sobre el amarillo del mapa, que se ve mas, no menos-; si no,
+# se queda como estaba.
+ATRIBUTO_DEL_TEXTO = 0x763F     # el operando del `ld a,078h` de 0x763E: el de la vista
+PANEL_DEL_MAPA = 0x8167         # ... el de 0x8166: con el se escribe el panel
+PANEL_LO_RECONOCE = 0x7F9A      # ... el del `cp 078h` de 0x7F99
+PANEL_SE_RESPETA = 0x6AB6       # ... el del `ld a,078h` de 0x6AB5
+MARCA_DE_UNIDAD = 0x6AE1        # ... el del `ld a,070h` de 0x6AE0
+PANEL_ORIG = 0x78
+MARCA_ORIG = 0x70
+
 # EL MAPA GENERAL YA DIBUJADO (--mapa). DIBUJA_EL_MAPA (0x8166) tarda 3,9
 # segundos en recorrer 23.500 casillas estampando pixeles, y lo hace cada vez
 # que se vuelve al mapa. El dibujo no cambia nunca -solo depende del nibble
@@ -366,6 +396,7 @@ def main(argv):
     finales_rom = False
     vista = False
     mapa = False
+    panel = False
     sombra = False
     salidas_pedidas = None
     i = 3
@@ -384,6 +415,8 @@ def main(argv):
             vista = True; i += 1
         elif argv[i] == "--mapa":
             mapa = True; i += 1
+        elif argv[i] == "--panel":
+            panel = True; i += 1
         elif argv[i] == "--vista-sombra":
             # La misma vista pero con la sombra de 768 B: solo se suben las
             # filas que cambian. Es la variante que se monta para MEDIR.
@@ -797,6 +830,21 @@ def main(argv):
             PINTA_LA_FINAL, PINTA_LA_FINAL_ORIG,
             bytes([0xCD]) + sim_finales["FINALES"].to_bytes(2, "little") + bytes(5),
             "los cuatro finales llaman a la rutina en vez de copiar de la RAM")
+    parches_panel = []
+    if panel:
+        # El atributo de la vista, leido de la cinta; y si choca con la marca
+        # de unidad, la marca se va al que el panel deja libre.
+        atributo = medio[ATRIBUTO_DEL_TEXTO - ORG_MEDIO]
+        marca = MARCA_ORIG if atributo != MARCA_ORIG else PANEL_ORIG
+        for dir_, viejo, nuevo, que in (
+                (PANEL_DEL_MAPA, PANEL_ORIG, atributo, "el panel se escribe con el atributo de la vista"),
+                (PANEL_LO_RECONOCE, PANEL_ORIG, atributo, "PULSA_EN_EL_PANEL reconoce el panel por el atributo nuevo"),
+                (PANEL_SE_RESPETA, PANEL_ORIG, atributo, "REPINTA_LOS_EJERCITOS respeta el atributo nuevo al limpiar"),
+                (MARCA_DE_UNIDAD, MARCA_ORIG, marca, "la marca de unidad, al atributo que deja libre el panel")):
+            if nuevo == viejo:
+                continue        # en la cinta original el panel ya es el de la vista
+            parches_panel.append(parchea(dir_, bytes([viejo]), bytes([nuevo]),
+                                         "0x%02X -> 0x%02X: %s" % (viejo, nuevo, que)))
     parche_mapa = None
     if mapa:
         # El `ld hl,04000h` del `ldir` que ponia el lienzo a cero, por un `jp`
@@ -939,6 +987,12 @@ def main(argv):
                 planos=guante_planos[0].hex(), planos_colores=list(guante_planos[1]),
                 parches=[q for q in parches_vista
                          if q["dir"] in (REFRESCA_EL_GUANTE, ESTAMPA_EL_GUANTE)]))
+    if panel:
+        resumen["panel"] = dict(
+            atributo=medio[ATRIBUTO_DEL_TEXTO - ORG_MEDIO],
+            orig=PANEL_ORIG, marca_orig=MARCA_ORIG,
+            marca=(MARCA_ORIG if medio[ATRIBUTO_DEL_TEXTO - ORG_MEDIO] != MARCA_ORIG else PANEL_ORIG),
+            de_donde=ATRIBUTO_DEL_TEXTO, parches=parches_panel)
     if mapa:
         # El mapa ya dibujado: donde viaja, cuanto ocupa y el parche. La
         # entrada es la de finales.asm, que es quien lo descomprime.
@@ -1023,6 +1077,15 @@ def main(argv):
         print("     0x%04X del bloque medio: %s -> %s, %s"
               % (q["dir"], q["orig"], q["nuevo"], q["que"]))
         print("     RAM liberada: %d bytes" % sum(q["crudo"] for q in f["pantallas"]))
+    if panel:
+        q = resumen["panel"]
+        print("  el panel del mapa toma el atributo de la vista (0x%04X): 0x%02X -> 0x%02X; la marca de unidad, 0x%02X -> 0x%02X"
+              % (q["de_donde"], q["orig"], q["atributo"], q["marca_orig"], q["marca"]))
+        for w in q["parches"]:
+            print("     0x%04X del bloque medio: %s -> %s, %s"
+                  % (w["dir"], w["orig"], w["nuevo"], w["que"]))
+        if not q["parches"]:
+            print("     (en esta cinta el panel ya lleva el atributo de la vista: nada que cambiar)")
     if mapa:
         q = resumen["mapa"]
         print("  el mapa general va ya dibujado: %d B crudos -> %d con ZX0, desde el banco %d, 0x%04X"

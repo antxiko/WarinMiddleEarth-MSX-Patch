@@ -184,6 +184,13 @@ cell box pushed to VRAM on every loop; now it is two hardware sprites, editable
 in `src/cartucho/guante.png`. The game loop goes from 51.9 to 59.5 loops per
 second, and what you see is identical pixel for pixel (`make verifica_mapa`).
 
+And **the File/Memo/Time panel takes the close-up view's colour**. On the
+patched tape the view's text is light yellow and the map's panel stayed white;
+now they match. It is not one byte but four, because the panel's attribute is
+how the game recognises it -to tell whether a click lands on it, and to spare
+it when clearing- and because that yellow was the unit marker's: the two
+attributes swap, so units turn white and stand out far better against the map.
+
 The ROM to play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 

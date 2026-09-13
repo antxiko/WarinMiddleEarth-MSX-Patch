@@ -167,6 +167,7 @@ class TestLaRom(unittest.TestCase):
             todos.append(self.plan["finales"]["parche"])
         if self.plan.get("mapa"):
             todos.append(self.plan["mapa"]["parche"])
+        todos += self.plan.get("panel", {}).get("parches", [])
         todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
@@ -366,6 +367,7 @@ class TestLaMusica(unittest.TestCase):
             todos.append(self.plan["finales"]["parche"])
         if self.plan.get("mapa"):
             todos.append(self.plan["mapa"]["parche"])
+        todos += self.plan.get("panel", {}).get("parches", [])
         todos += self.plan.get("vista", {}).get("parches", [])
         return todos
 
@@ -518,6 +520,15 @@ class TestLaMusica(unittest.TestCase):
             self.assertEqual(len(bytes.fromhex(q["nuevo"])), 3,
                              "el parche del mapa son los tres bytes del `ld hl,04000h` de 0x816B")
             permitidos.update(range(q["carga"], q["carga"] + 3))
+        panel = self.plan.get("panel")
+        if panel:
+            # El color del panel son bytes sueltos del bloque medio, uno por
+            # sitio. En la cinta original no hay ninguno: el panel ya lleva el
+            # atributo de la vista.
+            for q in panel["parches"]:
+                self.assertEqual(len(bytes.fromhex(q["nuevo"])), 1,
+                                 "los parches del panel son de un byte")
+                permitidos.add(q["carga"])
         vista = self.plan.get("vista")
         if vista:
             # La rutina de la vista, en la misma zona liberada, y sus SIETE
@@ -865,6 +876,89 @@ class TestElMapaGeneral(unittest.TestCase):
         if not os.path.isdir(CUERPOS_PARCHE):
             raise unittest.SkipTest("no estan los cuerpos de la cinta parcheada")
         self.assertEqual(mapa_general.dibuja_el_mapa(CUERPOS_PARCHE), self.dibujado())
+
+
+class TestElPanelDelMapa(unittest.TestCase):
+    """El panel File/Memo/Time con el color de la vista (--panel).
+
+    No es un byte: son TRES, porque el atributo del panel es lo que el juego
+    usa para reconocerlo -0x7F99 para saber si el disparo cae ahi y 0x6AB5 para
+    respetarlo al limpiar los atributos-, y un CUARTO porque el atributo de la
+    vista en la cinta parcheada (0x70) es el mismo con el que se marca donde
+    hay una unidad. Se prueba sobre las DOS cintas: en la original el panel ya
+    lleva el atributo de la vista y no se cambia nada."""
+
+    ROM = ROM_MUSICA
+    DERIVADOS = WORK_MUSICA
+    CUERPOS = WORK
+
+    def setUp(self):
+        plan = os.path.join(self.DERIVADOS, "plan.json")
+        hace_falta(self.ROM, plan)
+        self.rom = lee(self.ROM)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        if "panel" not in self.plan:
+            raise unittest.SkipTest("esta ROM no lleva el color del panel (--panel)")
+        self.q = self.plan["panel"]
+        self.medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+
+    def test_el_atributo_sale_de_la_vista_y_no_de_una_constante(self):
+        """Si se escribiera a mano, en una de las dos cintas estaria mal."""
+        self.assertEqual(self.q["de_donde"], 0x763F)
+        self.assertEqual(self.q["atributo"], self.medio[0x763F - 0x5E00],
+                         "el atributo del panel no es el del texto de la vista")
+
+    def test_la_marca_de_unidad_se_aparta_solo_si_choca(self):
+        """0x70 es el atributo de la marca de unidad. Si el panel se lo queda,
+        la marca tiene que irse al que el panel deja libre; si no, quedarse."""
+        if self.q["atributo"] == self.q["marca_orig"]:
+            self.assertEqual(self.q["marca"], self.q["orig"],
+                             "el panel se queda el 0x70 y la marca no se aparta: se pisarian")
+        else:
+            self.assertEqual(self.q["marca"], self.q["marca_orig"],
+                             "sin colision, la marca de unidad no tiene por que moverse")
+        self.assertNotEqual(self.q["marca"], self.q["atributo"],
+                            "el panel y la marca de unidad no pueden llevar el mismo atributo")
+        self.assertNotEqual(self.q["atributo"], 0x30,
+                            "el panel no puede llevar el atributo del fondo del mapa")
+
+    def test_los_tres_sitios_del_panel_van_juntos(self):
+        """El que lo escribe, el que lo reconoce y el que lo respeta. Si uno se
+        quedara atras, los paneles dejarian de responder o perderian el color
+        en el primer repintado."""
+        porque = {q["dir"]: q for q in self.q["parches"]}
+        if not porque:
+            self.assertEqual(self.q["atributo"], self.q["orig"],
+                             "sin parches, el panel tenia que llevar ya el atributo de la vista")
+            return
+        self.assertEqual(sorted(porque), [0x6AB6, 0x6AE1, 0x7F9A, 0x8167])
+        for dir_ in (0x8167, 0x7F9A, 0x6AB6):
+            q = porque[dir_]
+            self.assertEqual(bytes.fromhex(q["orig"]), bytes([self.q["orig"]]),
+                             "en 0x%04X no estaba el atributo viejo del panel" % dir_)
+            self.assertEqual(bytes.fromhex(q["nuevo"]), bytes([self.q["atributo"]]))
+        q = porque[0x6AE1]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes([self.q["marca_orig"]]))
+        self.assertEqual(bytes.fromhex(q["nuevo"]), bytes([self.q["marca"]]))
+        # y caen sobre lo que la cinta trae, y llegan a la ROM
+        for dir_, q in porque.items():
+            self.assertEqual(self.medio[dir_ - 0x5E00:dir_ - 0x5E00 + 1], bytes.fromhex(q["orig"]),
+                             "en la cinta, 0x%04X no es lo que el parche dice sustituir" % dir_)
+            self.assertEqual(self.rom[q["rom"]:q["rom"] + 1], bytes.fromhex(q["nuevo"]))
+
+
+class TestElPanelDelMapaParche(TestElPanelDelMapa):
+    """Y sobre la cinta PARCHEADA, que es donde el cambio se nota: ahi la vista
+    va en 0x70 y el panel estaba en 0x78."""
+
+    ROM = os.path.join(RAIZ, "war_parche_musica.rom")
+    DERIVADOS = os.path.join(WORK, "parche_musica")
+    CUERPOS = CUERPOS_PARCHE
+
+    def test_en_esta_cinta_si_cambia(self):
+        self.assertEqual(self.q["atributo"], 0x70, "la cinta parcheada escribe la vista en 0x70")
+        self.assertEqual(len(self.q["parches"]), 4, "en esta cinta son cuatro bytes")
 
 
 class TestLaVistaPorNombres(unittest.TestCase):

@@ -28,6 +28,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lienzos                                              # noqa: E402
 import mapa_general                                         # noqa: E402
 import render_vram                                          # noqa: E402
 
@@ -93,6 +94,30 @@ def borra_el_guante(lienzo, fondo, direccion):
     return bytes(fuera)
 
 
+def color_msx(atributo):
+    """Atributo ZX -> byte de color del MSX, por las dos tablas del juego."""
+    t = lienzos.TABLA_CON if atributo & 0x40 else lienzos.TABLA_SIN
+    return (t[atributo & 7] << 4) | t[(atributo >> 3) & 7]
+
+
+def traduce_el_panel(plan):
+    """Las dos traducciones que hay que aplicarle a la ROM VIEJA para poder
+    compararla con la nueva cuando el panel cambia de color: una para los
+    atributos ZX de la copia en RAM y otra para los bytes de color de la VRAM.
+
+    El cambio es una PERMUTACION de dos atributos: el panel se queda con el de
+    la vista y la marca de unidad se va al que el panel deja libre. Sin
+    --panel las dos traducciones son la identidad."""
+    at = list(range(256))
+    col = list(range(256))
+    q = plan.get("panel")
+    if q:
+        for viejo, nuevo in ((q["orig"], q["atributo"]), (q["marca_orig"], q["marca"])):
+            at[viejo] = nuevo
+            col[color_msx(viejo)] = color_msx(nuevo)
+    return bytes(at), bytes(col)
+
+
 def atributos_del_guante(plan, col, fila):
     g = plan["vista"]["guante"]
     y = (fila - 1) & 0xFF
@@ -125,11 +150,22 @@ def cotejo(nuevo, viejo, png, plan, work):
     vueltas = sorted(int(f[:-4]) for f in os.listdir(nuevo) if f.endswith(".ram"))
     g = plan["vista"]["guante"]
     patrones_png = bytes.fromhex(g["planos"])
+    tr_at, tr_col = traduce_el_panel(plan)
+    if plan.get("panel") and plan["panel"]["parches"]:
+        q = plan["panel"]
+        print("  (el panel pasa de 0x%02X a 0x%02X y la marca de unidad de 0x%02X a 0x%02X:"
+              " la ROM vieja se traduce antes de compararla)"
+              % (q["orig"], q["atributo"], q["marca_orig"], q["marca"]))
     for n in vueltas:
         ln = lee(os.path.join(nuevo, "%d.ram" % n))
         lv = lee(os.path.join(viejo, "%d.ram" % n))
         vn = lee(os.path.join(nuevo, "%d.vram" % n))
         vv = lee(os.path.join(viejo, "%d.vram" % n))
+        # la ROM vieja, con el panel y la marca traducidos: es lo unico que
+        # cambia entre las dos aparte del guante
+        lv = lv[:TAM_BITMAP] + bytes(tr_at[b] for b in lv[TAM_BITMAP:TAM_LIENZO])
+        vv = (bytes(vv[:0x2000]) + bytes(tr_col[b] for b in vv[0x2000:0x3800])
+              + bytes(vv[0x3800:]))
         en, ev = estado(nuevo, n), estado(viejo, n)
         col, fila = int(en["col"]), int(en["fila"])
         exige((col, fila) == (int(ev["col"]), int(ev["fila"])),

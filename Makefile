@@ -255,7 +255,7 @@ war.rom: extract $(CARTUCHO) tools/haz_rom.py
 rom_musica: war_musica.rom
 war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa
+	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel
 
 # La misma ROM SIN la vista por tabla de nombres: es la referencia contra la
 # que se coteja y se mide. Va a work/sin_vista para no pisar el plan de la otra.
@@ -295,7 +295,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 rom_parche_musica: war_parche_musica.rom
 war_parche_musica.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --salidas work/parche_musica
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --salidas work/parche_musica
 
 # Su referencia SIN la vista, para el cotejo y la medida.
 work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
