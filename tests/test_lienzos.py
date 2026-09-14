@@ -549,13 +549,19 @@ class TestContraLaCinta(unittest.TestCase):
                 self.assertEqual(vuelta, tabla, hoja.nombre)
                 self.assertEqual(avisos, [], hoja.nombre)
 
-    # Los 122 tiles que el lienzo del repositorio repinta: TODOS menos los seis
-    # del 97 al 102, que se quedaron con los bytes de la cinta. No es casualidad
-    # ni descuido: de esos seis solo cambio el fondo, y el fondo era ya el mismo
-    # color -el blanco del ZX y el blanco del MSX son el mismo color 15-, asi
-    # que el dibujo que vuelve es identico al de la cinta y la regla de "lo que
-    # no se toca" les devuelve sus bytes de siempre.
-    TILES_REPINTADOS = [n for n in range(128) if not 97 <= n <= 102]
+    # Los 110 tiles que el lienzo del repositorio repinta, desde la hoja del
+    # 2026-09-14. Los dieciocho que NO repinta se quedan con los bytes de la
+    # cinta porque el dibujo que vuelve es identico al suyo, y cada grupo por su
+    # motivo:
+    #   1 y 115-127   estan VACIOS -ni un pixel de tinta- y ahora se dejan en
+    #                 negro en vez de rellenarlos de magenta, asi que su byte de
+    #                 atributo vuelve a ser el de la cinta;
+    #   97-100        de esos cuatro solo cambio el fondo, y el fondo era ya el
+    #                 mismo color: el blanco del ZX y el blanco del MSX son el
+    #                 mismo color 15. El 101 y el 102 iban con ellos hasta la
+    #                 hoja del 2026-09-14 y ahora si cambian de dibujo.
+    TILES_REPINTADOS = [n for n in range(128)
+                        if n != 1 and not 97 <= n <= 100 and not 115 <= n <= 127]
 
     # Los 47 caracteres que el lienzo de la fuente repinta desde el 2026-09-11.
     # No es la fuente entera: los otros 81 se quedaron con los bytes de la cinta

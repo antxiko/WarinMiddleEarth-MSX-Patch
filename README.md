@@ -191,7 +191,7 @@ how the game recognises it -to tell whether a click lands on it, and to spare
 it when clearing- and because that yellow was the unit marker's: the two
 attributes swap, so units turn white and stand out far better against the map.
 
-The ROM to play is `war_parche_musica.rom` (`make rom_parche_musica`): the patched tape
+The ROM to play is `war_unificada.rom` (`make rom_unificada`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 
 ## What is still missing

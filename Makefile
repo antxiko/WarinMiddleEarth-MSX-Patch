@@ -287,15 +287,30 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 	python3 tools/cuerpos.py work/cuerpos_parche/extracted work/cuerpos_parche >/dev/null
 	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA)
 
-# Y LA PARCHEADA CON TODO: la cinta de Araubi (textos, ficha, mapa repintado)
-# mas la musica, ZX0, las finales en la ROM y la vista con el cursor como
-# sprite. Es el cartucho que se juega. Los seis sitios que el cartucho parchea
-# son identicos en las dos cintas (comprobado), y cursor.png sale de los
-# cuerpos PARCHEADOS, que el parche repinta el cursor de batalla.
-rom_parche_musica: war_parche_musica.rom
-war_parche_musica.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
+# LA ROM UNIFICADA: TODO en un solo fichero. Es el cartucho que se juega, y
+# lleva las dos mitades del trabajo.
+#
+# De la cinta de Araubi (war_parche.tsx):
+#   textos en espanol, la ficha con sus valores en cifras, el plazo del Anillo
+#   al lado del anillo, el Ojo de Sauron para las unidades enemigas, el papel
+#   khaki del texto, la fuente y los tiles del mapa repintados, y el arreglo
+#   del mapa comprimido (que el bit 5 del Ojo desbordaba el paquete y se comia
+#   el mapa por la derecha).
+#
+# Del cartucho (tools/haz_rom.py):
+#   musica PT3 en el menu, las tres imagenes y el mapa general comprimidos con
+#   ZX0, las dos pantallas finales quedandose en la ROM en vez de comer 13.824
+#   bytes de RAM, el mapa general ya dibujado, la vista de cerca por tabla de
+#   nombres con el cursor y el guante como sprites de hardware, el panel con el
+#   color de la vista, y la fuerza de la tropa en batalla arreglada.
+#
+# Los seis sitios que el cartucho parchea son identicos en las dos cintas
+# (comprobado), y cursor.png sale de los cuerpos PARCHEADOS, que el parche
+# repinta el cursor de batalla.
+rom_unificada: war_unificada.rom
+war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --salidas work/parche_musica
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --salidas work/unificada
 
 # Su referencia SIN la vista, para el cotejo y la medida.
 work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
@@ -412,14 +427,14 @@ captura_vista: $(ROM)
 	@cat work/captura_vista/captura_vista.log
 
 # Lo mismo que verifica_vista pero con la cinta PARCHEADA: la que se juega.
-verifica_vista_parche: war_parche_musica.rom work/war_parche_sin_vista.rom
-	@cmp -s war_parche_musica.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
+verifica_vista_parche: war_unificada.rom work/war_parche_sin_vista.rom
+	@cmp -s war_unificada.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
 	@rm -rf work/vistap_ref work/vistap_nueva work/vistap_encendida work/vistap_png
 	WAR_OUT="$(abspath work/vistap_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_parche_sin_vista.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	WAR_OUT="$(abspath work/vistap_nueva)" WAR_DIRS="$(abspath work/parche_musica/vista.tcl)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
-	WAR_OUT="$(abspath work/vistap_encendida)" WAR_DIRS="$(abspath work/parche_musica/vista.tcl)" WAR_PANTALLA=encendida $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vistap_nueva)" WAR_DIRS="$(abspath work/unificada/vista.tcl)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
+	WAR_OUT="$(abspath work/vistap_encendida)" WAR_DIRS="$(abspath work/unificada/vista.tcl)" WAR_PANTALLA=encendida $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_coteja_vista.tcl
 	@cat work/vistap_nueva/coteja_vista.log
-	python3 tools/coteja_vista.py work/vistap_nueva work/vistap_ref work/vistap_png --plan work/parche_musica/plan.json --work work/cuerpos_parche --roms war_parche_musica.rom work/war_parche_sin_vista.rom --encendida work/vistap_encendida
+	python3 tools/coteja_vista.py work/vistap_nueva work/vistap_ref work/vistap_png --plan work/unificada/plan.json --work work/cuerpos_parche --roms war_unificada.rom work/war_parche_sin_vista.rom --encendida work/vistap_encendida
 verifica_vista: war_musica.rom work/war_sin_vista.rom
 	@cmp -s war_musica.rom work/war_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva: el cotejo no diria nada"; exit 1; } || true
 	@rm -rf work/vista_ref work/vista_nueva work/vista_encendida work/vista_png
@@ -474,13 +489,13 @@ work/replay/war_replay.omr: WarInMiddleEarth.omr war.tsx tools/prepara_replay.py
 	python3 tools/prepara_replay.py WarInMiddleEarth.omr war.tsx $@
 
 # Lo mismo con la cinta PARCHEADA, que es la que se juega.
-verifica_mapa_parche: war_parche_musica.rom work/war_parche_sin_vista.rom
-	@cmp -s war_parche_musica.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva"; exit 1; } || true
+verifica_mapa_parche: war_unificada.rom work/war_parche_sin_vista.rom
+	@cmp -s war_unificada.rom work/war_parche_sin_vista.rom && { echo "la ROM de referencia es IDENTICA a la nueva"; exit 1; } || true
 	@rm -rf work/lienzop_ref work/lienzop_nuevo work/lienzop_png
 	WAR_OUT="$(abspath work/lienzop_ref)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_parche_sin_vista.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
-	WAR_OUT="$(abspath work/lienzop_nuevo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_parche_musica.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
+	WAR_OUT="$(abspath work/lienzop_nuevo)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_lienzo.tcl
 	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzop_ref/lienzo.log work/lienzop_nuevo/lienzo.log
-	python3 tools/coteja_mapa.py work/lienzop_nuevo work/lienzop_ref work/lienzop_png --plan work/parche_musica/plan.json --work work/cuerpos_parche
+	python3 tools/coteja_mapa.py work/lienzop_nuevo work/lienzop_ref work/lienzop_png --plan work/unificada/plan.json --work work/cuerpos_parche
 
 # Y LA MEDIDA: ciclos por vuelta de la vista y vueltas por segundo, antes y
 # despues, con la misma sonda. Un numero, no una impresion.
@@ -523,7 +538,7 @@ mide_sombra: war_musica.rom work/war_sombra.rom work/war_sin_vista.rom
 # partida entera para verlas. Salen de la ROM, descomprimidas con ZX0:
 #   make ve_final
 #   make ve_final PANTALLA=derrota
-ROM      := war_parche_musica.rom
+ROM      := war_unificada.rom
 PANTALLA := victoria
 
 .PHONY: juega ve_final
