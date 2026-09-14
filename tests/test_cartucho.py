@@ -531,17 +531,20 @@ class TestLaMusica(unittest.TestCase):
                 permitidos.add(q["carga"])
         vista = self.plan.get("vista")
         if vista:
-            # La rutina de la vista, en la misma zona liberada, y sus OCHO
-            # parches: treinta y tres bytes, veintinueve del bloque medio y
-            # cuatro del bajo. Los dos del guante del mapa general, y el de
+            # La rutina de la vista, en la misma zona liberada, y sus DOCE
+            # parches: cuarenta y cinco bytes, cuarenta y uno del bloque medio
+            # y cuatro del bajo. Los dos del guante del mapa general; el de
             # 0x8DE4 -la fuerza de la tropa- que se lleva trece el solo, porque
-            # sustituye el calculo entero por un salto y un `call MI_FUERZA`.
+            # sustituye el calculo entero por un salto y un `call MI_FUERZA`; y
+            # los cuatro de la batalla (0x8828, 0x8849, 0x884C y 0x90A6), tres
+            # bytes cada uno, que le quitan a cada vuelta la subida de la
+            # pantalla entera.
             permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 33,
-                             "los parches de la vista tienen que ser treinta y tres bytes")
+            self.assertEqual(len(de_la_vista), 45,
+                             "los parches de la vista tienen que ser cuarenta y cinco bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -1033,14 +1036,29 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_ocho_parches_son_los_que_dice(self):
+    def test_los_doce_parches_son_los_que_dice(self):
         """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225, tres en
         0x7758, tres en 0x7F57, uno en 0x6575 y trece en 0x8DE4 (bloque medio)
-        y cuatro en 0x044B (bloque bajo), y los ocho caen sobre lo que la cinta
-        trae."""
+        y cuatro en 0x044B (bloque bajo); y los CUATRO DE LA BATALLA, tres cada
+        uno: 0x8828 (cada ficha que cambia se sube sola), 0x8849 (el tablero
+        entero, solo la primera vuelta), 0x884C (fuera los atributos de cada
+        vuelta) y 0x90A6 (al montarla se apunta que esta sin subir). Los doce
+        caen sobre lo que la cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
         self.assertEqual(sorted(porque),
-                         [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57, 0x8DE4])
+                         [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57,
+                          0x8828, 0x8849, 0x884C, 0x8DE4, 0x90A6])
+        # LA BATALLA. Los tres `call` y el `ld hl,(nn)` que se sustituyen, y el
+        # de los atributos que se va a nops.
+        for d, orig in ((0x8828, "2adc87"), (0x8849, "cdbd05"),
+                        (0x884C, "cd0406"), (0x90A6, "cd0406")):
+            self.assertEqual(bytes.fromhex(porque[d]["orig"]), bytes.fromhex(orig),
+                             "0x%04X no es lo que la cinta trae" % d)
+        self.assertEqual(bytes.fromhex(porque[0x884C]["nuevo"]), bytes(3),
+                         "los atributos de cada vuelta se quitan con tres nops")
+        for d in (0x8828, 0x8849, 0x90A6):
+            self.assertEqual(bytes.fromhex(porque[d]["nuevo"])[0], 0xCD,
+                             "0x%04X tiene que quedar en un call" % d)
         # LA FUERZA DE LA TROPA. El calculo roto de 0x8DE4 pasa a ser un `jr`
         # que se salta los ocho bytes donde vive el operando del terreno -que no
         # puede ejecutarse- y un `call MI_FUERZA` en los tres ultimos.

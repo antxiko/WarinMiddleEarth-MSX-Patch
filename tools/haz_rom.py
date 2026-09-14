@@ -245,6 +245,21 @@ MANDO_EN_LA_ELECCION_ORIG = bytes.fromhex("cd6d06")
 # byte que la rutina iba a buscar: 0x6D47 + tipo*16 + terreno.
 FUERZA_DE_LA_TROPA = 0x8DE4
 FUERZA_DE_LA_TROPA_ORIG = bytes.fromhex("878787c647f6006fce6d95677e")
+# Y LA BATALLA, que subia la pantalla ENTERA al VDP en cada vuelta del tablero:
+# `call BITMAP_A_VRAM` (0x8849) y `call ATRIBUTOS_A_VRAM` (0x884C). Medido en
+# una batalla de verdad -63 vueltas del replay de Ruben, VG-8020-: 169.529 y
+# 597.698 ciclos, 757.888 juntos, 0,212 s por vuelta. Los atributos no hacen
+# falta (0x90A6 ya los sube al montar la batalla y NADIE escribe 0x5800-0x5AFF
+# dentro del bucle: medido) y del bitmap solo cambian 10,2 fichas de 256, asi
+# que cada una se sube sola al pasar por SIGUIENTE_FICHA. Cuatro sitios:
+SIGUE_LA_FICHA = 0x8828          # el `ld hl,(0x87DC)` de SIGUIENTE_FICHA
+SIGUE_LA_FICHA_ORIG = bytes.fromhex("2adc87")
+SUBE_EL_TABLERO = 0x8849         # el `call BITMAP_A_VRAM` de cada vuelta
+SUBE_EL_TABLERO_ORIG = bytes.fromhex("cdbd05")
+SUBE_LOS_ATRIBUTOS = 0x884C      # el `call ATRIBUTOS_A_VRAM` de cada vuelta
+SUBE_LOS_ATRIBUTOS_ORIG = bytes.fromhex("cd0406")
+ARMA_LOS_DOS_BANDOS = 0x90A6     # el `call ATRIBUTOS_A_VRAM` de al montarla
+ARMA_LOS_DOS_BANDOS_ORIG = bytes.fromhex("cd0406")
 PASO_DEL_CURSOR = 10
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
@@ -909,6 +924,26 @@ def main(argv):
             salto + bytes([0xCD]) + sim_nombres["MI_FUERZA"].to_bytes(2, "little"),
             "la fuerza de la tropa se lee de la ficha de SU tipo en el terreno "
             "donde se pelea (MI_FUERZA), en vez de un byte cualquiera de 0x6D00"))
+        # LA BATALLA: subir solo lo que cambia. Al montarla se apunta que el
+        # tablero esta sin subir (MI_ARMA); la primera vuelta lo sube entero
+        # -el fondo no son fichas- y de ahi en adelante cada ficha se sube sola
+        # en SIGUIENTE_FICHA, donde DE ya trae su direccion de pantalla. Los
+        # atributos se quitan del bucle: 0x90A6 ya los subio y nadie los toca.
+        parches_vista.append(parchea(
+            ARMA_LOS_DOS_BANDOS, ARMA_LOS_DOS_BANDOS_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_ARMA"].to_bytes(2, "little"),
+            "ARMA_LOS_DOS_BANDOS apunta que el tablero esta sin subir (MI_ARMA)"))
+        parches_vista.append(parchea(
+            SUBE_EL_TABLERO, SUBE_EL_TABLERO_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_SUBE_TABLERO"].to_bytes(2, "little"),
+            "el tablero entero se sube SOLO la primera vuelta de cada batalla (MI_SUBE_TABLERO)"))
+        parches_vista.append(parchea(
+            SUBE_LOS_ATRIBUTOS, SUBE_LOS_ATRIBUTOS_ORIG, bytes(3),
+            "fuera los 768 atributos de cada vuelta: 597.698 ciclos que nadie necesita"))
+        parches_vista.append(parchea(
+            SIGUE_LA_FICHA, SIGUE_LA_FICHA_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_SUBE_FICHA"].to_bytes(2, "little"),
+            "cada ficha que cambia se sube sola, dos celdas (MI_SUBE_FICHA)"))
         # EL GUANTE DEL MAPA GENERAL. El `call REFRESCA_EL_CURSOR` de la primera
         # linea del bucle de partida, por `call MI_GUANTE`.
         parches_vista.append(parchea(

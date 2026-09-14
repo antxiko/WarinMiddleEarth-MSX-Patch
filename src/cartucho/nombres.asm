@@ -768,4 +768,109 @@ MF_CON_FICHA:   add a,a
                 ld a,(hl)
                 ret
 
+; --------------------------------------------------------------------------
+; LA BATALLA: SUBIR SOLO LO QUE CAMBIA
+;
+; Cada vuelta del tablero acababa subiendo la pantalla ENTERA al VDP:
+;
+;     8849  call 005bdh   ; BITMAP_A_VRAM     los 6.144 bytes del dibujo
+;     884C  call 00604h   ; ATRIBUTOS_A_VRAM  los 768, traducidos a 6.144 escrituras
+;     884F  ret
+;
+; Medido en una batalla de verdad -63 vueltas del replay de Ruben, VG-8020-:
+;
+;     BITMAP_A_VRAM       169.529 ciclos
+;     ATRIBUTOS_A_VRAM    597.698 ciclos
+;     las dos             757.888 ciclos = 0,212 s por vuelta
+;
+; LOS ATRIBUTOS NO HACEN FALTA. ARMA_LOS_DOS_BANDOS (0x90A6) ya los sube al
+; montar la batalla, las fichas se dibujan solo en el bitmap (DOS_LINEAS_*
+; escriben en 0x4000-0x57FF) y el texto de abajo escribe su atributo DIRECTO a
+; la VRAM. Medido con un punto de observacion de escritura sobre 0x5800-0x5AFF
+; durante esas 63 vueltas: NADIE los toca. Asi que ese `call` se quita entero.
+;
+; Y DEL BITMAP SOLO CAMBIAN 10,2 FICHAS DE 256 por vuelta (medido; el reparto
+; va 10, 1, 30, 1, 14, 1 ... segun le toque mover a un bando o a otro). Cada
+; ficha son dos celdas, y RECUADRO_A_VRAM (0x0702) cuesta unos 311 ciclos por
+; celda: el punto de equilibrio son 552 celdas y el tablero entero son 512, o
+; sea que subir ficha a ficha gana hasta repintandolo completo.
+;
+; No hace falta lista de sucias: el bucle YA sabe cuales son. 0x872F pone a
+; cero las banderas de las fichas iguales y 0x87A2 se las salta, y en
+; SIGUIENTE_FICHA (0x8825) DE trae la direccion de pantalla de la ficha que se
+; acaba de mirar. Se engancha ahi, en el `ld hl,(0x87DC)` de 0x8828.
+;
+; LA PRIMERA VUELTA de cada batalla sube el tablero entero: el fondo no son
+; fichas y nadie lo subiria. MI_ARMA la marca al montar la batalla.
+; --------------------------------------------------------------------------
+BITMAP_A_VRAM:    equ 005BDh    ; los 6.144 bytes del bitmap, de golpe
+LOS_ATRIBUTOS:    equ 00604h    ; los 768 atributos
+RECUADRO_A_VRAM:  equ 00702h    ; D=fila, E=columna, B=filas, C=columnas
+FICHA_EN_LA_LISTA: equ 087DCh   ; operando de 0x87DB: la ficha que se esta mirando
+
+TABLERO_SIN_SUBIR: defb 1       ; 1 mientras el tablero de esta batalla este por subir entero
+
+; Sustituye al `call LOS_ATRIBUTOS` de 0x90A6 (ARMA_LOS_DOS_BANDOS): hace lo
+; mismo y ademas apunta que el tablero de esta batalla esta sin subir.
+MI_ARMA:
+                ld a,1
+                ld (TABLERO_SIN_SUBIR),a
+                jp LOS_ATRIBUTOS
+
+; Sustituye al `call BITMAP_A_VRAM` de 0x8849: solo sube el tablero entero la
+; primera vuelta de cada batalla; de ahi en adelante cada ficha se ha subido
+; sola.
+MI_SUBE_TABLERO:
+                ld a,(TABLERO_SIN_SUBIR)
+                or a
+                ret z
+                xor a
+                ld (TABLERO_SIN_SUBIR),a
+                jp BITMAP_A_VRAM
+
+; Sustituye al `ld hl,(0x87DC)` de 0x8828, dentro de SIGUIENTE_FICHA. Ahi DE
+; trae la direccion de pantalla ZX de la ficha que se acaba de mirar. Se entra
+; con el juego de registros ALTERNATIVO (0x8798 hizo `exx`), y ni
+; RECUADRO_A_VRAM ni el guardian de 0x044B usan `exx`, asi que basta con
+; guardar los tres pares. A no hace falta: de 0x882B a 0x8831 nadie lo mira.
+MI_SUBE_FICHA:
+                ld hl,(FICHA_EN_LA_LISTA)   ; lo que hacia 0x8828
+                ld a,(hl)
+                or a
+                ret z                       ; esta ficha no cambio: nada que subir
+                ld a,(TABLERO_SIN_SUBIR)
+                or a
+                ret nz                      ; la primera vuelta la sube entera 0x8849
+                push hl
+                push de
+                push bc
+                ; La direccion ZX lleva la columna en los bits 4-0 de E, la fila
+                ; dentro del tercio en los 7-5, y el tercio en los bits 4-3 de D.
+                ld a,e
+                and 01Fh
+                ld c,a                      ; la columna
+                ld a,e
+                rlca
+                rlca
+                rlca
+                and 007h                    ; la fila dentro del tercio
+                ld b,a
+                ld a,d
+                and 018h                    ; el tercio ...
+                rrca
+                rrca
+                rrca
+                add a,a                     ; ... por ocho
+                add a,a
+                add a,a
+                add a,b
+                ld d,a                      ; la fila, de 0 a 23
+                ld e,c                      ; la columna
+                ld bc,00102h                ; una fila de celdas, dos columnas
+                call RECUADRO_A_VRAM
+                pop bc
+                pop de
+                pop hl
+                ret
+
 NOMBRES_FIN:
