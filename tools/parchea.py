@@ -109,6 +109,18 @@ ORIG_ICONO = bytes.fromhex(
     "1467ed53f9667ef52a80667cb52824ed4bba6678b1281c227a66af0808d3feee10082b"
     "7db4c26e660b79b02806210000c36866210000110000193e00b7")
 
+# La tercera tanda (src/parche/mapa_comprimido.asm), ensamblada a org 0x66E2:
+# quitar la marca de bando antes de empaquetar el mapa. Va en el ULTIMO hueco
+# del motor de altavoz muerto -0x6600 los valores, 0x664C el Ojo, 0x6689 los
+# adjetivos y 0x66A2 los textos-, que llega hasta 0x6713: 50 bytes, y esto
+# ocupa 25.
+RUTINA_MAPA = bytes.fromhex(
+    "e5d5c52100cc01cc337ee6df77230b78b120f6c1d1e1c3b393")
+
+# Los 25 bytes originales de 0x66E2: mas motor del altavoz, igual de muerto.
+ORIG_MAPA = bytes.fromhex(
+    "7932c1661100007caa677dab6f22ba66f13dc25366c9110000")
+
 # Los cuatro tiles del Ojo de Sauron. Nueve bytes cada uno: ocho de dibujo y el
 # atributo del ZX detras. El Ojo esta REPINTADO desde el 2026-09-10: ya no es
 # negro sobre blanco, es el ojo en llamas en rojo oscuro -atributo 0x3A, tinta
@@ -167,6 +179,32 @@ PARCHES = [
     # Y el dibujo del Ojo -los tiles 111 a 114, que en la cinta estaban a cero-
     # NO va aqui: sale del lienzo, como el resto de los graficos del bloque
     # alto. Ver parches_de_graficos.
+
+    # ---- (3b) QUE EL MAPA NO SE BORRE POR LA DERECHA ---------------------
+    # El bit 5 que siembra (3) tiene un precio que no se vio hasta la partida
+    # de Ruben: el mapa se guarda COMPRIMIDO antes de cada batalla, y el sitio
+    # que tiene para el paquete esta clavado en el codigo.
+    #
+    #     93A4  call EMPAQUETA     ; empaqueta de 0xCC00 a 0x4000
+    #     93A7  ld bc,016ech       ; y de vuelta SIEMPRE 0x16EC bytes
+    #
+    # El mapa limpio mide empaquetado 0x16EA: entra con DOS bytes de sobra.
+    # Cada casilla con el bit 5 parte una tira y suma dos. Y ese bit no lo baja
+    # nadie: el barrido de 0x7FE8 usa mascara 0x7F. Medido en la partida de
+    # Ruben (WarInMiddleEarthNivelMordor.omr): las marcas van de 9 a 1382 y
+    # TODAS las compresiones se pasan, de +4 a +64 bytes. Lo que sobra se
+    # pierde, y al volver de la batalla el final del mapa se queda a 0x00: la
+    # cola del buffer es la DERECHA del mapa, porque va por columnas.
+    #
+    # El arreglo es quitar el bit 5 justo antes de empaquetar. Las marcas las
+    # vuelve a sembrar RECENTRA_EL_MAPA al recentrar. No vale subirlo al
+    # barrido de 0x7FEB con mascara 0x5F: ese barrido corre JUSTO DESPUES de
+    # sembrar, y el Ojo de Sauron vive de que el bit 5 le sobreviva.
+    dict(grupo="mapa", bloque="medio", dir=0x66E2, orig=ORIG_MAPA.hex(),
+         nuevo=RUTINA_MAPA.hex(),
+         motivo="LIMPIA_Y_EMPAQUETA: baja el bit 5 de las 13.260 casillas y sigue a EMPAQUETA"),
+    dict(grupo="mapa", bloque="medio", dir=0x93A4, orig="cdb393", nuevo="cde266",
+         motivo="COMPRIME_EL_MAPA llama a LIMPIA_Y_EMPAQUETA (0x66E2) en vez de a EMPAQUETA"),
 
     # ---- (4) EL PLAZO QUE QUEDA, AL LADO DEL ANILLO ----------------------
     # El reloj baja un mes el operando de 0x8333 (255 al empezar) y a cero salta
@@ -479,8 +517,8 @@ def main(argv):
     # El orden en que se cuentan los grupos. Si aparece uno que no esta aqui se
     # PARA: antes se saltaba en silencio, y una entrada nueva se aplicaba a la
     # cinta pero no salia en el informe ni entraba en el total.
-    orden = ("visibilidad", "valores", "icono", "anillo", "papel", "adjetivos",
-             "graficos", "textos")
+    orden = ("visibilidad", "valores", "icono", "mapa", "anillo", "papel",
+             "adjetivos", "graficos", "textos")
     sueltos = sorted({p["grupo"] for p in tabla} - set(orden))
     if sueltos:
         raise SystemExit("grupos sin sitio en el informe: %s" % ", ".join(sueltos))

@@ -982,7 +982,7 @@ amarillo claro de los marcos), asi que la rutina lo lee del operando de
 0x763E; con la constante, en la cinta parcheada el cartel de Posicion salia
 con los colores de la cinta original.
 
-**Medido en el NMS 8250** (`tools/omsx_vista.tcl`, `war_parche_musica.rom`):
+**Medido en el NMS 8250** (`tools/omsx_vista.tcl`, `war_unificada.rom`):
 
     en reposo                363.884 ->  82.772 ciclos por vuelta    9,8 -> 43,2 vueltas por segundo
     moviendo sin soltar      623.715 -> 367.761 de media             5,7 ->  9,7: la mitad de las vueltas repintan
@@ -1010,7 +1010,7 @@ con trampas en las tres rutinas del juego (152 tests). Y como los PNG del
 cotejo los dibuja la propia herramienta, `make captura_vista` saca tres
 capturas del emulador de verdad, con el renderer encendido.
 
-**La ROM que se juega es `war_parche_musica.rom`** (`make rom_parche_musica`):
+**La ROM que se juega es `war_unificada.rom`** (`make rom_unificada`):
 la cinta parcheada de Araubi con la musica, ZX0, las finales en la ROM y la
 vista con el cursor. `cursor.png` sale de sus cuerpos (`make cursor`) porque
 el parche repinta el cursor de batalla.

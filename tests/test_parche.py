@@ -22,6 +22,7 @@ WORK = os.path.join(RAIZ, "work")
 EXT = os.path.join(RAIZ, "extracted")
 ASM = os.path.join(RAIZ, "src", "parche", "ficha_valores.asm")
 ASM_ICONO = os.path.join(RAIZ, "src", "parche", "icono_enemigo.asm")
+ASM_MAPA = os.path.join(RAIZ, "src", "parche", "mapa_comprimido.asm")
 
 
 def pasmo():
@@ -167,6 +168,65 @@ class TestTabla(unittest.TestCase):
         r = subprocess.run([pas, "--bin", ASM_ICONO, bin_], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr or r.stdout)
         self.assertEqual(open(bin_, "rb").read(), parchea.RUTINA_ICONO)
+
+    def test_la_rutina_del_mapa_es_la_del_asm(self):
+        """Y lo mismo para la tercera: quitar la marca de bando antes de
+        empaquetar el mapa sale de src/parche/mapa_comprimido.asm."""
+        pas = pasmo()
+        if not pas:
+            self.skipTest("pasmo no esta en el PATH")
+        bin_ = os.path.join(RAIZ, "work", "mapa_comprimido.test.bin")
+        os.makedirs(os.path.dirname(bin_), exist_ok=True)
+        r = subprocess.run([pas, "--bin", ASM_MAPA, bin_], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr or r.stdout)
+        self.assertEqual(open(bin_, "rb").read(), parchea.RUTINA_MAPA)
+
+    def test_el_gancho_del_mapa_apunta_a_la_rutina(self):
+        """COMPRIME_EL_MAPA tiene que llamar a LIMPIA_Y_EMPAQUETA, y la
+        direccion sale de los SIMBOLOS de pasmo, no de un numero a mano."""
+        pas = pasmo()
+        if not pas:
+            self.skipTest("pasmo no esta en el PATH")
+        binario = os.path.join(WORK, "mapa_comprimido.sym.bin")
+        sym = os.path.join(WORK, "mapa_comprimido.sym")
+        os.makedirs(WORK, exist_ok=True)
+        r = subprocess.run([pas, "--bin", ASM_MAPA, binario, sym],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr or r.stdout)
+        tabla = {}
+        for linea in open(sym):
+            partes = linea.split()
+            if len(partes) == 3 and partes[1].upper() == "EQU":
+                tabla[partes[0]] = int(partes[2].rstrip("Hh"), 16)
+        destino = tabla["LIMPIA_Y_EMPAQUETA"]
+        gancho = [p for p in parchea.PARCHES if p["dir"] == 0x93A4]
+        self.assertEqual(len(gancho), 1, "no hay gancho en 0x93A4")
+        nuevo = bytes.fromhex(gancho[0]["nuevo"])
+        self.assertEqual(nuevo[0], 0xCD, "el gancho de 0x93A4 tiene que ser un call")
+        self.assertEqual(nuevo[1] | (nuevo[2] << 8), destino,
+                         "0x93A4 llama a 0x%04X y la rutina esta en 0x%04X"
+                         % (nuevo[1] | (nuevo[2] << 8), destino))
+
+    def test_la_rutina_del_mapa_cabe_en_el_hueco_que_queda(self):
+        """El motor del altavoz muerto llega hasta 0x6713 y delante ya hay
+        cuatro inquilinos. La tercera tanda tiene que entrar en lo que quede,
+        y eso se cuenta sobre la tabla, no a ojo."""
+        if not hay_cuerpos():
+            self.skipTest("no hay work/*.raw")
+        alto = bytearray(open(os.path.join(WORK, "alto.raw"), "rb").read())
+        ocupado = []
+        for p in parchea.tabla_de_parches(alto):
+            if p["bloque"] != "medio":
+                continue
+            a = p["dir"]
+            b = a + len(bytes.fromhex(p["nuevo"]))
+            if b > 0x6600 and a < 0x6714 and a != 0x66E2:
+                ocupado.append((a, b))
+        for a, b in ocupado:
+            self.assertFalse(a < 0x66E2 + len(parchea.RUTINA_MAPA) and 0x66E2 < b,
+                             "la tercera tanda pisa 0x%04X-0x%04X" % (a, b - 1))
+        self.assertLessEqual(0x66E2 + len(parchea.RUTINA_MAPA), 0x6714,
+                             "la tercera tanda se sale del motor de altavoz")
 
     def test_los_ganchos_del_icono_apuntan_donde_toca(self):
         """Los tres ganchos de la segunda tanda entran en la rutina nueva: la

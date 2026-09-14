@@ -194,7 +194,7 @@ disparo cae ahi y para respetarlo al limpiar- y porque ese amarillo era el de
 la marca de unidad: los dos atributos se intercambian, asi que las unidades
 pasan a blanco y se ven mucho mejor sobre el amarillo del mapa.
 
-La ROM que se juega es `war_parche_musica.rom` (`make rom_parche_musica`): la cinta
+La ROM que se juega es `war_unificada.rom` (`make rom_unificada`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 
 ## Lo que falta

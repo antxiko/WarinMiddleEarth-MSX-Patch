@@ -341,12 +341,12 @@ class TestLaRomConMusica(TestLaRom):
 
 
 class TestLaRomParcheConMusica(TestLaRom):
-    """Y otra vez sobre war_parche_musica.rom: la cinta PARCHEADA de Araubi
+    """Y otra vez sobre war_unificada.rom: la cinta PARCHEADA de Araubi
     con la musica, ZX0, las finales en la ROM y la vista con el cursor como
     sprite. Es el cartucho que se juega, asi que tiene que cumplir lo mismo,
     con los cuerpos de la cinta parcheada (work/cuerpos_parche)."""
-    ROM = os.path.join(RAIZ, "war_parche_musica.rom")
-    DERIVADOS = os.path.join(WORK, "parche_musica")
+    ROM = os.path.join(RAIZ, "war_unificada.rom")
+    DERIVADOS = os.path.join(WORK, "unificada")
     CUERPOS = os.path.join(WORK, "cuerpos_parche")
 
 
@@ -955,8 +955,8 @@ class TestElPanelDelMapaParche(TestElPanelDelMapa):
     """Y sobre la cinta PARCHEADA, que es donde el cambio se nota: ahi la vista
     va en 0x70 y el panel estaba en 0x78."""
 
-    ROM = os.path.join(RAIZ, "war_parche_musica.rom")
-    DERIVADOS = os.path.join(WORK, "parche_musica")
+    ROM = os.path.join(RAIZ, "war_unificada.rom")
+    DERIVADOS = os.path.join(WORK, "unificada")
     CUERPOS = CUERPOS_PARCHE
 
     def test_en_esta_cinta_si_cambia(self):
