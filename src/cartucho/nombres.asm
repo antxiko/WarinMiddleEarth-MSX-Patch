@@ -873,4 +873,152 @@ MI_SUBE_FICHA:
                 pop hl
                 ret
 
+; --------------------------------------------------------------------------
+; EL INFILTRADO DEL CENTRO DEL CAMPO DE BATALLA
+;
+; Al montar cada batalla, 0x914B llama a DEJA_DE_LLEVARLA_A_MANO (0x8C6C) para
+; dejar el cursor, el despachador y el aviso en su sitio. Esa rutina termina
+; con `jp PON_LA_UNIDAD_EN_EL_TABLERO`, que planta en la casilla del CENTRO de
+; la pantalla la unidad que dice 0x8C63, "la que se lleva a mano".
+;
+; Y 0x8C63 no lo reinicia nadie: lo escribe un unico sitio de toda la ROM
+; (0x8B98, al coger una unidad) y conserva su valor de una batalla a la
+; siguiente. Como cada batalla monta las figuras que necesita -y son muchas
+; menos que en la anterior-, ese numero acaba senalando a una figura que ya no
+; existe: aparece en el centro del tablero con el dibujo, el fotograma, la vida
+; y el DUENO de la batalla vieja, porque al plantarla no se toca ninguno de sus
+; datos. Es el "infiltrado" que se mueve y no ataca, o da vueltas, o se
+; convierte en orco, o es casi inmortal.
+;
+; Y cuando lo matan, FIGURA_ABATIDA (0x8EFD) mira de quien era en 0xC600+figura
+; y sale un numero bajo heredado -00 Gandalf, 01 Aragorn, 02 Boromir...-; como
+; los 24 personajes con nombre llevan 0xC500 = 0 figuras, el cero se lee como
+; "ejercito agotado" y BORRA_EL_EJERCITO_DEL_MAPA se lleva del mapa a un heroe
+; que no estaba en la batalla.
+;
+; Medido en el replay de Araubi (mes 1 dia 32): cogio a mano la figura 0x53 en
+; una batalla de 161 figuras, y tres batallas despues, con solo 60 montadas,
+; esa 0x53 aparecio en el centro y al matarla se llevo a Aragorn por delante.
+;
+; MI_MONTA_BATALLA sustituye al `call DEJA_DE_LLEVARLA_A_MANO` de 0x914B: hace
+; la misma puesta a cero, y ademas deja 0x8C63 sin unidad, pero NO planta nada
+; en el centro. El `jp PON_LA_UNIDAD_EN_EL_TABLERO` sigue donde estaba para
+; cuando el jugador suelte una unidad de verdad, que es cuando hay que
+; plantarla.
+; --------------------------------------------------------------------------
+CURSOR_DE_BATALLA:  equ 08E0Dh   ; el `ld hl` que mueve el cursor
+INTERRUPTOR_8A68:   equ 08A68h   ; su gemelo, el opcode de 0x8A68
+DIBUJO_DE_FICHA_3:  equ 08851h   ; el operando del dibujo de la ficha 3
+FICHA_3_DE_SIEMPRE: equ 095A8h
+AVISO_DE_BATALLA:   equ 09190h   ; 1 = "La Batalla ha comenzado."
+DESPACHADOR_4:      equ 094BDh   ; la cuarta palabra del despachador de 0x9163
+NO_HACE_NADA:       equ 08F19h   ; el `ret` suelto al que vuelve de fabrica
+UNIDAD_ELEGIDA:     equ 08B23h   ; operando de 0x8B22: 0 si ninguna
+UNIDAD_A_MANO:      equ 08C63h   ; operando de 0x8C62: la que se lleva a mano
+
+MI_MONTA_BATALLA:
+                ld a,021h                   ; 0x21 = ld hl: el cursor vuelve
+                ld (CURSOR_DE_BATALLA),a    ;   a ser su rutina de siempre
+                ld (INTERRUPTOR_8A68),a     ;   y el interruptor de opcode
+                ld de,FICHA_3_DE_SIEMPRE
+                ld (DIBUJO_DE_FICHA_3),de
+                ld a,001h
+                ld (AVISO_DE_BATALLA),a     ; "La Batalla ha comenzado."
+                ld hl,NO_HACE_NADA
+                ld (DESPACHADOR_4),hl       ; nadie lleva nada a mano
+                xor a
+                ld (UNIDAD_ELEGIDA),a       ; ni hay unidad elegida
+                ld (UNIDAD_A_MANO),a        ; ni se arrastra la de la batalla
+                ld a,001h                   ;   anterior: aqui NO se planta
+                ld (TURBO_CUENTA),a         ; y la batalla empieza pintando
+                ret
+
+; --------------------------------------------------------------------------
+; LA TECLA F: LA BATALLA DEPRISA
+;
+; Una batalla se resuelve en cientos de vueltas de BUCLE_DE_LA_BATALLA
+; (0x914E), y cada vuelta va casi entera en dibujar. Medido en una batalla de
+; verdad (work/rapido/mide_vuelta.tcl, VG-8020, 400 vueltas):
+;
+;     vuelta entera                462.251 ciclos = 0,1291 s   7,7 vueltas/s
+;       MONTA_LA_PANTALLA (0x9160) 412.258 ciclos = 0,1152 s   el 89,2 %
+;       el despachador    (0x917A) )
+;       el cursor         (0x917D) ) lo que queda: 49.993 ciclos, el 10,8 %
+;       el aviso de abajo (0x9186) )
+;
+; O sea que lo que marca el ritmo de la batalla NO son los calculos -mover las
+; unidades y resolver los combates, que es el despachador- sino repintar el
+; tablero. Por cada vuelta que se deja de pintar, la batalla avanza igual pero
+; nueve veces mas deprisa.
+;
+; MI_TURBO sustituye al `call MONTA_LA_PANTALLA_DE_BATALLA` de 0x9160. Mira la
+; tecla F y, si esta el modo rapido encendido, solo deja pintar una vuelta de
+; cada PINTA_CADA; las demas vuelve sin hacer nada. La cuenta no se salta nada
+; del juego: el despachador, el mando y los avisos siguen corriendo en TODAS
+; las vueltas, y lo unico que se espacia es el dibujo.
+;
+; Saltarse el montaje entero es seguro porque MONTA_LA_PANTALLA_DE_BATALLA no
+; guarda nada que haga falta despues: rellena las listas de 0xE800/0xEB00
+; desde el tablero, las compara con las copias de 0xEE00/0xF000 -que son lo
+; ULTIMO QUE SE PINTO, no lo de la vuelta anterior- y dibuja la diferencia. Al
+; volver a pintar, esa comparacion saca todo lo que ha cambiado desde el
+; ultimo dibujo, se pinten las vueltas que se pinten. Y el cursor del jugador
+; (0x8E0D) lee el tablero de 0x5E00 directamente, no estas listas.
+;
+; La F se lee de la matriz como hace el propio juego con la 1 y la R en
+; LEE_1_Y_R (0x067D): fila 3 -J I H G F E D C-, bit 3. Va por flanco, asi que
+; conmuta una vez por pulsacion. El aviso se mete en el operando de 0x9180,
+; que es de donde el bucle saca el texto de la linea de abajo en esta misma
+; vuelta; 0x918C lo devuelve a la cadena vacia en cuanto se ha escrito, y el
+; texto se ve aunque no se repinte el tablero porque PINTA_UN_CARACTER
+; (0x82DC) sube cada celda a la VRAM por su cuenta.
+; --------------------------------------------------------------------------
+; PINTA_CADA lo pasa tools/haz_rom.py con --equ: alli esta el valor.
+FILA_DE_LA_F:       equ 0F3h     ; fila 3 de la matriz: J I H G F E D C
+BIT_DE_LA_F:        equ 008h     ; y la F es su bit 3
+MONTA_LA_PANTALLA:  equ 086AFh   ; lo que habia en el `call` de 0x9160
+AVISO_ESCRITO:      equ 09181h   ; operando de 0x9180: el texto de la linea de abajo
+
+TURBO_ESTADO:   defb 0           ; 0 = como siempre, 1 = deprisa
+TURBO_F_ANTES:  defb 0           ; la F tal como estaba en la vuelta anterior
+TURBO_CUENTA:   defb 1           ; vueltas que faltan para volver a pintar
+
+MI_TURBO:
+                ld a,FILA_DE_LA_F
+                out (0AAh),a
+                in a,(0A9h)
+                cpl                         ; un 1 es tecla pulsada
+                and BIT_DE_LA_F
+                ld hl,TURBO_F_ANTES
+                cp (hl)
+                ld (hl),a                   ; la de ahora pasa a ser la de antes
+                jr z,TURBO_SIN_TOCAR        ; sigue como estaba
+                or a
+                jr z,TURBO_SIN_TOCAR        ; la acaban de soltar: no conmuta
+                ld hl,TURBO_ESTADO          ; flanco de pulsacion: se conmuta
+                ld a,(hl)
+                xor 001h
+                ld (hl),a
+                ld hl,TEXTO_RAPIDO_NO
+                or a
+                jr z,TURBO_AVISA
+                ld hl,TEXTO_RAPIDO_SI
+TURBO_AVISA:
+                ld (AVISO_ESCRITO),hl       ; el aviso sale en esta misma vuelta
+                jp MONTA_LA_PANTALLA        ; y al conmutar se pinta siempre
+TURBO_SIN_TOCAR:
+                ld a,(TURBO_ESTADO)
+                or a
+                jp z,MONTA_LA_PANTALLA      ; modo normal: se pinta cada vuelta
+                ld hl,TURBO_CUENTA
+                dec (hl)
+                ret nz                      ; aun no toca pintar
+                ld (hl),PINTA_CADA
+                jp MONTA_LA_PANTALLA
+
+; Los dos avisos, de 30 caracteres como los de 0x93E5, para que tapen entero
+; al que hubiera antes.
+TEXTO_RAPIDO_SI:  defb "Batalla rapida: SI.           ",0
+TEXTO_RAPIDO_NO:  defb "Batalla rapida: NO.           ",0
+
 NOMBRES_FIN:

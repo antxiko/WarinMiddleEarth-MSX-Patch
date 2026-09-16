@@ -310,7 +310,21 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 rom_unificada: war_unificada.rom
 war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --salidas work/unificada
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --salidas work/unificada --kit work/kit
+
+# EL KIT PARA COMPILAR EL PARCHE SIN PYTHON. Lo deja `--kit` de ahi arriba, al
+# montar la ROM: los intermedios ya cocidos, src/nombres.asm -que es lo unico
+# editable- y un war_cart.asm que lo pega todo con solo pasmo. Que la ROM del
+# kit sale IDENTICA a la de aqui se comprueba compilandola.
+kit: war_unificada.rom
+	cd work/kit && sh hazlo.sh
+	cmp work/kit/WAR_UNIFICADA.ROM war_unificada.rom && echo "el kit monta la misma ROM, byte a byte"
+
+kit_zip: kit
+	rm -f work/WarInMiddleEarth-kit.zip
+	rm -f work/kit/WAR_UNIFICADA.ROM work/kit/nombres.bin work/kit/nombres.sym
+	cd work && python3 -m zipfile -c WarInMiddleEarth-kit.zip kit
+	@echo "work/WarInMiddleEarth-kit.zip listo"
 
 # Su referencia SIN la vista, para el cotejo y la medida.
 work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
