@@ -88,8 +88,10 @@ cargador y plan.json se escriben en ese mismo directorio, y en `work/musica/`
 cuando se pide musica: las dos ROMs salen de los mismos cuerpos, asi que
 compartiendo directorio la segunda pisaria el plan y el stub de la primera.
 """
+import hashlib
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -260,6 +262,30 @@ SUBE_LOS_ATRIBUTOS = 0x884C      # el `call ATRIBUTOS_A_VRAM` de cada vuelta
 SUBE_LOS_ATRIBUTOS_ORIG = bytes.fromhex("cd0406")
 ARMA_LOS_DOS_BANDOS = 0x90A6     # el `call ATRIBUTOS_A_VRAM` de al montarla
 ARMA_LOS_DOS_BANDOS_ORIG = bytes.fromhex("cd0406")
+# Y EL INFILTRADO DEL CENTRO DEL CAMPO. Al montar la batalla, 0x914B llama a
+# DEJA_DE_LLEVARLA_A_MANO (0x8C6C), que ademas de dejar el cursor y el
+# despachador en su sitio termina plantando en la casilla del CENTRO la unidad
+# de 0x8C63, "la que se lleva a mano". Ese byte no lo reinicia nadie -lo
+# escribe un solo sitio de toda la ROM, 0x8B98- y conserva el numero de una
+# batalla anterior, que tenia muchas mas figuras: aparece en el centro una que
+# ya no existe, con el dibujo, la vida y el DUENO viejos. Al matarla,
+# FIGURA_ABATIDA se la cobra a ese dueno -un numero bajo: Gandalf, Aragorn...-
+# y, como los 24 con nombre llevan 0xC500 = 0, BORRA_EL_EJERCITO_DEL_MAPA se
+# lleva del mapa a un heroe que no estaba en la batalla. Medido en el replay de
+# Araubi: la figura 0x53 cogida a mano en una batalla de 161 figuras reaparece
+# tres batallas despues, con 60 montadas, y al morir borra a Aragorn.
+SUELTA_AL_MONTAR = 0x914B        # el `call DEJA_DE_LLEVARLA_A_MANO` del montaje
+SUELTA_AL_MONTAR_ORIG = bytes.fromhex("cd6c8c")
+# Y LA TECLA F, QUE PONE LA BATALLA DEPRISA. De los 462.251 ciclos que cuesta
+# una vuelta del bucle de batalla, 412.258 -el 89,2 %- son el
+# `call MONTA_LA_PANTALLA_DE_BATALLA` de 0x9160: lo que marca el ritmo de la
+# batalla no son los calculos, es repintar el tablero. Medido en una batalla de
+# verdad con work/rapido/mide_vuelta.tcl (VG-8020, 400 vueltas). MI_TURBO mira
+# la tecla F y, con el modo encendido, solo deja pintar una vuelta de cada
+# PINTA_CADA; el despachador, el mando y los avisos siguen corriendo en todas.
+BATALLA_DEPRISA = 0x9160         # el `call MONTA_LA_PANTALLA_DE_BATALLA` del bucle
+BATALLA_DEPRISA_ORIG = bytes.fromhex("cdaf86")
+PINTA_CADA = 16                  # vueltas por dibujo con el modo rapido puesto
 PASO_DEL_CURSOR = 10
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
@@ -335,17 +361,24 @@ class Plan:
     def __init__(self):
         self.ops = []
 
-    def op(self, nombre, b=0, src=0, dst=0, n=0, nota=""):
+    def op(self, nombre, b=0, src=0, dst=0, n=0, nota="", sim_n=None):
         assert 0 <= b < 256 and 0 <= src < 0x10000 and 0 <= dst < 0x10000 and 0 <= n < 0x10000
-        self.ops.append((nombre, b, src, dst, n, nota))
+        self.ops.append((nombre, b, src, dst, n, nota, sim_n))
 
     # copias que pueden cruzar bancos: se parten en trozos de un banco
-    def copia_rom(self, nombre, origen_rom, dst, n, nota):
+    def copia_rom(self, nombre, origen_rom, dst, n, nota, sim_n=None):
+        # `sim_n` es el nombre de un simbolo que vale lo mismo que `n`. Solo lo
+        # usa el kit de compilacion sin Python (--kit): alli la longitud sale
+        # del .sym de lo que se acaba de ensamblar, para que la copia siga
+        # valiendo si esa rutina crece. Una copia partida en trozos no podria
+        # llevarlo, y por eso se comprueba que no se parta.
+        assert sim_n is None or n <= TAM_BANCO - (origen_rom & (TAM_BANCO - 1)), \
+            "la copia de %s cruza de banco y no puede ir por simbolo" % sim_n
         while n:
             banco = origen_rom >> 14
             dentro = origen_rom & (TAM_BANCO - 1)
             trozo = min(n, TAM_BANCO - dentro)
-            self.op(nombre, banco, 0x4000 + dentro, dst, trozo, nota)
+            self.op(nombre, banco, 0x4000 + dentro, dst, trozo, nota, sim_n)
             origen_rom += trozo
             dst += trozo
             n -= trozo
@@ -370,16 +403,17 @@ class Plan:
             self.op("RAM_VRAM", 0, bufer_d, dst, d["crudo"],
                     "%s: y a la VRAM 0x%04X" % (nota, dst))
 
-    def inc(self):
+    def inc(self, simbolico=False):
         lineas = []
-        for nombre, b, src, dst, n, nota in self.ops:
-            lineas.append("        defb OP_%s,%d\n        defw 0%04Xh,0%04Xh,0%04Xh   ; %s"
-                          % (nombre, b, src, dst, n, nota))
+        for nombre, b, src, dst, n, nota, sim_n in self.ops:
+            largo = sim_n if (simbolico and sim_n) else "0%04Xh" % n
+            lineas.append("        defb OP_%s,%d\n        defw 0%04Xh,0%04Xh,%s   ; %s"
+                          % (nombre, b, src, dst, largo, nota))
         return "\n".join(lineas) + "\n"
 
     def json(self):
         return [dict(op=nombre, b=b, src=src, dst=dst, len=n, nota=nota)
-                for nombre, b, src, dst, n, nota in self.ops]
+                for nombre, b, src, dst, n, nota, _sim in self.ops]
 
 
 def lee_simbolos(ruta):
@@ -408,6 +442,232 @@ def pasmo(fuente, salida, simbolos, equs=()):
         return f.read()
 
 
+# --------------------------------------------------------------------------
+# EL KIT: COMPILAR EL PARCHE SIN PYTHON
+#
+# Todo lo que hace este programa -leer los cuerpos de la cinta, comprimir con
+# ZX0, dibujar el mapa, calcular el plan y armar los 64 KB- se cuece una vez y
+# se deja en binarios. Lo que queda editable es `nombres.asm`, que es donde
+# vive el codigo nuevo del parche, y se recompila con SOLO pasmo:
+#
+#     pasmo ... nombres.asm nombres.bin nombres.sym     (pasada 1)
+#     pasmo ... war_cart.asm WIME.ROM                   (pasada 2)
+#
+# Las dos cosas que hay que recalcular al tocar nombres.asm -las direcciones
+# de las rutinas a las que apuntan los parches del juego, y la longitud de la
+# copia que el plan hace de ese bloque- salen de simbolos, no de constantes:
+# el maestro incluye `nombres.sym` y mide el bloque con dos etiquetas
+# alrededor del `incbin`. Por eso la rutina puede crecer -hasta donde la deja
+# la RAM- sin tocar nada mas.
+#
+# Que la ROM del kit sale IDENTICA a la de aqui se comprueba al generarlo.
+KIT_PREFIJOS = ("MI_", "CARACTERES_A_NOMBRES", "GUARDIAN")
+
+
+def sim_del_parche(nuevo, sim_nombres):
+    """Si los bytes de un parche llevan dentro la direccion de una rutina de
+    nombres.asm, devuelve (antes, nombre, despues) para escribirlo por su
+    nombre y no por su numero. Si no, None."""
+    candidatos = {v: k for k, v in sim_nombres.items() if k.startswith(KIT_PREFIJOS)}
+    for pos in range(len(nuevo) - 1):
+        valor = int.from_bytes(nuevo[pos:pos + 2], "little")
+        if valor in candidatos:
+            return nuevo[:pos], candidatos[valor], nuevo[pos + 2:]
+    return None
+
+
+def escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom, hueco,
+                bloque_hueco, bloque_nombres, nombres_rom_pos, parches,
+                sim_nombres, equs_nombres):
+    src_kit = os.path.join(kit, "src")
+    bin_kit = os.path.join(kit, "bin")
+    for d in (kit, src_kit, bin_kit):
+        os.makedirs(d, exist_ok=True)
+
+    def escribe(ruta, datos):
+        with open(ruta, "wb" if isinstance(datos, (bytes, bytearray)) else "w") as f:
+            f.write(datos)
+
+    # El fuente que se puede tocar y los dos .inc de dibujos que mete dentro.
+    shutil.copy(os.path.join(SRC, "nombres.asm"), os.path.join(src_kit, "nombres.asm"))
+    for n in ("cursor.inc", "guante.inc"):
+        shutil.copy(os.path.join(salidas, n), os.path.join(src_kit, n))
+
+    # Los binarios: la cabeza (arranque + stub con el plan dentro), los datos
+    # de corrido y el hueco sin el bloque de nombres, que lo pone el maestro.
+    cabeza = arranque + stub
+    escribe(os.path.join(bin_kit, "cabeza.bin"), cabeza)
+    escribe(os.path.join(bin_kit, "datos.bin"), bytes(rom[INICIO_DATOS:hueco]))
+    sin_nombres = len(bloque_hueco) - len(bloque_nombres)
+    escribe(os.path.join(bin_kit, "hueco.bin"), bytes(rom[hueco:hueco + sin_nombres]))
+    assert hueco + sin_nombres == nombres_rom_pos, \
+        "el bloque de nombres no va el ultimo del hueco: el kit no lo puede dejar crecer"
+
+    # El maestro.
+    a = []
+    a.append("; ==========================================================================")
+    a.append("; WAR IN MIDDLE EARTH - EL CARTUCHO, MONTADO CON SOLO PASMO")
+    a.append("; ==========================================================================")
+    a.append("; Generado por tools/haz_rom.py --kit. Monta los 64 KB de la ROM a partir")
+    a.append("; de los binarios de bin/ y del nombres.bin que deja la primera pasada.")
+    a.append("; Lo unico que se edita a mano es src/nombres.asm; aqui no hay nada que")
+    a.append("; tocar salvo que cambie la disposicion de la ROM, y eso lo decide Python.")
+    a.append(";")
+    a.append("; Las direcciones de las rutinas del parche llegan por simbolo desde")
+    a.append("; nombres.sym, asi que los parches del juego siguen apuntando bien aunque")
+    a.append("; la rutina se mueva.")
+    a.append("; ==========================================================================")
+    a.append("")
+    a.append('                include "nombres.sym"   ; lo que deja la primera pasada de pasmo')
+    a.append("")
+    a.append("                org 00000h")
+    a.append('                incbin "bin/cabeza.bin"         ; cabecera AB, arranque y stub con el plan')
+    a.append("                defs 0%04Xh-$,0FFh              ; lo que sobra hasta los datos, a 0xFF" % INICIO_DATOS)
+    a.append("")
+    a.append("; Los datos: la pantalla de carga comprimida, los tres bloques del juego")
+    a.append("; -ya con los parches que no dependen del parche nuevo- y el mapa dibujado.")
+    a.append('                incbin "bin/datos.bin"')
+    a.append("")
+    a.append("; El hueco del ultimo banco: el reproductor PT3, el modulo, el puente y la")
+    a.append("; rutina de las pantallas finales. Detras, el bloque que se recompila.")
+    a.append("                org 0%04Xh" % hueco)
+    a.append('                incbin "bin/hueco.bin"')
+    a.append("NOMBRES_INI:")
+    a.append('                incbin "nombres.bin"')
+    a.append("NOMBRES_FIN_ROM:")
+    a.append("NOMBRES_LEN:    equ NOMBRES_FIN_ROM-NOMBRES_INI")
+    a.append("")
+    a.append("; Y la ROM se rellena hasta los 64 KB, como la deja Python.")
+    a.append("                defs 0%04Xh-$,0FFh" % TAM_ROM)
+    a.append("")
+    a.append("; --------------------------------------------------------------------------")
+    a.append("; La longitud de la copia que el plan hace del bloque de nombres. Es el")
+    a.append("; unico numero del plan que depende de lo que se acaba de ensamblar, asi")
+    a.append("; que se escribe aqui encima en vez de dejarlo clavado en plan.inc.")
+    a.append("; --------------------------------------------------------------------------")
+    a.append("                org 0%04Xh" % plan_pos_rom)
+    a.append("                defw NOMBRES_LEN")
+    a.append("")
+    a.append("; --------------------------------------------------------------------------")
+    a.append("; LOS PARCHES DEL JUEGO que llaman al parche nuevo. `org` retrocede sobre")
+    a.append("; lo ya emitido: pasmo lo permite, y asi no hay que trocear los binarios.")
+    a.append("; --------------------------------------------------------------------------")
+    simbolicos = 0
+    for q in parches:
+        nuevo = bytes.fromhex(q["nuevo"])
+        trozo = sim_del_parche(nuevo, sim_nombres)
+        a.append("")
+        a.append("                ; 0x%04X: %s" % (q["dir"], q["que"]))
+        a.append("                org 0%04Xh" % q["rom"])
+        if trozo is None:
+            a.append("                defb " + ",".join("0%02Xh" % b for b in nuevo))
+        else:
+            antes, nombre, despues = trozo
+            simbolicos += 1
+            if antes:
+                a.append("                defb " + ",".join("0%02Xh" % b for b in antes))
+            a.append("                defw %s" % nombre)
+            if despues:
+                a.append("                defb " + ",".join("0%02Xh" % b for b in despues))
+    assert simbolicos, "ningun parche apunta al parche nuevo: el kit no serviria de nada"
+    escribe(os.path.join(kit, "war_cart.asm"), "\n".join(a) + "\n")
+
+    # Las dos ordenes, en las dos conchas. La primera pasada corre DENTRO de
+    # src/ porque nombres.asm mete sus dos .inc de al lado.
+    equs = " ".join("--equ %s=%d" % (k, v) for k, v in equs_nombres)
+    rom_kit = os.path.splitext(os.path.basename(salida))[0].upper() + ".ROM"
+    escribe(os.path.join(kit, "hazlo.bat"), "\r\n".join([
+        "@echo off",
+        "rem Monta el cartucho con solo pasmo. Se edita src\\nombres.asm y se corre esto.",
+        "setlocal",
+        "if \"%PASMO%\"==\"\" set PASMO=pasmo",
+        "",
+        "echo [1/2] el parche: src\\nombres.asm",
+        "%PASMO% --bin " + equs + " -I src src\\nombres.asm nombres.bin nombres.sym",
+        "if errorlevel 1 goto :error",
+        "",
+        "echo [2/2] la ROM: war_cart.asm",
+        "%PASMO% --bin -I . war_cart.asm " + rom_kit,
+        "if errorlevel 1 goto :error",
+        "",
+        "echo Hecho: " + rom_kit,
+        "certutil -hashfile " + rom_kit + " SHA256",
+        "type bin\\referencia.sha256",
+        "goto :eof",
+        ":error",
+        "echo FALLO",
+        "exit /b 1",
+        ""]))
+    escribe(os.path.join(kit, "hazlo.sh"), "\n".join([
+        "#!/bin/sh",
+        "# Monta el cartucho con solo pasmo. Se edita src/nombres.asm y se corre esto.",
+        "set -e",
+        'PASMO=${PASMO:-pasmo}',
+        'echo "[1/2] el parche: src/nombres.asm"',
+        '"$PASMO" --bin ' + equs + ' -I src src/nombres.asm nombres.bin nombres.sym',
+        'echo "[2/2] la ROM: war_cart.asm"',
+        '"$PASMO" --bin -I . war_cart.asm ' + rom_kit,
+        'echo "Hecho: ' + rom_kit + '"',
+        "sha256sum " + rom_kit + " 2>/dev/null || shasum -a 256 " + rom_kit,
+        "cat bin/referencia.sha256",
+        ""]))
+    sha = hashlib.sha256(bytes(rom)).hexdigest()
+    escribe(os.path.join(bin_kit, "referencia.sha256"), "%s  %s\n" % (sha, rom_kit))
+
+    libre_ram = CARGA_MEDIO - NOMBRES_RAM - len(bloque_nombres)
+    libre_rom = TAM_ROM - nombres_rom_pos - len(bloque_nombres)
+    escribe(os.path.join(kit, "LEEME.txt"), "\n".join([
+        "WAR IN MIDDLE EARTH - EL CARTUCHO, SIN PYTHON",
+        "=============================================",
+        "",
+        "AVISO: bin/datos.bin lleva dentro el juego de 1989 sacado de la cinta.",
+        "Esto es material con derechos y NO se distribuye: el kit es para trabajar,",
+        "no para repartir. Lo mismo que la ROM que sale de compilarlo.",
+        "",
+        "Para compilar hace falta UNA cosa: pasmo (aqui se uso la 0.5.4).",
+        "",
+        "    hazlo.bat     en Windows",
+        "    sh hazlo.sh   en cualquier otro sitio",
+        "",
+        "Sale " + rom_kit + ", una MegaROM ASCII16 de 64 KB. Si no se ha tocado nada,",
+        "su SHA256 es el de bin/referencia.sha256, y eso quiere decir que el kit",
+        "monta exactamente la misma ROM que el juego de herramientas completo.",
+        "",
+        "QUE SE PUEDE TOCAR",
+        "",
+        "    src/nombres.asm   el parche entero: la vista de cerca por tabla de",
+        "                      nombres, el cursor y el guante como sprites, los",
+        "                      arreglos de la batalla y la tecla F.",
+        "",
+        "Es el unico fuente del kit y se recompila solo. Las rutinas pueden crecer,",
+        "moverse y cambiar de orden: los parches del juego las buscan por su nombre",
+        "en nombres.sym, y la copia que el cargador hace del bloque se mide sola.",
+        "Hoy sobran %d bytes de RAM y %d de ROM." % (libre_ram, libre_rom),
+        "Si se pasa de la RAM, la segunda pasada de pasmo se queja del `defs`.",
+        "",
+        "QUE NO SE PUEDE TOCAR AQUI",
+        "",
+        "Todo lo que hay en bin/ viene cocido: los tres bloques del juego sacados de",
+        "la cinta y ya parcheados, la pantalla de carga y el mapa comprimidos con",
+        "ZX0, el reproductor PT3 con su modulo, el puente de la interrupcion, la",
+        "rutina de las pantallas finales, y el cargador con su plan de 66",
+        "operaciones. Cambiar cualquiera de esas cosas mueve la disposicion de la",
+        "ROM entera, y eso lo calcula tools/haz_rom.py en el repo.",
+        "",
+        "COMO ESTA MONTADA LA ROM",
+        "",
+        "    0x0000  cabecera AB, arranque y stub con el plan   (bin/cabeza.bin)",
+        "    0x%04X  los datos, de corrido                       (bin/datos.bin)" % INICIO_DATOS,
+        "    0x%04X  el hueco: PT3, modulo, puente y finales     (bin/hueco.bin)" % hueco,
+        "    0x%04X  el parche                                   (nombres.bin)" % nombres_rom_pos,
+        "            relleno de 0xFF hasta los 64 KB",
+        "",
+        "war_cart.asm lo pega todo y despues vuelve atras con `org` para escribir",
+        "los parches del juego encima. Esta generado: no se edita a mano.",
+        ""]))
+    return sha
+
+
 def main(argv):
     if len(argv) < 3:
         print(__doc__)
@@ -423,6 +683,7 @@ def main(argv):
     panel = False
     sombra = False
     salidas_pedidas = None
+    kit = None
     i = 3
     while i < len(argv):
         if argv[i] == "--espera":
@@ -447,6 +708,9 @@ def main(argv):
             vista = True; sombra = True; i += 1
         elif argv[i] == "--salidas":
             salidas_pedidas = argv[i + 1]; i += 2
+        elif argv[i] == "--kit":
+            # El kit para compilar el parche con solo pasmo. Ver escribe_kit.
+            kit = argv[i + 1]; i += 2
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
@@ -650,11 +914,13 @@ def main(argv):
         guante_planos = guante.escribe_inc(GUANTE_PNG, os.path.join(salidas, "guante.inc"))
         for aviso in guante_planos[2]:
             print("guante.png:" + aviso)
+        equs_nombres = [("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0),
+                        ("CUADROS", sim_puente["CUADROS"]),
+                        ("PINTA_CADA", PINTA_CADA)]
         bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
                                os.path.join(salidas, "nombres.bin"),
                                os.path.join(salidas, "nombres.sym"),
-                               equs=[("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0),
-                                     ("CUADROS", sim_puente["CUADROS"])])
+                               equs=equs_nombres)
         sim_nombres = lee_simbolos(os.path.join(salidas, "nombres.sym"))
         nombres_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
         bloque_musica = (bloque_musica or b"") + bloque_nombres
@@ -758,7 +1024,8 @@ def main(argv):
     if vista:
         # La rutina de la vista, a su sitio. No conmuta nada: no pide ranuras.
         p.copia_rom("ROM_RAM", nombres_rom_pos, NOMBRES_RAM, len(bloque_nombres),
-                    "la vista por tabla de nombres a 0x%04X" % NOMBRES_RAM)
+                    "la vista por tabla de nombres a 0x%04X" % NOMBRES_RAM,
+                    sim_n="NOMBRES_LEN")
     p.copia_rom("ROM_RAM", disposicion["alto"]["rom"], CARGA_ALTO, len(alto), "bloque alto a 0x88B8, como cae de la cinta")
     # y la pagina 1
     p.op("PAG1_RAM", nota="fuera el cartucho de la pagina 1")
@@ -933,6 +1200,13 @@ def main(argv):
             ARMA_LOS_DOS_BANDOS, ARMA_LOS_DOS_BANDOS_ORIG,
             bytes([0xCD]) + sim_nombres["MI_ARMA"].to_bytes(2, "little"),
             "ARMA_LOS_DOS_BANDOS apunta que el tablero esta sin subir (MI_ARMA)"))
+        # El infiltrado del centro: el montaje de la batalla hace la misma
+        # puesta a cero pero sin plantar a nadie (MI_MONTA_BATALLA).
+        parches_vista.append(parchea(
+            SUELTA_AL_MONTAR, SUELTA_AL_MONTAR_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_MONTA_BATALLA"].to_bytes(2, "little"),
+            "al montar la batalla ya no aparece en el centro la unidad que se "
+            "llevaba a mano en la anterior (MI_MONTA_BATALLA)"))
         parches_vista.append(parchea(
             SUBE_EL_TABLERO, SUBE_EL_TABLERO_ORIG,
             bytes([0xCD]) + sim_nombres["MI_SUBE_TABLERO"].to_bytes(2, "little"),
@@ -944,6 +1218,14 @@ def main(argv):
             SIGUE_LA_FICHA, SIGUE_LA_FICHA_ORIG,
             bytes([0xCD]) + sim_nombres["MI_SUBE_FICHA"].to_bytes(2, "little"),
             "cada ficha que cambia se sube sola, dos celdas (MI_SUBE_FICHA)"))
+        # La tecla F: el montaje y el dibujo del tablero pasan por MI_TURBO,
+        # que con el modo rapido encendido solo deja pintar una vuelta de cada
+        # PINTA_CADA. El resto del bucle no se toca.
+        parches_vista.append(parchea(
+            BATALLA_DEPRISA, BATALLA_DEPRISA_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_TURBO"].to_bytes(2, "little"),
+            "la tecla F pone la batalla deprisa: se pinta una vuelta de cada "
+            "%d y el resto del bucle sigue igual (MI_TURBO)" % PINTA_CADA))
         # EL GUANTE DEL MAPA GENERAL. El `call REFRESCA_EL_CURSOR` de la primera
         # linea del bucle de partida, por `call MI_GUANTE`.
         parches_vista.append(parchea(
@@ -957,6 +1239,20 @@ def main(argv):
             "MUEVE_EL_CURSOR deja de estampar el guante por software: ahora son dos sprites"))
     with open(salida, "wb") as f:
         f.write(rom)
+
+    if kit:
+        # Donde cae, dentro de la ROM, la longitud de la copia del bloque de
+        # nombres: es el unico numero del plan que el kit tiene que rehacer.
+        sim_stub = lee_simbolos(os.path.join(salidas, "cargador_ram.sym"))
+        cuales = [k for k, o in enumerate(p.ops) if o[6] == "NOMBRES_LEN"]
+        assert len(cuales) == 1, "la copia del bloque de nombres no esta una sola vez en el plan"
+        plan_pos_rom = len(arranque) + (sim_stub["PLAN"] - STUB) + cuales[0] * 8 + 6
+        assert rom[plan_pos_rom:plan_pos_rom + 2] == len(bloque_nombres).to_bytes(2, "little"), \
+            "en 0x%04X no esta la longitud del bloque de nombres" % plan_pos_rom
+        sha = escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom,
+                          hueco, bloque_musica, bloque_nombres, nombres_rom_pos,
+                          parches_vista, sim_nombres, equs_nombres)
+        print("  kit para compilar sin python en %s (sha256 %s...)" % (kit, sha[:16]))
 
     if musica:
         # `bytes` es lo que ocupa la MUSICA: el reproductor, el modulo y el
@@ -1008,6 +1304,16 @@ def main(argv):
             modo=sim_nombres["MODO_NOMBRES"],
             sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
             parches=parches_vista,
+            # La tecla F: donde vive la rutina y sus tres bytes de estado, para
+            # que las sondas no tengan que sacarlos del .sym a mano.
+            turbo=dict(
+                rutina=sim_nombres["MI_TURBO"],
+                estado=sim_nombres["TURBO_ESTADO"],
+                f_antes=sim_nombres["TURBO_F_ANTES"],
+                cuenta=sim_nombres["TURBO_CUENTA"],
+                pinta_cada=PINTA_CADA,
+                aviso_si=sim_nombres["TEXTO_RAPIDO_SI"],
+                aviso_no=sim_nombres["TEXTO_RAPIDO_NO"]),
             # El cursor como sprite y la cache del trozo: donde esta cada cosa
             # en la rutina, y los dibujos que van en la ROM, del PNG.
             cursor=dict(
