@@ -182,6 +182,13 @@ def cotejo(nuevo, viejo, png, plan, work):
     tr_at, tr_col = traduce_el_panel(plan)
     nuevos = heroes_nuevos(plan)
     marca = plan["panel"]["marca"] if plan.get("panel") and plan["panel"]["parches"] else MARCA_SIN_PANEL
+    # El dibujo de 8x8 que lleva la celda de cada unidad, si esta ROM lo trae.
+    # Sale del plan, no escrito a mano.
+    m = plan["vista"].get("marcas") if plan.get("vista") else None
+    dibujo = bytes.fromhex(m["bytes"]) if m else None
+    if m:
+        print("  (cada unidad lleva ademas el dibujo de %s: %s)"
+              % (m["png"], " ".join("%02X" % b for b in dibujo)))
     if nuevos:
         print("  (la ROM nueva anade %d heroes; a la vieja se le ponen sus marcas en %s"
               " para poder comparar los lienzos)"
@@ -219,10 +226,27 @@ def cotejo(nuevo, viejo, png, plan, work):
         exige((col, fila) == (int(ev["col"]), int(ev["fila"])),
               "vuelta %d: las dos ROMs tienen el cursor en el mismo sitio (%d,%d)" % (n, col, fila))
 
-        # la VRAM de cada una es su lienzo, subido
+        # LAS CELDAS DE UNIDAD de la ROM nueva: las que llevan el atributo de
+        # marca. Ahi el dibujo de 8x8 esta SOLO en la VRAM y no en el lienzo,
+        # que es justo lo que permite borrarlo; asi que el lienzo de las dos
+        # ROMs sigue siendo el mismo y lo que cambia es lo que se ve.
+        marcadas = [(f, c) for f in range(24) for c in range(32)
+                    if ln[TAM_BITMAP + f * 32 + c] == marca] if dibujo else []
+
+        # la VRAM de cada una es su lienzo, subido -y en la nueva, con el
+        # dibujo de la marca encima de las celdas de unidad-
         for cual, lienzo, vram in (("nueva", ln, vn), ("vieja", lv, vv)):
-            exige(vram[:TAM_BITMAP] == zx_a_vram(lienzo),
-                  "vuelta %d: la VRAM de la ROM %s es su lienzo subido, sin perder un byte" % (n, cual))
+            subido = bytearray(zx_a_vram(lienzo))
+            if cual == "nueva":
+                for f, c in marcadas:
+                    o = f * 0x100 + c * 8
+                    subido[o:o + 8] = dibujo
+            exige(vram[:TAM_BITMAP] == bytes(subido),
+                  "vuelta %d: la VRAM de la ROM %s es su lienzo subido, sin perder un byte%s"
+                  % (n, cual,
+                     (", con el dibujo de %s en las %d celdas de unidad"
+                      % (os.path.basename(m["png"]), len(marcadas)))
+                     if cual == "nueva" and marcadas else ""))
 
         # el lienzo de la nueva es el de la vieja con el guante borrado
         exige(int(ev["borrado"]) == 0x21,
@@ -254,10 +278,15 @@ def cotejo(nuevo, viejo, png, plan, work):
         distintos = [(x, y) for y in range(192) for x in range(256)
                      if fn[y][x * 3:x * 3 + 3] != fv[y][x * 3:x * 3 + 3]]
         caja = set(caja_del_guante(col, fila))
-        fuera = [p for p in distintos if p not in caja]
+        # Y las celdas de unidad, que en la nueva llevan el dibujo de la marca
+        # y en la vieja no: es una diferencia QUERIDA, igual que el guante.
+        de_marcas = set((c * 8 + x, f * 8 + y)
+                        for f, c in marcadas for y in range(8) for x in range(8))
+        fuera = [p for p in distintos if p not in caja and p not in de_marcas]
         exige(not fuera,
               "vuelta %d: las dos pantallas son IGUALES pixel a pixel fuera del guante "
-              "(%d distintos, %d fuera)" % (n, len(distintos), len(fuera)))
+              "y de las %d celdas de unidad (%d distintos, %d fuera)"
+              % (n, len(marcadas), len(distintos), len(fuera)))
         # Y DENTRO del guante lo que se exige es la SILUETA, no el color: el
         # guante es editable (src/cartucho/guante.png) y desde el 2026-09-18 va
         # en azul y blanco, porque amarillo y negro sobre un mapa amarillo y
@@ -272,9 +301,23 @@ def cotejo(nuevo, viejo, png, plan, work):
                 for x in range(16):
                     if plano[y][x]:
                         silueta.add((col + x, fila + y))
-        exige(set(distintos) == silueta,
-              "vuelta %d: lo unico que cambia es el color del guante: %d pixels, "
-              "los mismos que enciende %s" % (n, len(silueta), g["png"]))
+        exige(set(distintos) - de_marcas == silueta,
+              "vuelta %d: fuera de las celdas de unidad, lo unico que cambia es el "
+              "color del guante: %d pixels, los mismos que enciende %s"
+              % (n, len(silueta), g["png"]))
+        # Y DENTRO de las celdas de unidad tiene que haber cambiado algo: si el
+        # dibujo no se viera, esto pasaria solo por estar en la lista de
+        # excluidos. Lo que se exige es que cada celda marcada se vea DISTINTA
+        # de como la ve la ROM vieja, que es la que no lleva marca.
+        if marcadas:
+            mudas = [(f, c) for f, c in marcadas
+                     if not any((c * 8 + x, f * 8 + y) in set(distintos)
+                                for y in range(8) for x in range(8))]
+            exige(not mudas,
+                  "vuelta %d: las %d celdas de unidad se ven distintas de la ROM sin "
+                  "marca%s" % (n, len(marcadas),
+                               "" if not mudas else " (%d iguales: %s)"
+                               % (len(mudas), mudas[:6])))
         if png:
             os.makedirs(png, exist_ok=True)
             render_vram.png(w, h, fn, os.path.join(png, "%d_nueva.png" % n))

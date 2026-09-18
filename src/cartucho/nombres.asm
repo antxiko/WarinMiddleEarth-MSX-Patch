@@ -1064,6 +1064,210 @@ TEXTO_RAPIDO_SI:  defb "Batalla rapida: SI.           ",0
 TEXTO_RAPIDO_NO:  defb "Batalla rapida: NO.           ",0
 
 ; ==========================================================================
+; LA MARCA DE LAS UNIDADES EN EL MAPA GENERAL
+;
+; QUE PROBLEMA RESUELVE
+;
+; En el mapa general una unidad NO es un dibujo: REPINTA_LOS_EJERCITOS
+; (0x6AAF) devuelve los 768 atributos al 0x30 del fondo -respetando el del
+; panel- y le escribe UN BYTE al atributo de la celda de cada unidad (0x6AE0).
+; O sea que una unidad es una CELDA DE OTRO COLOR, y por eso dos unidades
+; juntas se funden en una mancha en la que no se puede contar cuantas hay.
+;
+; Aqui esa celda pasa a llevar ademas un DIBUJO de 8x8 -el Anillo, que sale de
+; src/cartucho/marca.png-, que es lo que se puede contar de un vistazo.
+;
+; POR QUE NO HACE FALTA GUARDAR UNA COPIA DEL MAPA
+;
+; Estampar pixeles obliga a saber BORRARLOS cuando la unidad se mueve, y de
+; ahi salio la idea de guardar una copia limpia del lienzo -6.144 bytes- en la
+; RAM libre. No hace falta: esa copia YA EXISTE. El juego es un port del
+; Spectrum y mantiene su pantalla emulada en 0x4000, en la pagina 1, que es
+; RAM durante toda la partida (el puente conmuta la pagina 2, no esta). El
+; dibujo se estampa SOLO EN LA VRAM, el lienzo de 0x4000 no se toca, y borrar
+; una marca es volver a subir a la VRAM los ocho bytes que el lienzo ya tiene.
+; Cuesta 2 bytes por marca -la fila y la columna- en vez de 6.144.
+;
+; Y por eso es correcto por construccion: el lienzo es la verdad y la VRAM su
+; copia, asi que restaurar desde el lienzo siempre devuelve lo que el juego
+; cree que hay en pantalla, haya pasado lo que haya pasado entre medias.
+;
+; LO QUE CUESTA
+;
+; REPINTA_LOS_EJERCITOS no corre por fotograma: el bucle de partida mueve UNA
+; unidad por vuelta (0x6719) y solo la llama cuando el contador da la vuelta,
+; o sea una vez cada 256. Y lo que ya pagaba ahi son los 597.698 ciclos de
+; LOS_ATRIBUTOS -la misma cuenta que quito el parche de la batalla-. Esto
+; anade el borrado de las marcas viejas, el barrido de los 768 atributos y el
+; estampado de las nuevas: unos 110.000 ciclos, un 18 % sobre lo que ya
+; costaba una rutina que corre una vez cada 256 vueltas.
+;
+; EL RITMO
+;
+; Los dos bucles van a 39 y 37 ciclos por byte. Con la pantalla encendida el
+; TMS9918 no admite dos accesos a menos de ~29 y se le caen bytes: le pasa a
+; PANTALLA_A_VRAM (0x05BD) y a RECUADRO_A_VRAM (0x0702), que van a 22 y
+; pierden casi 4.000 bytes de los 6.144 (INVESTIGACION.md). Por eso ninguna de
+; las dos se reutiliza aqui: una marca con un byte caido se quedaria sucia
+; hasta el repintado siguiente, que son 256 vueltas mas tarde.
+;
+; DE DONDE SALE EL ATRIBUTO
+;
+; No se escribe aqui: se LEE de 0x6AE1, el operando del `ld a,070h` de 0x6AE0,
+; que es donde el juego dice con que atributo marca. El parche del panel
+; intercambia ese byte y el del panel, y asi la marca sigue al parche sola.
+; Y por eso el barrido de los 768 encuentra exactamente las celdas marcadas:
+; el bucle de limpieza deja el resto en 0x30 y el panel en el suyo.
+; ==========================================================================
+
+LOS_ATRIBUTOS_ZX: equ 05800h    ; los 768 atributos de la pantalla emulada
+BITMAP_ZX:        equ 04000h    ; y su bitmap, que es la copia limpia del mapa
+ATRIBUTO_MARCA:   equ 06AE1h    ; operando del `ld a,070h` de 0x6AE0: con que se marca
+COLUMNAS:         equ 32
+MAX_MARCAS:       equ 118       ; unidades 0x00..0x77 menos la 0x16 y la 0x17,
+                                ; que 0x6AE3 se salta: no puede haber mas celdas marcadas
+
+MARCAS_N:       defb 0                  ; cuantas marcas hay puestas ahora mismo
+MARCAS_TAB:     defs MAX_MARCAS*2       ; y donde: fila y columna de cada una
+
+; Sustituye al `call LOS_ATRIBUTOS` de 0x6AF1, lo ultimo que hace
+; REPINTA_LOS_EJERCITOS. Los atributos se suben igual, y ademas se borran las
+; marcas de la vuelta anterior y se estampan las de esta.
+;
+; Los atributos van PRIMERO a proposito: LOS_ATRIBUTOS pasa por
+; VRAM_A_ESCRIBIR (0x044B) y con ella por el guardian, que devuelve la tabla
+; de nombres a la identidad si la vista de cerca la habia cambiado. A partir
+; de ahi la VRAM es la de siempre y se puede estampar.
+;
+; REGISTROS: lo llamaba un `call` seguido de `ret`, asi que no hay que
+; devolver nada; pisa lo mismo que pisaba LOS_ATRIBUTOS (AF, BC, DE, HL y el
+; juego alternativo) mas IX, que se guarda.
+MI_MARCAS:
+                call LOS_ATRIBUTOS      ; lo que hacia el 0x6AF1 de siempre
+                push ix
+                call MM_BORRA_LAS_VIEJAS
+                call MM_PONE_LAS_NUEVAS
+                pop ix
+                ret
+
+; Las de la vuelta anterior: cada una vuelve a ser lo que el lienzo dice.
+MM_BORRA_LAS_VIEJAS:
+                ld a,(MARCAS_N)
+                or a
+                ret z                   ; la primera vez no hay ninguna
+                ld b,a
+                ld ix,MARCAS_TAB
+MM_UNA_VIEJA:   push bc
+                ld d,(ix+000h)          ; la fila
+                ld e,(ix+001h)          ; y la columna
+                call MM_RESTAURA
+                inc ix
+                inc ix
+                pop bc
+                djnz MM_UNA_VIEJA
+                ret
+
+; Y las de ahora: los 768 atributos, y donde este el de marca va el dibujo.
+; La cuenta se apunta segun se recorre, que es lo que borrara la vez que viene.
+MM_PONE_LAS_NUEVAS:
+                ld a,(ATRIBUTO_MARCA)
+                ld (MM_EL_ATRIBUTO),a   ; el operando del `cp` de aqui abajo
+                ld ix,MARCAS_TAB
+                ld hl,LOS_ATRIBUTOS_ZX
+                ld c,000h               ; cuantas van
+                ld d,000h               ; la fila
+MM_UNA_FILA:    ld e,000h               ; y la columna
+MM_UNA_CELDA:   ld a,(hl)
+                cp 000h                 ; automodificado: el atributo de marca
+MM_EL_ATRIBUTO: equ $-1
+                call z,MM_APUNTA_Y_ESTAMPA
+                inc hl
+                inc e
+                ld a,e
+                cp COLUMNAS
+                jr nz,MM_UNA_CELDA
+                inc d
+                ld a,d
+                cp FILAS
+                jr nz,MM_UNA_FILA
+                ld a,c
+                ld (MARCAS_N),a
+                ret
+
+; D = fila, E = columna. Apunta la celda y le estampa el dibujo, si cabe.
+MM_APUNTA_Y_ESTAMPA:
+                ld a,c
+                cp MAX_MARCAS
+                ret z                   ; la tabla esta llena: no puede pasar, pero no se desborda
+                ld (ix+000h),d
+                ld (ix+001h),e
+                inc ix
+                inc ix
+                inc c
+                push hl
+                push bc
+                call MM_ESTAMPA
+                pop bc
+                pop hl
+                ret
+
+; --------------------------------------------------------------------------
+; Los dos de verdad. En los dos, D = fila (0..23) y E = columna (0..31), y la
+; celda son ocho bytes seguidos en la VRAM: fila*0x100 + columna*8.
+; --------------------------------------------------------------------------
+
+; El dibujo de la marca, a la VRAM. El lienzo de 0x4000 NO se toca.
+MM_ESTAMPA:     call MM_APUNTA_LA_VRAM
+                ld hl,DIBUJO_MARCA
+                ld b,8
+ME_LINEA:       ld a,(hl)               ; 7
+                out (098h),a            ; 11
+                inc hl                  ; 6
+                djnz ME_LINEA           ; 13 = 37 ciclos por byte
+                ret
+
+; Y al reves: lo que el lienzo tiene en esa celda, a la VRAM. Las ocho lineas
+; de una celda del Spectrum no van seguidas, estan a 256 bytes una de otra.
+MM_RESTAURA:    push de
+                call MM_APUNTA_LA_VRAM
+                pop de
+                ld a,d
+                and 018h                ; el tercio ...
+                or 040h                 ; ... y el 0x40: el byte alto del bitmap
+                ld h,a
+                ld a,d
+                and 007h                ; la fila dentro del tercio, por 32
+                rrca                    ; tres rrca en un byte de ocho bits
+                rrca                    ; son un desplazamiento de cinco a la izquierda
+                rrca
+                or e
+                ld l,a
+                ld b,8
+MR_LINEA:       ld a,(hl)               ; 7
+                out (098h),a            ; 11
+                inc h                   ; 4   +256: la linea de abajo
+                nop                     ; 4   para no bajar de los 29 del VDP
+                djnz MR_LINEA           ; 13 = 39 ciclos por byte
+                ret
+
+; D = fila, E = columna -> la VRAM queda apuntando a los ocho bytes de esa
+; celda. D y E se conservan.
+MM_APUNTA_LA_VRAM:
+                ld h,d                  ; fila*0x100 ...
+                ld a,e
+                add a,a                 ; ... mas columna*8
+                add a,a
+                add a,a
+                ld l,a
+                jp DIRECCION_VRAM
+
+; El dibujo, ocho bytes. Lo pone tools/haz_rom.py desde src/cartucho/marca.png
+; y de fabrica es el Anillo: el caracter 0x5F de la fuente del juego, el mismo
+; que el parche pinta en la ficha del Portador.
+DIBUJO_MARCA:
+                include "marca.inc"
+
+; ==========================================================================
 ; LA LISTA DE NOMBRES, MUDADA: DOS HEROES MAS
 ;
 ; QUE PROBLEMA RESUELVE

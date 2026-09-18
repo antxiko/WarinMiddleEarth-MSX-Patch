@@ -241,6 +241,26 @@ how the game recognises it -to tell whether a click lands on it, and to spare
 it when clearing- and because that yellow was the unit marker's: the two
 attributes swap, so units turn white and stand out far better against the map.
 
+And **every unit on the map now carries a drawing, not just a colour**. On the
+tape a unit is not a drawing at all: `REPINTA_LOS_EJERCITOS` changes the
+ATTRIBUTE of its cell and nothing else, so two units in neighbouring cells
+blur into one smear you cannot count. That cell now also gets an 8x8 drawing
+-out of the box the **One Ring**: the eight bytes of character 0x5F of the
+game's own font, the one the patch draws on the Ring-bearer's card-, and it is
+repainted in `src/cartucho/marca.png` with `tools/editor_marcas.html`, which
+also lets you pick the cell's two colours.
+
+No copy of the map was needed to rub the drawing out when a unit moves, which
+is what it looked like: **that copy already exists**. The game keeps its
+emulated Spectrum screen at 0x4000 -page 1, which is RAM throughout the game-,
+so the drawing is stamped **into VRAM only** and erasing it means sending back
+up the eight bytes the canvas already holds. Two bytes per marker instead of
+6,144. Checked on the emulator with the screen ON, which is how it is played
+(`make verifica_marcas`): every marked cell carries the drawing exactly, no
+other cell does -that is the erase working- and the canvas stays clean. The
+check calls itself USELESS if no cell lost its marker between the two
+repaints, so it cannot pass without having proved anything.
+
 The ROM to play is `war_unificada.rom` (`make rom_unificada`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 

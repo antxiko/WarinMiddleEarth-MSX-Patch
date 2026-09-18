@@ -246,6 +246,26 @@ disparo cae ahi y para respetarlo al limpiar- y porque ese amarillo era el de
 la marca de unidad: los dos atributos se intercambian, asi que las unidades
 pasan a blanco y se ven mucho mejor sobre el amarillo del mapa.
 
+Y **cada unidad del mapa lleva ahora un dibujo, no solo un color**. En la cinta
+una unidad no es un dibujo: `REPINTA_LOS_EJERCITOS` le cambia el ATRIBUTO a su
+celda y nada mas, asi que dos unidades en celdas vecinas se funden en una
+mancha en la que no se puede contar cuantas hay. Ahora esa celda se lleva
+ademas un dibujo de 8x8 -de fabrica, el **Anillo**: los ocho bytes del caracter
+0x5F de la fuente del juego, el que el parche pinta en la ficha del Portador-,
+y se repinta en `src/cartucho/marca.png` con `tools/editor_marcas.html`, que
+ademas deja elegir los dos colores de la celda.
+
+No hizo falta guardar una copia del mapa para poder borrar la marca al moverse
+la unidad, que era lo que parecia: **esa copia ya existe**. El juego mantiene
+la pantalla del Spectrum emulada en 0x4000 -pagina 1, que es RAM durante toda
+la partida-, asi que el dibujo se estampa **solo en la VRAM** y borrarlo es
+volver a subir los ocho bytes que el lienzo ya tiene. Cuesta dos bytes por
+marca en vez de 6.144. Comprobado en el emulador con la pantalla encendida, que
+es como se juega (`make verifica_marcas`): toda celda marcada lleva el dibujo
+clavado, ninguna otra lo lleva -o sea que el borrado funciona- y el lienzo
+sigue limpio. El cotejo se declara INUTIL si entre los dos repintados ninguna
+celda se queda sin marca, para no cantar victoria sin haber probado nada.
+
 La ROM que se juega es `war_unificada.rom` (`make rom_unificada`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 
