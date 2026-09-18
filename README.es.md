@@ -151,12 +151,21 @@ no hay RAM de fiar donde ponerla, y el IPS solo escribe donde la cinta carga.
 
 Las dos ranuras salen de la **0x18 y la 0x19**, dos pelotones de enanos
 plantados los dos en (22,12); **sus 39 hombres se reparten** entre las cuatro
-formaciones de (23,15), asi que no se pierde ni un soldado. Bombadil es del
-**tipo 4** (Enano) y vive en el Bosque Viejo, en (50,28), al este de Los Gamos;
+formaciones de (23,15), asi que no se pierde ni un soldado. Bombadil ocupa el
+**tipo 8** -el que dejo libre Gollum al pasar a hobbit, y que aqui se rebautiza
+**"Eterno"**- y vive en el Bosque Viejo, en (50,28), al este de Los Gamos;
 Radagast es del **tipo 0** (Mago), el de Gandalf, y vive en Rhosgobel, en
 (83,30), entre el Anduin y el Bosque Negro. Los seis valores de Radagast van
 **dos puntos por debajo de los de Gandalf**. Lo unico que no pueden es llevar el
 Anillo: el menu de entrega corta la lista antes de Gollum.
+
+El byte que le falta a "Eterno" en cada una de las dos tablas de raza sale de la
+**entrada 7**, que es texto muerto: el tipo 7 son Sauron y Saruman y los dos
+tienen nombre, asi que su raza no la lee nadie. El total de cada tabla no se
+mueve, que es lo unico que no puede cambiar. Ojo: la raza solo se ve en la ficha
+de una unidad SIN nombre, asi que "Eterno" no llega a salir en pantalla -lo
+mismo que le pasa a Gollum con "Hobbit"-, y en la batalla el tipo 8 se sigue
+dibujando con la figura del enano, porque no tiene una propia (`0x8D0E`).
 
 Ninguna de estas imagenes es una captura de pantalla: el juego resube la
 pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres

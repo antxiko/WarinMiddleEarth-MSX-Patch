@@ -152,12 +152,21 @@ RAM to put it in, and an IPS can only write where the tape loads.
 
 The two slots come from **0x18 and 0x19**, two dwarf platoons both standing on
 (22,12); **their 39 men are redistributed** among the four formations on
-(23,15), so not a single soldier is lost. Bombadil is **type 4** (Dwarf) and
+(23,15), so not a single soldier is lost. Bombadil takes **type 8** — the one
+Gollum vacated when he became a hobbit, renamed here to **"Eterno"** — and
 lives in the Old Forest at (50,28), east of Buckland; Radagast is **type 0**
 (Wizard), Gandalf's own type, and lives at Rhosgobel, (83,30), between the
 Anduin and Mirkwood. Radagast's six values sit **two points below Gandalf's**.
 The one thing they cannot do is bear the Ring: the delivery menu cuts the list
 short before Gollum.
+
+The byte "Eterno" needs in each of the two race tables comes out of **entry 7**,
+which is dead text: type 7 is Sauron and Saruman and nobody else, and both have
+names, so their race is never read. Each table's total stays put, which is the
+one thing that cannot change. Note that a race only shows on the record card of
+an *unnamed* unit, so "Eterno" never actually reaches the screen — the same
+thing that happens to Gollum with "Hobbit" — and in battle type 8 is still drawn
+with the dwarf's figure, because it has none of its own (`0x8D0E`).
 
 None of the images above are screen captures: the game re-uploads the screen to
 the VDP constantly, so two photographs of the *same* state, three seconds apart,

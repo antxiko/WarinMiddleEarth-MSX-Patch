@@ -352,6 +352,28 @@ UNIDAD_ENERGICO = 0xC200
 UNIDAD_DECIDIDO = 0xC300
 UNIDAD_CUANTOS = 0xC500     # los efectivos de una formacion; un heroe lleva 0
 #
+# EL TIPO 8 SE LLAMA "ETERNO". Lo dejo libre Gollum al pasar a hobbit -medido:
+# de las 256 unidades, ninguna se quedo en el 8- y ahora lo ocupa Tom
+# Bombadil, que de enano no tiene nada.
+#
+# Las dos tablas de raza se recorren contando terminadores (bit 7 en la ultima
+# letra) desde su base, asi que una entrada puede cambiar de largo MIENTRAS EL
+# TOTAL NO CAMBIE: detras de cada tabla empieza otra cosa -el singular arranca
+# justo donde acaba el plural, y detras del singular esta "Mujer"-. Cada nombre
+# nuevo necesita un byte mas, y los dos salen del mismo sitio: LA ENTRADA 7,
+# que es texto muerto. El tipo 7 son Sauron y Saruman y nada mas (medido), y
+# los dos TIENEN NOMBRE, asi que su raza no la lee nadie: las dos unicas
+# rutinas que miran estas tablas -FORMACION_SIN_NOMBRE (0x6F57) y
+# NOMBRE_DEL_TIPO (0x6DF6)- solo entran con unidades SIN nombre.
+#
+# Ojo con lo que esto NO hace: "Eterno" no se ve en pantalla. La raza solo sale
+# en la ficha de una unidad sin nombre, y Bombadil es la 0x18, que tiene el
+# suyo. Es lo mismo que le pasa a Gollum con "Hobbit" desde que es del tipo 6.
+TIPO_ETERNO = 8
+RAZA_PLURAL_7Y8 = 0x7D30        # "Mago" y "Gollum", las entradas 7 y 8
+RAZA_SINGULAR_7Y8 = 0x7D5D      # "Mago" y "Enano"
+
+#
 # Donde caen, medido sobre la tabla de sitios (0x7A5E) y el mapa descomprimido
 # (0xCC00 + (x+1)*102 + (y+1); los terrenos 1 y 2 no los pisa nadie):
 #
@@ -366,12 +388,19 @@ UNIDAD_CUANTOS = 0xC500     # los efectivos de una formacion; un heroe lleva 0
 # Energico 158, Decidido 192. Radagast va DOS PUNTOS por debajo en los cuatro,
 # que es lo que pidio el usuario.
 HEROES_NUEVOS = (
-    dict(n=0x18, nombre="Tom Bombadil", tipo=4, x=50, y=28,
+    dict(n=0x18, nombre="Tom Bombadil", tipo=TIPO_ETERNO, x=50, y=28,
          valioso=7, habil=9, duro=10, bravo=10, energico=150, decidido=192),
     dict(n=0x19, nombre="Radagast", tipo=0, x=83, y=30,
          valioso=6, habil=8, duro=8, bravo=4, energico=138, decidido=176),
 )
 DONDE_VAN_LOS_ENANOS = (0x1A, 0x1B, 0x1C, 0x1D)     # los de (23,15)
+
+
+def texto_bit7(*palabras):
+    """Las cadenas como las guarda el juego: ASCII con el bit 7 en la ultima
+    letra de cada una, que es lo que las separa."""
+    return b"".join(p[:-1].encode("latin-1") + bytes([ord(p[-1]) | 0x80])
+                    for p in palabras)
 #
 # Y los cinco sitios que miran la lista de nombres, mas los dos topes por
 # numero de unidad. La lista mudada vive en src/cartucho/nombres.asm.
@@ -1396,6 +1425,19 @@ def main(argv):
                     dir_, viejo, bytes([valor]),
                     "%s, unidad 0x%02X: %s" % (h["nombre"], h["n"], que),
                     bloque="alto"))
+        # Y EL TIPO 8 PASA A LLAMARSE "Eterno" en las dos tablas de raza. El
+        # byte que le falta a cada nombre sale de la entrada 7, que es texto
+        # muerto: el tipo 7 son Sauron y Saruman, los dos con nombre. El total
+        # de cada tabla no se mueve, que es lo unico que no puede cambiar.
+        for dir_, viejo, nuevo, cual in (
+                (RAZA_PLURAL_7Y8, texto_bit7("Mago", "Gollum"),
+                 texto_bit7("Mag", "Eternos"), "plural"),
+                (RAZA_SINGULAR_7Y8, texto_bit7("Mago", "Enano"),
+                 texto_bit7("Mag", "Eterno"), "singular")):
+            parches_heroes.append(parchea(
+                dir_, viejo, nuevo,
+                "raza en %s: el tipo 8 pasa a 'Eterno'; su byte sale de la entrada 7,"
+                " que no la lee nadie (el tipo 7 son Sauron y Saruman, con nombre)" % cual))
         # Los enanos que se quedaron sin peloton, repartidos.
         sueltos = sum(alto[UNIDAD_CUANTOS + h["n"] - ORG_ALTO] for h in HEROES_NUEVOS)
         reparto = [sueltos // len(DONDE_VAN_LOS_ENANOS)] * len(DONDE_VAN_LOS_ENANOS)
