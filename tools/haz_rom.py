@@ -287,6 +287,13 @@ DIBUJO_DE_UNIDAD_ORIG = bytes.fromhex("cd0406")
 # atributos del tablero tienen UN SOLO escritor, el `lddr` de 0x7F37, o sea ese
 # mismo camino. Y el terreno ya esta guardado en 0x8DEA tres instrucciones
 # antes (0x902F), asi que MI_FONDO solo tiene que mirarlo en una tabla de 16.
+# LA PANTALLA DE PRE-BATALLA (modo 0x17, la del cartel "Comienza la Batalla"):
+# arriba y abajo pasan de una unidad propia a la siguiente, una por vuelta del
+# bucle, y ese bucle repinta la vista de cerca. Con la cache va mucho mas
+# rapido que en la cinta: MEDIDO sobre el replay de Ruben, 32 lecturas del
+# mando por segundo. Se limita a una cada 10 cuadros, como el cursor del mapa.
+PREBATALLA = 0x7564              # el `call LEE_LOS_MANDOS` de MANDO_DE_LA_BATALLA
+PREBATALLA_ORIG = bytes.fromhex("cd6d06")
 FONDO_DE_LA_BATALLA = 0x93AE     # `ld a,020h` + `jp BORRA_PANTALLA`
 FONDO_DE_LA_BATALLA_ORIG = bytes.fromhex("3e20c3127f")
 # Y EL INFILTRADO DEL CENTRO DEL CAMPO. Al montar la batalla, 0x914B llama a
@@ -1384,6 +1391,11 @@ def main(argv):
         # por un salto a MI_FONDO: el mismo salto, pero con el atributo que le
         # toque al terreno donde se pelea. Sobran dos bytes, que van a `nop`.
         parches_vista.append(parchea(
+            PREBATALLA, PREBATALLA_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_PREBATALLA"].to_bytes(2, "little"),
+            "en la pantalla de antes de la batalla, cambiar de unidad va a 5 por "
+            "segundo y no a 32 (MI_PREBATALLA)"))
+        parches_vista.append(parchea(
             FONDO_DE_LA_BATALLA, FONDO_DE_LA_BATALLA_ORIG,
             bytes([0xC3]) + sim_nombres["MI_FONDO"].to_bytes(2, "little")
             + bytes([0x00, 0x00]),
@@ -1597,6 +1609,12 @@ def main(argv):
                 batalla=sim_nombres["MI_CURSOR_BATALLA"],
                 ultimo_paso_batalla=sim_nombres["ULTIMO_PASO_BATALLA"],
                 paso_batalla=PASO_EN_LA_BATALLA,
+                # Y la pantalla de pre-batalla (modo 0x17), donde se pasa de
+                # una unidad propia a otra. El paso sale del .sym, no de una
+                # constante de aqui: asi no pueden separarse.
+                prebatalla=sim_nombres["MI_PREBATALLA"],
+                ultimo_paso_prebatalla=sim_nombres["ULTIMO_PASO_PREBATALLA"],
+                paso_prebatalla=sim_nombres["PASO_EN_LA_PREBATALLA"],
                 patrones=sim_nombres["CURSOR_PATRONES"], colores=sim_nombres["CURSOR_COLORES"],
                 png=os.path.relpath(CURSOR_PNG, RAIZ).replace(os.sep, "/"),
                 planos=cursor_planos[0].hex(), planos_colores=list(cursor_planos[1]),

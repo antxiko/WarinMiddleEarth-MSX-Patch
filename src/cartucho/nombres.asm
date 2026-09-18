@@ -674,6 +674,61 @@ MCB_TAL_CUAL:   ld a,b
 ULTIMO_PASO_BATALLA: defb 0             ; el cuadro del ultimo paso del cursor de la batalla
 
 ; --------------------------------------------------------------------------
+; MI_PREBATALLA: sustituye al `call LEE_LOS_MANDOS` de 0x7564, el de
+; PANTALLA_DE_BATALLA (0x752C) -el modo 0x17, la pantalla que enseña las
+; unidades una a una con el cartel "Comienza la Batalla" antes de entrar-.
+;
+; Ahi arriba y abajo pasan de una unidad propia a la siguiente, una por vuelta
+; del bucle. Y ese bucle repinta la vista de cerca, que con la cache va
+; muchisimo mas rapido que en la cinta: MEDIDO sobre el replay que mando Ruben
+; (tools/omsx_quien_lee_el_mando.tcl), **96 lecturas del mando en 3 segundos =
+; 32 por segundo**. El tester: "va a toda putisima hostia".
+;
+; Es el mismo problema que MI_MUEVE en el mapa y MI_CURSOR_BATALLA en el
+; tablero, y se arregla igual: las direcciones solo pasan una vez cada
+; PASO_EN_LA_PREBATALLA cuadros. A 50 Hz son 5 pasos por segundo, o sea
+; **6,4 veces mas lento** que las 32 de ahora -el usuario pedia 4 como minimo-,
+; y el mismo ritmo que el cursor del mapa general, que es lo que hace que el
+; juego se sienta igual en todas partes.
+;
+; El disparo y la tecla 1 (bits 4 y 5) pasan SIEMPRE: son los que salen de la
+; pantalla y ya tienen su espera a soltar. Y sin ninguna direccion pulsada el
+; contador se deja listo, asi que un toque suelto cambia de unidad al
+; instante: lo que se frena es MANTENER pulsado.
+;
+; REGISTROS: devuelve A como LEE_LOS_MANDOS y no toca BC, DE ni HL. Importa:
+; en 0x7563 se acaba de hacer `pop hl` y ese HL sigue vivo en 0x7573.
+; --------------------------------------------------------------------------
+PASO_EN_LA_PREBATALLA equ 10            ; cuadros entre unidad y unidad: 5 por segundo a 50 Hz
+
+MI_PREBATALLA:
+                call LEE_LOS_MANDOS
+                push bc
+                ld b,a
+                and 00fh                ; bits 0-3: las cuatro direcciones
+                jr nz,MPB_DIRECCION
+                ld a,(CUADROS)          ; nada pulsado: el siguiente toque pasa al instante
+                sub PASO_EN_LA_PREBATALLA
+                ld (ULTIMO_PASO_PREBATALLA),a
+                jr MPB_TAL_CUAL
+MPB_DIRECCION:  ld a,(ULTIMO_PASO_PREBATALLA)
+                ld c,a
+                ld a,(CUADROS)
+                sub c                   ; cuadros desde el ultimo cambio de unidad
+                cp PASO_EN_LA_PREBATALLA
+                jr nc,MPB_AHORA
+                ld a,b
+                and 0F0h                ; todavia no: se caen las direcciones, el resto pasa
+                pop bc
+                ret
+MPB_AHORA:      ld a,(CUADROS)
+                ld (ULTIMO_PASO_PREBATALLA),a
+MPB_TAL_CUAL:   ld a,b
+                pop bc
+                ret
+ULTIMO_PASO_PREBATALLA: defb 0          ; el cuadro del ultimo cambio de unidad
+
+; --------------------------------------------------------------------------
 ; MI_GUANTE: sustituye al `call REFRESCA_EL_CURSOR` (0x07C3) de 0x7F57, la
 ; primera linea del bucle de partida. Sube los ocho bytes de atributos de los
 ; sprites 2 y 3 -el guante- leyendo la posicion de donde la deja MUEVE_EL_CURSOR,

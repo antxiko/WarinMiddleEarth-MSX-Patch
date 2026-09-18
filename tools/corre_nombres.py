@@ -361,6 +361,26 @@ def corre_cursor_batalla(m, plan, mando, cuadros, ultimo, sp=0x5BFF):
     return z
 
 
+def corre_prebatalla(m, plan, mando, cuadros, ultimo, sp=0x5BFF):
+    """MI_PREBATALLA igual que corre_cursor_batalla, pero la de 0x7564: la
+    pantalla que enseña las unidades una a una antes de la batalla. En 0x7563
+    se acaba de hacer `pop hl` y ese HL sigue vivo en 0x7573, asi que tiene que
+    salir intacto."""
+    c = plan["vista"]["cursor"]
+    m.ram[c["cuadros"]] = cuadros
+    m.ram[c["ultimo_paso_prebatalla"]] = ultimo
+
+    def lee(z):
+        z.a = mando
+        return ("a", mando)
+
+    z = Z80(m, Vdp(), c["prebatalla"], sp, {LEE_LOS_MANDOS: lee})
+    z.bc, z.de, z.hl = 0x1234, 0x5678, 0x9ABC
+    z.push(CENTINELA)
+    z.corre()
+    return z
+
+
 def atributos_esperados(plan, ci, ri, modo):
     """Los ocho bytes de ATRIBUTOS para el cursor en la celda (ci, ri) de la
     ventana y ese modo: Y una linea por encima, X, el patron y el color."""

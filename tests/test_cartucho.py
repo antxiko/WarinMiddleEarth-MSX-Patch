@@ -779,8 +779,8 @@ class TestLaMusica(unittest.TestCase):
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 54,
-                             "los parches de la vista tienen que ser cincuenta y cuatro bytes")
+            self.assertEqual(len(de_la_vista), 65,
+                             "los parches de la vista tienen que ser sesenta y cinco bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -1272,7 +1272,7 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_quince_parches_son_los_que_dice(self):
+    def test_los_dieciocho_parches_son_los_que_dice(self):
         """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225, tres en
         0x7758, tres en 0x7F57, uno en 0x6575 y trece en 0x8DE4 (bloque medio)
         y cuatro en 0x044B (bloque bajo); y los SIETE DE LA BATALLA, tres cada
@@ -1280,11 +1280,21 @@ class TestLaVistaPorNombres(unittest.TestCase):
         entero, solo la primera vuelta), 0x884C (fuera los atributos de cada
         vuelta), 0x90A6 (al montarla se apunta que esta sin subir), 0x914B (el
         infiltrado del centro), 0x9160 (la tecla F) y 0x8E10 (el cursor, al
-        paso del reloj). Los quince caen sobre lo que la cinta trae."""
+        paso del reloj). Mas 0x7564, la pantalla de pre-batalla, que se le
+        añadio cuando Ruben dijo que iba disparada. Los dieciseis caen sobre lo
+        que la cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
         self.assertEqual(sorted(porque),
-                         [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57,
-                          0x8828, 0x8849, 0x884C, 0x8DE4, 0x8E10, 0x90A6, 0x914B, 0x9160])
+                         [0x044B, 0x6575, 0x6AF1, 0x71A4, 0x7225, 0x7564, 0x75A5,
+                          0x7758, 0x7F57, 0x8828, 0x8849, 0x884C, 0x8DE4, 0x8E10,
+                          0x90A6, 0x914B, 0x9160, 0x93AE])
+        # LA PANTALLA DE PRE-BATALLA: su `call LEE_LOS_MANDOS`, por MI_PREBATALLA.
+        q = porque[0x7564]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cd6d06"),
+                         "0x7564 tiene que ser `call LEE_LOS_MANDOS` (0x066D)")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xCD]) + self.v["cursor"]["prebatalla"].to_bytes(2, "little"))
+        self.assertEqual(self.medio[0x7564 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
         # EL CURSOR DE LA BATALLA: su `call LEE_LOS_MANDOS`, por MI_CURSOR_BATALLA.
         q = porque[0x8E10]
         self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cd6d06"),
@@ -1812,6 +1822,47 @@ class TestLaVistaPorNombres(unittest.TestCase):
                              % (mando, m.ram[c["ultimo_paso_batalla"]], queda))
             self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x9ABC),
                              "MI_CURSOR_BATALLA tiene que dejar BC, DE y HL como LEE_LOS_MANDOS")
+
+    # ------------------------------------- la pantalla de pre-batalla
+    def test_pasar_de_unidad_antes_de_la_batalla_va_al_reloj(self):
+        """MI_PREBATALLA: en PANTALLA_DE_BATALLA (0x752C, el modo 0x17 con el
+        cartel "Comienza la Batalla") arriba y abajo pasan de una unidad propia
+        a la siguiente UNA POR VUELTA del bucle, y ese bucle repinta la vista de
+        cerca. Con la cache eso son 32 cambios por segundo, medidos sobre el
+        replay que mando Ruben: "va a toda putisima hostia".
+
+        Se limita como el cursor del mapa y el de la batalla: las direcciones
+        solo pasan una vez cada PASO_EN_LA_PREBATALLA cuadros. El disparo y la
+        tecla 1 pasan siempre, que son los que salen de la pantalla."""
+        import corre_nombres
+        c = self.v["cursor"]
+        paso = c["paso_prebatalla"]
+        self.assertEqual(paso, 10, "10 cuadros son 5 pasos por segundo: 6 veces "
+                                   "mas lento que los 32 medidos")
+        casos = [   # (mando, cuadros, ultimo paso, lo que ve, lo que queda apuntado)
+            (0x01, 100, 100 - paso, 0x01, 100),                 # en su cuadro: pasa
+            (0x01, 100, 100 - paso + 1, 0x00, 100 - paso + 1),  # a uno de cumplirlo: no
+            (0x02, 100, 100, 0x00, 100),                        # recien dado: no
+            (0x00, 100, 50, 0x00, (100 - paso) & 0xFF),         # sin direccion, queda listo
+            (0x10, 100, 100, 0x10, 100 - paso),                 # el disparo pasa siempre
+            (0x11, 100, 100, 0x10, 100),                        # con direccion, solo el disparo
+            (0x20, 100, 100, 0x20, 100 - paso),                 # la tecla 1, igual
+            (0x21, 100, 100 - paso, 0x21, 100),                 # y con direccion, en su cuadro
+            (0x01, 4, (4 - paso) & 0xFF, 0x01, 4),              # el contador da la vuelta
+        ]
+        for mando, cuadros, ultimo, visto, queda in casos:
+            m = self.monta()
+            z = corre_nombres.corre_prebatalla(m, self.plan, mando, cuadros, ultimo)
+            self.assertEqual(z.llamadas, [(corre_nombres.LEE_LOS_MANDOS, ("a", mando))])
+            self.assertEqual(z.a, visto,
+                             "mando %02X a %d cuadros del ultimo paso: ve %02X y tenia que ver %02X"
+                             % (mando, (cuadros - ultimo) & 0xFF, z.a, visto))
+            self.assertEqual(m.ram[c["ultimo_paso_prebatalla"]], queda,
+                             "mando %02X: queda %d y tenia que quedar %d"
+                             % (mando, m.ram[c["ultimo_paso_prebatalla"]], queda))
+            # En 0x7563 se acaba de hacer `pop hl` y ese HL sigue vivo en 0x7573.
+            self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x9ABC),
+                             "MI_PREBATALLA tiene que dejar BC, DE y HL como LEE_LOS_MANDOS")
 
     def test_el_atributo_del_texto_se_lee_del_juego(self):
         """0x763F es 0x78 en la cinta y 0x70 con el parche de Araubi: los
