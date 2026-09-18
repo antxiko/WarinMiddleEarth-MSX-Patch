@@ -868,7 +868,106 @@ MI_SUBE_TABLERO:
                 ret z
                 xor a
                 ld (TABLERO_SIN_SUBIR),a
-                jp BITMAP_A_VRAM
+                jp TABLERO_A_VRAM
+
+; --------------------------------------------------------------------------
+; LAS FIGURAS ROTAS: EL VDP SE COMIA UNA CUARTA PARTE DEL TABLERO
+;
+; Lo vio el usuario jugando -"los ejercitos se rompen"- y se midio cotejando el
+; bufer del juego contra la VRAM en una batalla de verdad
+; (tools/omsx_fondo_batalla.tcl + tools/coteja_batalla.py):
+;
+;     1.544 bytes de 6.144 NO llegaban a la VRAM  (25,1 %)
+;     245 celdas de 768, TODAS en las filas 2..17: el tablero
+;
+; LA CAUSA, y es la de siempre: con la pantalla encendida el TMS9918 no admite
+; dos accesos a la VRAM a menos de unos 29 ciclos, y las dos rutinas del juego
+; que suben el tablero van a 22:
+;
+;     BITMAP_A_VRAM   (0x05BD)  el tablero entero, 6.144 B, la primera vuelta
+;     RECUADRO_A_VRAM (0x0702)  cada ficha que cambia, 16 B, cada vuelta
+;
+; En la cinta esto se notaba menos porque el tablero se resubia ENTERO en cada
+; vuelta: lo que se caia se arreglaba solo a la siguiente (y se caia otra cosa).
+; Al subir solo lo que cambia, cada ficha se sube UNA vez, y el byte que se cae
+; se queda roto hasta que esa ficha vuelva a cambiar. O sea que el parche de la
+; batalla no causo el fallo: lo DESTAPO.
+;
+; Aqui van las dos subidas a 37 ciclos por byte, como el resto de este fichero.
+; Lo que cuesta, sobre las medidas que ya estaban tomadas:
+;
+;     el tablero entero  6.144 x 37 = 227.000 ciclos, UNA vez por batalla
+;     por ficha          16 x 37 x ~10 fichas = ~5.900 ciclos por vuelta,
+;                        sobre los 462.251 que cuesta una vuelta: un 1,3 %
+; --------------------------------------------------------------------------
+
+; El tablero entero, del bufer de 0x4000 a la tabla de patrones. Los tres
+; tercios van seguidos en la VRAM, asi que la direccion se pone una sola vez;
+; dentro de cada tercio, las ocho lineas de una celda estan a 256 bytes.
+TABLERO_A_VRAM: ld hl,VRAM_PATRONES
+                call DIRECCION_VRAM
+                ld hl,04000h            ; el primer tercio del bitmap emulado
+                call UN_TERCIO
+                ld hl,04800h
+                call UN_TERCIO
+                ld hl,05000h
+; Un tercio son 256 celdas seguidas -8 filas de 32- y el `inc l` las recorre
+; TODAS sin tocar H: al acabar una fila de 32 ya se esta en la primera celda de
+; la de abajo, porque en el ZX las filas de un tercio van de 32 en 32 en el
+; byte bajo. Por eso no hay bucle de filas y B entra a cero, que son 256.
+;
+; Y OJO CON B: OCHO_LINEAS lo usa de contador y lo deja a cero, asi que hay que
+; guardarlo alrededor de la llamada. Sin eso el `djnz` de aqui no cuenta nada
+; -B siempre entra a cero- y el tercio no se sube entero.
+UN_TERCIO:      ld b,000h
+UT_CELDA:       push bc
+                push hl
+                call OCHO_LINEAS
+                pop hl
+                pop bc
+                inc l                   ; la celda de al lado
+                djnz UT_CELDA
+                ret
+
+; Las ocho lineas de UNA celda, que en el ZX estan a 256 bytes una de otra.
+OCHO_LINEAS:    ld b,008h
+OL_LINEA:       ld a,(hl)               ; 7
+                out (098h),a            ; 11
+                inc h                   ; 4
+                nop                     ; 4   para no bajar de los 29 del VDP
+                djnz OL_LINEA           ; 13 = 39 ciclos por byte
+                ret
+
+; Y una ficha: B filas de C columnas desde la celda (D,E), que es lo que hacia
+; RECUADRO_A_VRAM. Aqui siempre se entra con una fila y dos columnas.
+RECUADRO_LENTO: push bc
+                ld h,d                  ; la VRAM de esa celda: fila*0x100 ...
+                ld a,e
+                add a,a                 ; ... mas columna*8
+                add a,a
+                add a,a
+                ld l,a
+                call DIRECCION_VRAM
+                ; y la direccion de pantalla del ZX de la misma celda
+                ld a,d
+                and 018h
+                or 040h
+                ld h,a
+                ld a,d
+                and 007h
+                rrca                    ; (fila y 7) por 32
+                rrca
+                rrca
+                or e
+                ld l,a
+                pop bc
+RL_CELDA:       push hl
+                call OCHO_LINEAS
+                pop hl
+                inc l
+                dec c
+                jr nz,RL_CELDA
+                ret
 
 ; Sustituye al `ld hl,(0x87DC)` de 0x8828, dentro de SIGUIENTE_FICHA. Ahi DE
 ; trae la direccion de pantalla ZX de la ficha que se acaba de mirar. Se entra
@@ -909,7 +1008,8 @@ MI_SUBE_FICHA:
                 ld d,a                      ; la fila, de 0 a 23
                 ld e,c                      ; la columna
                 ld bc,00102h                ; una fila de celdas, dos columnas
-                call RECUADRO_A_VRAM
+                call RECUADRO_LENTO         ; a 39 ciclos: RECUADRO_A_VRAM va a
+                                            ; 22 y el VDP se comia bytes
                 pop bc
                 pop de
                 pop hl
@@ -1062,6 +1162,93 @@ TURBO_SIN_TOCAR:
 ; al que hubiera antes.
 TEXTO_RAPIDO_SI:  defb "Batalla rapida: SI.           ",0
 TEXTO_RAPIDO_NO:  defb "Batalla rapida: NO.           ",0
+
+; ==========================================================================
+; EL FONDO DE LA BATALLA, SEGUN EL TERRENO
+;
+; QUE HABIA
+;
+; Todas las batallas se peleaban sobre el mismo fondo VERDE, se diera el
+; encuentro en un llano, en la montana o cruzando un rio. Y el color sale de un
+; unico byte: el `ld a,020h` con el que COMPRIME_EL_MAPA (0x9394) remata antes
+; de saltar a BORRA_PANTALLA.
+;
+;     93AE  3E 20        ld a,020h              el atributo del tablero
+;     93B0  C3 12 7F     jp BORRA_PANTALLA      que lo pone en las 768 celdas
+;
+; Medido en una batalla de verdad (tools/omsx_fondo_batalla.tcl): un punto de
+; observacion sobre los atributos del tablero durante todo el combate da UN
+; SOLO escritor, el `lddr` de 0x7F37, o sea ese mismo camino. Nadie mas los
+; toca: el atributo del centro del tablero sale 0x20, que es tinta negra sobre
+; papel verde oscuro.
+;
+; POR QUE SALE TAN BARATO
+;
+; Porque el juego YA SABE en que terreno se pelea y lo tiene a mano. Al montar
+; la batalla, 0x9024-0x902F lee la casilla del mapa y guarda su nibble bajo -la
+; clase de terreno, de 0 a 15- en 0x8DEA... y la llamada a COMPRIME_EL_MAPA
+; esta TRES INSTRUCCIONES despues. Asi que aqui no hay que averiguar nada: se
+; lee ese byte y se busca el color en una tabla de dieciseis.
+;
+; LOS COLORES, Y POR QUE ESTOS
+;
+; El atributo del ZX no llega a la pantalla: lo traduce ATRIBUTO_A_COLOR
+; (0x049F) con dos tablas de ocho -0x04CE sin brillo y 0x04D6 con el-, asi que
+; de los quince colores del MSX este motor solo alcanza DOCE: se quedan fuera
+; el verde medio, el rojo medio y el gris. La tinta se deja en 0 (negro) en los
+; cinco, que es lo que hace que las figuras se vean.
+;
+; Y NO HAY MARRON en el MSX1. Para la montana se eligio el rojo oscuro
+; (#B95E51), que es lo que mas se le parece; lo decidio el usuario mirando los
+; siete candidatos sobre una captura de batalla de verdad.
+; ==========================================================================
+
+BORRA_PANTALLA  equ 07F12h      ; A = atributo ZX: lo pone en las 768 celdas y borra el bitmap
+
+; Los cinco atributos. Papel arriba (bits 3-5), tinta 0 abajo y el bit 6 es el
+; BRIGHT del Spectrum, que es lo que separa el verde oscuro del claro.
+VERDE_OSCURO    equ 020h        ; papel 4 sin brillo -> MSX 12
+VERDE_CLARO     equ 060h        ; papel 4 CON brillo -> MSX 3
+AZUL_CLARO      equ 048h        ; papel 1 CON brillo -> MSX 5
+AMARILLO_OSCURO equ 030h        ; papel 6 sin brillo -> MSX 10
+ROJO_OSCURO     equ 010h        ; papel 2 sin brillo -> MSX 6
+
+; Un color por clase de terreno. Los grupos salen de la tabla de 0x6D47, que es
+; la que dice lo que cuesta cada terreno a cada raza: los terrenos con la misma
+; columna se comportan igual y llevan el mismo color.
+FONDO_POR_TERRENO:
+                defb VERDE_OSCURO       ; 0   llano (42,9 % del mapa)
+                defb AZUL_CLARO         ; 1   agua: INTRANSITABLE, no hay batalla
+                defb AZUL_CLARO         ; 2   mar: INTRANSITABLE, no hay batalla
+                defb AZUL_CLARO         ; 3   rio: solo Mago y Elfo lo cruzan barato
+                defb VERDE_OSCURO       ; 4   llano
+                defb VERDE_OSCURO       ; 5   llano (no aparece en el mapa)
+                defb AMARILLO_OSCURO    ; 6   camino: cuesta 2 a todos, lo mas barato
+                defb VERDE_OSCURO       ; 7   solo el Orco; UNA casilla en todo el mapa
+                defb VERDE_OSCURO       ; 8   llano
+                defb VERDE_OSCURO       ; 9   llano
+                defb VERDE_OSCURO       ; 10  llano
+                defb VERDE_OSCURO       ; 11  llano
+                defb VERDE_OSCURO       ; 12  cuesta 15 a todos (14 casillas)
+                defb VERDE_CLARO        ; 13  bosque: Mago, Elfo y Hobbit pasan barato
+                defb ROJO_OSCURO        ; 14  montana: solo Enano y Orco pasan barato
+                defb VERDE_OSCURO       ; 15  como el llano, pero Enano y Orco pagan 2
+
+; Sustituye a los cinco bytes de 0x93AE (`ld a,020h` + `jp BORRA_PANTALLA`).
+; Entra donde entraba aquel: al final de COMPRIME_EL_MAPA, con el terreno ya
+; guardado. Pisa A y HL, que es lo que pisaba el codigo que sustituye -y lo que
+; BORRA_PANTALLA pisa de todos modos-.
+MI_FONDO:
+                ld hl,FONDO_POR_TERRENO
+                ld a,(TERRENO_DE_LA_BATALLA)
+                and 00Fh                ; el nibble, por si algun dia entra sucio
+                add a,l
+                ld l,a
+                adc a,h
+                sub l
+                ld h,a
+                ld a,(hl)
+                jp BORRA_PANTALLA
 
 ; ==========================================================================
 ; LA MARCA DE LAS UNIDADES EN EL MAPA GENERAL

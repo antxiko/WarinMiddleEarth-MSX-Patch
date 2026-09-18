@@ -261,6 +261,21 @@ other cell does -that is the erase working- and the canvas stays clean. The
 check calls itself USELESS if no cell lost its marker between the two
 repaints, so it cannot pass without having proved anything.
 
+And **the battle's background takes the colour of the terrain** it is fought
+on, instead of the same green every time: plain dark green, forest light green,
+river light blue, road dark yellow and mountain dark red -the closest thing to
+brown an MSX1 can give, having none-. It comes out of a single byte, because
+the game already stores the terrain at 0x8DEA when setting the battle up, three
+instructions before the colour is chosen.
+
+And the **broken figures** got fixed along the way: 1,544 bytes out of 4,096
+were not reaching VRAM, because the two routines that upload the board run at
+22 cycles per byte and the TMS9918 will not take two accesses closer than about
+29. The battle patch did not cause it, it exposed it: the board used to be
+re-uploaded whole every turn, so whatever fell got fixed on the next one.
+Uploading at 37 cycles -1.3 % of a turn- takes the check from 1,544 bytes to
+**zero** (`make verifica_batalla`).
+
 The ROM to play is `war_unificada.rom` (`make rom_unificada`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 

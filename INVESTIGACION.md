@@ -1658,6 +1658,86 @@ entrada. Al entrar al mapa, 0x81DE-0x81E4 desvia al retardo de 0x8274 los dos
 sola unidad ni avanza el calendario. `PULSA_ABAJO_DEL_TODO` (0x81EA) se los
 devuelve.
 
+## 11) El fondo de la batalla, segun el terreno
+
+Todas las batallas se peleaban sobre el mismo **verde**, se diera el encuentro
+en un llano, en la montana o cruzando un rio. Y el color salia de **un unico
+byte**: el `ld a,020h` con el que `COMPRIME_EL_MAPA` (0x9394) remata antes de
+saltar a `BORRA_PANTALLA`.
+
+Medido antes de tocar nada (`tools/omsx_fondo_batalla.tcl`): un punto de
+observacion sobre los atributos del tablero durante una batalla entera da **UN
+SOLO escritor**, el `lddr` de 0x7F37, o sea ese mismo camino. El atributo del
+centro del tablero sale 0x20: tinta negra sobre papel verde oscuro.
+
+**Y sale barato porque el juego ya sabe donde se pelea.** Al montar la batalla,
+0x9024-0x902F lee la casilla y guarda su nibble bajo -la clase de terreno- en
+**0x8DEA**, y la llamada a `COMPRIME_EL_MAPA` esta **tres instrucciones
+despues**. `MI_FONDO` solo tiene que leer ese byte y buscar el color en una
+tabla de dieciseis.
+
+### Los grupos de terreno, medidos
+
+El terreno es el nibble bajo del byte de mapa, de 0 a 15; **15 de las 16 clases
+aparecen** en el mapa (la 5 no se usa nunca). Y un SOLO byte por (raza,
+terreno) en la tabla de 0x6D47 hace dos cosas: el coste de moverse
+(`COSTE_DEL_TERRENO`, 0x68AB; negativo = intransitable) y la fuerza en combate
+(`FUERZA_DE_LA_TROPA`, 0x8DE4). Agrupando las columnas identicas salen **nueve
+grupos**:
+
+| terrenos | efecto | % del mapa | color |
+|---|---|---|---|
+| 0, 4, 5, 8, 9, 10, 11 | cuesta 3 a todos | 47,1 % | verde oscuro |
+| 1, 2 | **intransitable**: no hay batalla | 34,8 % | (azul) |
+| 14 | 3 a Enano y Orco, 15 al resto | 7,8 % | rojo oscuro |
+| 13 | 3 a Mago, Elfo y Hobbit | 4,0 % | verde claro |
+| 3 | 3 a Mago y Elfo (el Hobbit no) | 3,4 % | azul claro |
+| 6 | cuesta 2 a todos | 2,6 % | amarillo oscuro |
+| 15 | 2 a Enano y Orco | 0,2 % | verde oscuro |
+| 12 | 15 a todos | 0,1 % | verde oscuro |
+| 7 | 3 solo al Orco | 1 casilla | verde oscuro |
+
+**El MSX1 no tiene marron**: este motor alcanza 12 de los 15 colores -el
+atributo del ZX pasa por `ATRIBUTO_A_COLOR` (0x049F) con dos tablas de ocho- y
+se quedan fuera el verde medio, el rojo medio y el gris. Para la montana se
+eligio el rojo oscuro (#B95E51), que es lo que mas se le parece.
+
+## 12) LAS FIGURAS ROTAS: el VDP se comia una cuarta parte del tablero
+
+Lo vio el usuario jugando -*"los ejercitos se rompen"*- y se midio cotejando el
+bufer del juego contra la VRAM en una batalla de verdad:
+
+    1.544 bytes de 4.096 no llegaban a la VRAM   (37,7 % del tablero)
+    245 celdas de 512, todas en las filas 2..17
+
+La causa es la de siempre: con la pantalla encendida el TMS9918 no admite dos
+accesos a la VRAM a menos de unos 29 ciclos, y **las dos rutinas del juego que
+suben el tablero van a 22**: `BITMAP_A_VRAM` (0x05BD), el tablero entero, y
+`RECUADRO_A_VRAM` (0x0702), cada ficha que cambia.
+
+**El parche de la batalla no causo el fallo: lo DESTAPO.** En la cinta el
+tablero se resubia entero en cada vuelta, asi que lo que se caia se arreglaba
+solo a la siguiente (y se caia otra cosa). Al subir solo lo que cambia, cada
+ficha se sube UNA vez y el byte que se cae se queda roto. De hecho, la ROM
+**sin** el parche sale mucho peor: el tablero aparece casi vacio y hasta el
+texto de arriba sale corrupto.
+
+Arreglado subiendo a 37 ciclos por byte, como el resto del parche. Cuesta
+227.000 ciclos una vez por batalla y unos 5.900 por vuelta -un **1,3 %** sobre
+los 462.251 que cuesta una vuelta-. Cotejo despues: **0 bytes de 4.096**.
+
+### La trampa: un contador pisado
+
+La primera version bajaba de 1.544 a 791 y ahi se atascaba. Lo que lo delato no
+fue el numero sino **como** fallaba: la mitad de las celdas estaban distintas
+ENTERAS (8 bytes de 8, o sea nunca subidas), iban **en parejas** -una ficha son
+dos celdas- y **todas en las filas 8 a 17**, la mitad de abajo.
+
+Era un fallo de la rutina nueva: `OCHO_LINEAS` usa B de contador y lo deja a
+cero, asi que el `djnz` del bucle de celdas no contaba y solo se subia el primer
+tercio. **Un byte perdido por el VDP y una celda sin subir se ven igual en
+pantalla, pero no en el cotejo**: la pista fue que fallaran los ocho bytes.
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo
