@@ -164,6 +164,7 @@ CURSOR_Y        equ 16*CURSOR_FILA-1    ; y el VDP pinta el sprite una linea por
 MUEVE_POR_EL_MAPA equ 0734Bh    ; A = mando, HL = posicion; mueve una casilla
 LEE_LOS_MANDOS  equ 0066Dh      ; A = el mando: bits 0-3 direcciones, 4 fuego, 5 la tecla 1, 6 la R
 PASO_DEL_CURSOR equ 10          ; cuadros entre casilla y casilla con la tecla pulsada: 5 por segundo a 50 Hz (6 a 60)
+PASO_EN_LA_BATALLA equ 16       ; y en la batalla, 3,1 por segundo: los que daba la cinta antes de acelerar el tablero
                                 ; CUADROS lo lleva el gancho de la interrupcion (puente.asm) y llega como --equ
 DESPLAZA_ESQUINA equ -720       ; lo que resta 0x71B9 a la celda de (H+1, L)
 TAM_PANTALLA    equ 850         ; 25 filas de 34
@@ -630,6 +631,47 @@ ME_TOQUES:      ld a,b
                 pop bc
                 ret
 ULTIMA_ELECCION: defb 0                 ; el mando de la vuelta anterior del bucle de eleccion
+
+; --------------------------------------------------------------------------
+; MI_CURSOR_BATALLA: sustituye al `call LEE_LOS_MANDOS` de 0x8E10, el de
+; MUEVE_EL_CURSOR_DE_BATALLA (0x8E0D). Ese cursor se corre UNA casilla por
+; vuelta del bucle de batalla, asi que su velocidad es la del bucle: con el
+; tablero subiendo solo lo que cambia la vuelta paso de 0,3170 a 0,1068 s, o
+; sea de 3,2 a 9,4 casillas por segundo, y el cursor se volvio ingobernable.
+; Es el mismo problema que arreglo MI_MUEVE en el mapa y se arregla igual: las
+; cuatro direcciones (bits 0-3) solo pasan una vez cada PASO_EN_LA_BATALLA
+; cuadros; el disparo y la tecla 1 pasan SIEMPRE, que ya tienen su propia
+; espera a soltar en PULSA_EN_LA_BATALLA. Sin ninguna direccion pulsada el
+; contador se deja listo, asi que una pulsacion suelta mueve al instante: lo
+; que se limita es MANTENER pulsado. Devuelve A como LEE_LOS_MANDOS y, como
+; ella, no toca BC, DE ni HL (en 0x8E13 el HL de 0x8E0D sigue vivo).
+; --------------------------------------------------------------------------
+MI_CURSOR_BATALLA:
+                call LEE_LOS_MANDOS
+                push bc
+                ld b,a
+                and 00fh                ; bits 0-3: las cuatro diagonales
+                jr nz,MCB_DIRECCION
+                ld a,(CUADROS)          ; nada pulsado: la siguiente pulsacion mueve al instante
+                sub PASO_EN_LA_BATALLA
+                ld (ULTIMO_PASO_BATALLA),a
+                jr MCB_TAL_CUAL
+MCB_DIRECCION:  ld a,(ULTIMO_PASO_BATALLA)
+                ld c,a
+                ld a,(CUADROS)
+                sub c                   ; cuadros desde el ultimo paso (modulo 256)
+                cp PASO_EN_LA_BATALLA
+                jr nc,MCB_AHORA
+                ld a,b
+                and 0F0h                ; todavia no: se caen las direcciones y lo demas pasa
+                pop bc
+                ret
+MCB_AHORA:      ld a,(CUADROS)
+                ld (ULTIMO_PASO_BATALLA),a
+MCB_TAL_CUAL:   ld a,b
+                pop bc
+                ret
+ULTIMO_PASO_BATALLA: defb 0             ; el cuadro del ultimo paso del cursor de la batalla
 
 ; --------------------------------------------------------------------------
 ; MI_GUANTE: sustituye al `call REFRESCA_EL_CURSOR` (0x07C3) de 0x7F57, la

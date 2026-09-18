@@ -28,6 +28,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cursor                                               # noqa: E402
 import lienzos                                              # noqa: E402
 import mapa_general                                         # noqa: E402
 import render_vram                                          # noqa: E402
@@ -207,9 +208,26 @@ def cotejo(nuevo, viejo, png, plan, work):
                      if fn[y][x * 3:x * 3 + 3] != fv[y][x * 3:x * 3 + 3]]
         caja = set(caja_del_guante(col, fila))
         fuera = [p for p in distintos if p not in caja]
-        exige(not distintos,
-              "vuelta %d: las dos pantallas son IGUALES pixel a pixel (%d distintos, %d fuera del guante)"
-              % (n, len(distintos), len(fuera)))
+        exige(not fuera,
+              "vuelta %d: las dos pantallas son IGUALES pixel a pixel fuera del guante "
+              "(%d distintos, %d fuera)" % (n, len(distintos), len(fuera)))
+        # Y DENTRO del guante lo que se exige es la SILUETA, no el color: el
+        # guante es editable (src/cartucho/guante.png) y desde el 2026-09-18 va
+        # en azul y blanco, porque amarillo y negro sobre un mapa amarillo y
+        # negro no se veia. Lo que no puede cambiar es QUE pixeles pinta: los
+        # distintos tienen que ser exactamente los que el PNG enciende en sus
+        # dos planos, ni uno mas. Si el guante se moviera de sitio, se comiera
+        # una fila o dejara de pintar algo, aqui se ve.
+        silueta = set()
+        for p in range(2):
+            plano = cursor.bytes_a_plano(patrones_png[p * 32:(p + 1) * 32])
+            for y in range(16):
+                for x in range(16):
+                    if plano[y][x]:
+                        silueta.add((col + x, fila + y))
+        exige(set(distintos) == silueta,
+              "vuelta %d: lo unico que cambia es el color del guante: %d pixels, "
+              "los mismos que enciende %s" % (n, len(silueta), g["png"]))
         if png:
             os.makedirs(png, exist_ok=True)
             render_vram.png(w, h, fn, os.path.join(png, "%d_nueva.png" % n))

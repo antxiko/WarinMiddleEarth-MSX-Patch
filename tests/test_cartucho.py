@@ -531,20 +531,21 @@ class TestLaMusica(unittest.TestCase):
                 permitidos.add(q["carga"])
         vista = self.plan.get("vista")
         if vista:
-            # La rutina de la vista, en la misma zona liberada, y sus DOCE
-            # parches: cuarenta y cinco bytes, cuarenta y uno del bloque medio
-            # y cuatro del bajo. Los dos del guante del mapa general; el de
+            # La rutina de la vista, en la misma zona liberada, y sus QUINCE
+            # parches: cincuenta y cuatro bytes, cincuenta del bloque medio y
+            # cuatro del bajo. Los dos del guante del mapa general; el de
             # 0x8DE4 -la fuerza de la tropa- que se lleva trece el solo, porque
             # sustituye el calculo entero por un salto y un `call MI_FUERZA`; y
-            # los cuatro de la batalla (0x8828, 0x8849, 0x884C y 0x90A6), tres
-            # bytes cada uno, que le quitan a cada vuelta la subida de la
-            # pantalla entera.
+            # los SIETE de la batalla (0x8828, 0x8849, 0x884C, 0x90A6, 0x914B,
+            # 0x9160 y 0x8E10), tres bytes cada uno, que le quitan a cada vuelta
+            # la subida de la pantalla entera, arreglan al infiltrado del
+            # centro, ponen la tecla F y atan el cursor al reloj.
             permitidos.update(range(vista["ram"], vista["ram"] + vista["bytes"]))
             de_la_vista = set()
             for q in vista["parches"]:
                 de_la_vista.update(range(q["carga"], q["carga"] + len(bytes.fromhex(q["nuevo"]))))
-            self.assertEqual(len(de_la_vista), 45,
-                             "los parches de la vista tienen que ser cuarenta y cinco bytes")
+            self.assertEqual(len(de_la_vista), 54,
+                             "los parches de la vista tienen que ser cincuenta y cuatro bytes")
             permitidos.update(de_la_vista)
 
         fuera = [i for i in range(0x10000) if ram_sin[i] != ram_con[i] and i not in permitidos]
@@ -1036,18 +1037,26 @@ class TestLaVistaPorNombres(unittest.TestCase):
         for cual in ("bufer_z", "bufer_d"):
             self.assertLessEqual(z[cual]["ram"] + z[cual]["bytes"], self.v["ram"])
 
-    def test_los_doce_parches_son_los_que_dice(self):
+    def test_los_quince_parches_son_los_que_dice(self):
         """Tres bytes en 0x75A5, tres en 0x71A4, tres en 0x7225, tres en
         0x7758, tres en 0x7F57, uno en 0x6575 y trece en 0x8DE4 (bloque medio)
-        y cuatro en 0x044B (bloque bajo); y los CUATRO DE LA BATALLA, tres cada
+        y cuatro en 0x044B (bloque bajo); y los SIETE DE LA BATALLA, tres cada
         uno: 0x8828 (cada ficha que cambia se sube sola), 0x8849 (el tablero
         entero, solo la primera vuelta), 0x884C (fuera los atributos de cada
-        vuelta) y 0x90A6 (al montarla se apunta que esta sin subir). Los doce
-        caen sobre lo que la cinta trae."""
+        vuelta), 0x90A6 (al montarla se apunta que esta sin subir), 0x914B (el
+        infiltrado del centro), 0x9160 (la tecla F) y 0x8E10 (el cursor, al
+        paso del reloj). Los quince caen sobre lo que la cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
         self.assertEqual(sorted(porque),
                          [0x044B, 0x6575, 0x71A4, 0x7225, 0x75A5, 0x7758, 0x7F57,
-                          0x8828, 0x8849, 0x884C, 0x8DE4, 0x90A6])
+                          0x8828, 0x8849, 0x884C, 0x8DE4, 0x8E10, 0x90A6, 0x914B, 0x9160])
+        # EL CURSOR DE LA BATALLA: su `call LEE_LOS_MANDOS`, por MI_CURSOR_BATALLA.
+        q = porque[0x8E10]
+        self.assertEqual(bytes.fromhex(q["orig"]), bytes.fromhex("cd6d06"),
+                         "0x8E10 tiene que ser `call LEE_LOS_MANDOS` (0x066D)")
+        self.assertEqual(bytes.fromhex(q["nuevo"]),
+                         bytes([0xCD]) + self.v["cursor"]["batalla"].to_bytes(2, "little"))
+        self.assertEqual(self.medio[0x8E10 - 0x5E00:][:3], bytes.fromhex(q["orig"]))
         # LA BATALLA. Los tres `call` y el `ld hl,(nn)` que se sustituyen, y el
         # de los atributos que se va a nops.
         for d, orig in ((0x8828, "2adc87"), (0x8849, "cdbd05"),
@@ -1256,21 +1265,32 @@ class TestLaVistaPorNombres(unittest.TestCase):
             self.assertIs(z.di, False, "0x044B tiene que salir con las interrupciones abiertas, como siempre")
 
     # ------------------------------------------ EL GUANTE DEL MAPA GENERAL
-    def test_el_guante_sale_del_png_y_el_png_del_dibujo_de_la_cinta(self):
-        """Los dos planos que van en la ROM son los del PNG, y el PNG, tal como
-        viene de fabrica, ensena EXACTAMENTE lo que la cinta estampa: dibujo
-        donde el dibujo tiene un bit, papel donde el dibujo no lo tiene y la
-        mascara tampoco, y nada donde la mascara deja ver el fondo."""
+    def test_el_guante_sale_del_png_y_conserva_la_silueta_de_la_cinta(self):
+        """Los dos planos que van en la ROM son los del PNG, y el PNG ensena la
+        misma SILUETA que la cinta estampa: relleno donde el dibujo no tiene bit
+        y la mascara tampoco, trazo donde el dibujo tiene bit, y nada donde la
+        mascara deja ver el fondo.
+
+        El COLOR no se exige, que para eso el PNG es editable: el guante era
+        amarillo y negro sobre un mapa amarillo y negro -no se veia-, y el
+        usuario lo mando poner azul el 2026-09-18. Lo que no puede cambiar sin
+        enterarse nadie es la forma."""
         import guante
+        import lienzos
         g = self.v["guante"]
         patrones, colores, _avisos = guante.planos_del_png(
             os.path.join(RAIZ, g["png"]))
         self.assertEqual(patrones.hex(), g["planos"])
         self.assertEqual(list(colores), g["planos_colores"])
-        # y el dibujo, contra los 32 bytes de la cinta
+        # los dos colores de hoy, para que un repintado accidental se vea
+        self.assertEqual([lienzos.NOMBRE_MSX[c] for c in colores],
+                         ["azul claro", "blanco"])
+        # y la silueta, contra los 32 bytes de la cinta: A es el relleno (el
+        # papel) y B el trazo (la tinta), que es como los reparte cursor.py
+        # -el plano A es el color con menos pixels-
         dib = self.medio[0x6345 - 0x5E00:][:16]
         mas = self.medio[0x6355 - 0x5E00:][:16]
-        tinta, papel = guante.cursor.color_msx(guante.ATRIBUTO_MAPA)
+        relleno, trazo = colores[0], colores[1]
         visto = guante.dibuja(patrones, colores)
         for y in range(16):
             for x in range(16):
@@ -1280,9 +1300,9 @@ class TestLaVistaPorNombres(unittest.TestCase):
                     bit = 0x8000 >> x
                     d = (dib[y * 2] << 8) | dib[y * 2 + 1]
                     m = (mas[y * 2] << 8) | mas[y * 2 + 1]
-                    esperado = tinta if d & bit else (None if m & bit else papel)
+                    esperado = trazo if d & bit else (None if m & bit else relleno)
                 self.assertEqual(visto[y][x], esperado,
-                                 "el pixel (%d, %d) del guante no es el de la cinta" % (x, y))
+                                 "el pixel (%d, %d) del guante no tiene la silueta de la cinta" % (x, y))
 
     def test_mi_guante_sube_los_patrones_una_vez_y_los_atributos_siempre(self):
         """La primera vez despues de cada escondida sube los 64 bytes de los
@@ -1525,6 +1545,39 @@ class TestLaVistaPorNombres(unittest.TestCase):
                              % (ultima, mando, m.ram[c["ultima_eleccion"]], queda))
             self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x9ABC), "MI_ELECCION tiene que dejar BC, DE y HL como LEE_LOS_MANDOS")
 
+    # ------------------------------------------- el cursor de la batalla
+    def test_el_cursor_de_la_batalla_va_al_paso_del_reloj(self):
+        """MI_CURSOR_BATALLA: las cuatro direcciones solo pasan una vez cada
+        PASO_EN_LA_BATALLA cuadros, asi que la velocidad del cursor deja de ser
+        la del bucle de batalla; el disparo y la tecla 1 pasan siempre, que ya
+        tienen su espera a soltar en PULSA_EN_LA_BATALLA."""
+        import corre_nombres
+        c = self.v["cursor"]
+        paso = c["paso_batalla"]
+        self.assertEqual(paso, 16)
+        casos = [   # (mando, cuadros, ultimo paso, lo que ve el cursor, lo que queda apuntado)
+            (0x08, 100, 100 - paso, 0x08, 100),         # justo a los PASO cuadros: pasa
+            (0x08, 100, 100 - paso + 1, 0x00, 100 - paso + 1),   # a uno de cumplirlos: no
+            (0x04, 100, 100, 0x00, 100),                # recien dado un paso: no
+            (0x00, 100, 50, 0x00, (100 - paso) & 0xFF),  # sin direccion, el contador queda listo
+            (0x10, 100, 100, 0x10, 100 - paso),         # el disparo pasa, y sin direccion el contador queda listo
+            (0x18, 100, 100, 0x10, 100),                # y con direccion, pasa solo el disparo
+            (0x28, 100, 100 - paso, 0x28, 100),         # la tecla 1 y una direccion, en su cuadro
+            (0x01, 4, (4 - paso) & 0xFF, 0x01, 4),      # el contador da la vuelta
+        ]
+        for mando, cuadros, ultimo, visto, queda in casos:
+            m = self.monta()
+            z = corre_nombres.corre_cursor_batalla(m, self.plan, mando, cuadros, ultimo)
+            self.assertEqual(z.llamadas, [(corre_nombres.LEE_LOS_MANDOS, ("a", mando))])
+            self.assertEqual(z.a, visto,
+                             "mando %02X a %d cuadros del ultimo paso: ve %02X y tenia que ver %02X"
+                             % (mando, (cuadros - ultimo) & 0xFF, z.a, visto))
+            self.assertEqual(m.ram[c["ultimo_paso_batalla"]], queda,
+                             "mando %02X: queda %d y tenia que quedar %d"
+                             % (mando, m.ram[c["ultimo_paso_batalla"]], queda))
+            self.assertEqual((z.bc, z.de, z.hl), (0x1234, 0x5678, 0x9ABC),
+                             "MI_CURSOR_BATALLA tiene que dejar BC, DE y HL como LEE_LOS_MANDOS")
+
     def test_el_atributo_del_texto_se_lee_del_juego(self):
         """0x763F es 0x78 en la cinta y 0x70 con el parche de Araubi: los
         colores de la fuente tienen que salir de ahi, no de una constante."""
@@ -1541,7 +1594,7 @@ class TestLaVistaPorNombres(unittest.TestCase):
         c = self.v["cursor"]
         for nombre in ("pinta", "cache", "cache_valida", "ultimo_modo", "posicion_h", "posicion_l",
                        "atributos", "patrones", "colores", "mueve", "ultimo_paso", "eleccion",
-                       "ultima_eleccion"):
+                       "ultima_eleccion", "batalla", "ultimo_paso_batalla"):
             self.assertTrue(self.v["ram"] <= c[nombre] < self.v["ram"] + self.v["bytes"],
                             "%s cae en 0x%04X, fuera del bloque" % (nombre, c[nombre]))
         self.assertLessEqual(c["cache"] + 850, self.v["ram"] + self.v["bytes"])

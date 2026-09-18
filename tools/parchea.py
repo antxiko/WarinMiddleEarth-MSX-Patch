@@ -382,9 +382,13 @@ PARCHES = [
          orig="477265792020486176656e73", nuevo="50746f732020477269736573",
          motivo="sitio 6x2: 'Grey  '/'Havens' -> 'Ptos  '/'Grises'"),
     # (5b) La lista de los 24 nombres de 0x6B46, separados por 0xB7.
-    dict(grupo="textos", bloque="medio", dir=0x6BA5,
-         orig="4272616e6420494949", nuevo="426172646f20494949",
-         motivo="nombre 9 letras: 'Brand III' -> 'Bardo III'"),
+    #      AQUI NO HAY NINGUNA ENTRADA, Y ES A PROPOSITO: la lista de los 24
+    #      nombres se queda EXACTAMENTE como la trae la cinta. Hubo una que
+    #      traducia 'Brand III' por 'Bardo III' y estaba mal: Brand -nieto de
+    #      Bardo el Arquero y rey de Valle- se llama igual en las dos lenguas.
+    #      El usuario lo mando deshacer el 2026-09-18, y deshacer es QUITAR la
+    #      entrada, no cambiarla por otra cosa. Lo comprueba
+    #      test_los_24_nombres_no_los_toca_nadie.
     # (5c) El cuarto adjetivo de la ficha, al que apunta 0x6FEF (0x7DEF, con su
     #      espacio delante); acaba con el bit 7 en la ultima letra.
     # (5d) Las dos tablas de razas. Se escriben ENTERAS de una vez porque las
@@ -395,23 +399,43 @@ PARCHES = [
     #      Plural (base 0x7D06, la lee FORMACION_SIN_NOMBRE en 0x6F57), entradas
     #      0..7; la 8 ('Gollum') no se toca y cierra en 0x7D39, que es la base de
     #      la tabla en singular. 45 bytes antes y 45 despues:
-    #      7+6+3+5+7+4+7+6 = 45   ->   5+6+7+5+7+4+7+4 = 45
+    #      7+6+3+5+7+4+7+6 = 45   ->   5+6+7+5+6+5+7+4 = 45
+    #      El byte que necesita 'Orcos' sale del ESPACIO de relleno que llevaba
+    #      'Enanos ' -y que ya traia la cinta, porque el ingles era 'Dwarves'-,
+    #      no de acortar ningun nombre.
     dict(grupo="textos", bloque="medio", dir=0x7D07,
          orig="4272756a6f73a04e617a6775ec4875ed456c666ff3456e616e6f73a04f7263f3"
               "486f62626974f34272756a6fa0",
-         nuevo="4d61676ff34e617a6775ec486f6d627265f3456c666ff3456e616e6f73a04f7263f3"
+         nuevo="4d61676ff34e617a6775ec486f6d627265f3456c666ff3456e616e6ff34f72636ff3"
                "486f62626974f34d6167ef",
-         motivo="razas en plural: 'Brujos'->'Magos', 'Hum'->'Hombres', 'Brujo'->'Mago'"),
+         motivo="razas en plural: 'Brujos'->'Magos', 'Hum'->'Hombres', "
+                "'Orcs'->'Orcos' (del espacio de 'Enanos '), 'Brujo'->'Mago'"),
     #      Singular (base 0x7D39, la lee NOMBRE_DEL_TIPO en 0x6DF6), entradas
     #      0..8; la 9 ('Mujer') no se toca y cierra en 0x7D6A, que es la base de
     #      los carteles de bando. 44 bytes antes y 44 despues:
-    #      6+6+3+3+5+3+6+6+6 = 44   ->   4+6+6+4+5+3+6+4+6 = 44
+    #      6+6+3+3+5+3+6+6+6 = 44   ->   4+6+6+4+5+4+6+4+5 = 44
+    #      Aqui no hay relleno que aprovechar, asi que el byte de 'Orco' sale de
+    #      la entrada 8, que es TEXTO MUERTO desde que Gollum es un hobbit: era
+    #      la unica unidad de tipo 8 de las 256 (medido) y ahora es del 6. Se
+    #      deja en 'Enano' porque es lo que ese tipo dibujaba: 0x8D0E manda
+    #      dibujar el 8 como el 4.
     dict(grupo="textos", bloque="medio", dir=0x7D3A,
          orig="4272756a6fa04e617a6775ec4875ed456ce6456e616eef4f72e3486f626269f4"
               "4272756a6fa0476f6c6c75ed",
-         nuevo="4d6167ef4e617a6775ec486f6d6272e5456c66ef456e616eef4f72e3486f626269f4"
-               "4d6167ef476f6c6c75ed",
-         motivo="razas en singular: 'Brujo'->'Mago', 'Hum'->'Hombre', 'Elf'->'Elfo'"),
+         nuevo="4d6167ef4e617a6775ec486f6d6272e5456c66ef456e616eef4f7263ef486f626269f4"
+               "4d6167ef456e616eef",
+         motivo="razas en singular: 'Brujo'->'Mago', 'Hum'->'Hombre', 'Elf'->'Elfo', "
+                "'Orc'->'Orco' (del hueco que deja Gollum al ser hobbit)"),
+    # (6) GOLLUM, HOBBIT. Su raza vive en el nibble bajo de 0xBD00+21 (bloque
+    #     alto), donde 8 es 'Gollum' y 6 'Hobbit'. Con el 8 no era solo el
+    #     nombre: en la batalla 0x8CF7 saca de ahi el dibujo, la vida y el golpe
+    #     de la figura, y 0x8D0E manda dibujar el tipo 8 COMO EL 4, o sea que
+    #     Gollum salia con la figura del enano. Con el 6 es un hobbit en todo:
+    #     nombre, figura, fuerza (0x6D47 + tipo*16) y costes de terreno (0x6D37).
+    #     Es la unica unidad de tipo 8: medido sobre las 256 de 0xBD00.
+    dict(grupo="unidades", bloque="alto", dir=0xBD15,
+         orig="08", nuevo="06",
+         motivo="Gollum (unidad 21) pasa de su propia raza a HOBBIT: nombre y figura"),
 ]
 
 
@@ -518,7 +542,7 @@ def main(argv):
     # PARA: antes se saltaba en silencio, y una entrada nueva se aplicaba a la
     # cinta pero no salia en el informe ni entraba en el total.
     orden = ("visibilidad", "valores", "icono", "mapa", "anillo", "papel",
-             "adjetivos", "graficos", "textos")
+             "adjetivos", "graficos", "textos", "unidades")
     sueltos = sorted({p["grupo"] for p in tabla} - set(orden))
     if sueltos:
         raise SystemExit("grupos sin sitio en el informe: %s" % ", ".join(sueltos))

@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Editor de sprites</title>
+<!--
+  LOS SPRITES DEL CARTUCHO DE WAR IN MIDDLE EARTH, EDITABLES
+
+  Abrelo en el navegador, sin servidor ni dependencias. Edita los CUATRO
+  sprites de hardware que lleva la ROM unificada:
+
+    mirar     la cruz del mapa estrategico (vista de cerca)   src/cartucho/cursor.png
+    destino   la cruz de elegir destino                       src/cartucho/cursor.png
+    batalla   las dos espadas cruzadas                        src/cartucho/cursor.png
+    guante    el guante del mapa general                      src/cartucho/guante.png
+
+  Cada uno es lo que es en el MSX1: DOS sprites de 16x16 solapados, cada uno de
+  UN color de la paleta del TMS9918. El plano A va delante (el dibujo) y el B
+  detras (el bloque); donde ninguno pinta se ve el juego de debajo. Por eso
+  debajo del lienzo va un trozo REAL de la pantalla donde vive cada sprite: el
+  mapa general para el guante y la vista de cerca para los tres cursores.
+
+    Guardar PNG   escribe cursor.png (48x16) o guante.png (16x16), segun el
+                  sprite activo, con los colores exactos del MSX y el
+                  transparente de verdad (alfa 0), que es lo que leen
+                  tools/cursor.py y tools/guante.py
+    Abrir PNG     lee cualquiera de los dos, por su tamano
+
+  Luego, en el repositorio: copiar el PNG a src/cartucho/ y `make rom_unificada`.
+  Los 32 bytes de cada plano se ensenan abajo por si alguien los quiere a mano.
+-->
+<style>
+  :root { --fondo:#18181c; --tinta:#e8e8e8; --marco:#3a3a44; --panel:#24242b; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:14px/1.4 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 10px; }
+  .fila { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--marco); border-radius:6px; padding:10px; }
+  button, label.boton { background:#3b3b48; color:var(--tinta); border:1px solid #555; border-radius:4px; padding:5px 10px; cursor:pointer; font:inherit; }
+  button.activo, label.activo { background:#5a5aa0; border-color:#8a8ad0; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display:block; }
+  #lienzo { border:1px solid var(--marco); cursor:crosshair; background:#000; }
+  .paleta { display:grid; grid-template-columns: repeat(8, 26px); gap:4px; }
+  .paleta div { width:26px; height:26px; border:2px solid #222; border-radius:3px; cursor:pointer; box-sizing:border-box; }
+  .paleta div.activo { border-color:#fff; }
+  .paleta div.transp { background: repeating-conic-gradient(#444 0 25%, #222 0 50%) 0 0/8px 8px; }
+  pre { margin:4px 0 0; font-size:11px; white-space:pre-wrap; color:#bbb; }
+  small { color:#999; }
+  input[type=file] { display:none; }
+  .cuenta { color:#9c9; font-size:12px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Los sprites del cartucho: dos planos de 16x16, un color cada uno</h1>
+
+<div class="fila" style="margin-bottom:10px">
+  <span id="sprites" class="panel" style="padding:6px"></span>
+  <span class="panel" style="padding:6px">
+    <button id="planoA" class="activo">plano A (delante)</button>
+    <button id="planoB">plano B (detras)</button>
+    <button id="goma">goma</button>
+  </span>
+  <span class="panel" style="padding:6px">
+    <label class="boton" for="fichero">Abrir PNG</label><input type="file" id="fichero" accept="image/png">
+    <button id="guardar">Guardar PNG</button>
+  </span>
+  <span class="panel" style="padding:6px">
+    <button id="vaciaPlano">Vaciar plano</button>
+    <button id="vaciaTodo">Vaciar sprite</button>
+    <button id="original">Volver al original</button>
+  </span>
+</div>
+
+<div class="fila">
+  <div class="panel">
+    <canvas id="lienzo" width="320" height="320"></canvas>
+    <small>izquierdo: pinta en el plano activo &middot; derecho: borra &middot; debajo se ve la pantalla de verdad donde vive el sprite</small>
+  </div>
+  <div class="panel">
+    <div>Color del plano <b id="cual">A</b>:</div>
+    <div class="paleta" id="paleta"></div>
+    <div style="margin-top:8px" class="cuenta">A: <span id="colorA"></span><br>B: <span id="colorB"></span></div>
+    <div style="margin-top:10px">Como se ve en el juego (x1 y x2): <button id="otroSitio">otro sitio</button></div>
+    <canvas id="previa" width="128" height="96" style="margin-top:4px"></canvas>
+    <canvas id="previa2" width="256" height="192" style="margin-top:4px"></canvas>
+    <div style="margin-top:8px"><label><input type="checkbox" id="rejilla" checked> rejilla</label>
+      &nbsp;<label><input type="checkbox" id="verFondo" checked> fondo del juego</label></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+  <div>Los 32 bytes de cada plano (cuadrantes por columnas, como el TMS9918):</div>
+  <pre id="bytes"></pre>
+</div>
+
+<p><small>Guardar escribe <code>cursor.png</code> (48 x 16: mirar, destino y batalla seguidos) o
+<code>guante.png</code> (16 x 16), segun el sprite activo. Copialo a <code>src/cartucho/</code> y monta con
+<code>make rom_unificada</code>. Un sprite no puede llevar mas de dos colores: aqui no se puede, que cada plano
+tiene el suyo.</small></p>
+</main>
+<script>
+// La paleta del MSX1 con la que tools/lienzos.py escribe y lee los PNG: los
+// valores tienen que ser EXACTAMENTE estos para que la lectura sea exacta.
+const MSX = [null,
+  [0x00,0x00,0x00],[0x3E,0xB8,0x49],[0x74,0xD0,0x7D],[0x59,0x55,0xE0],[0x80,0x76,0xF1],
+  [0xB9,0x5E,0x51],[0x65,0xDB,0xEF],[0xDB,0x65,0x59],[0xFF,0x89,0x7D],[0xCC,0xC3,0x5E],
+  [0xDE,0xD0,0x87],[0x3A,0xA2,0x41],[0xB7,0x66,0xB5],[0xCC,0xCC,0xCC],[0xFF,0xFF,0xFF]];
+const NOMBRE = ["transparente","negro","verde medio","verde claro","azul oscuro","azul claro","rojo oscuro","cian",
+  "rojo medio","rojo claro","amarillo oscuro","amarillo claro","verde oscuro","magenta","gris","blanco"];
+const FONDO = [0x18,0x18,0x1c];               // el transparente de las laminas: tambien vale como color
+const ZOOM = 20;
+
+// Los cuatro sprites. `png` dice en que fichero vive y `hueco` su sitio dentro
+// (cursor.png lleva tres seguidos); `fondo` cual de las dos pantallas es la suya.
+const SPRITES = [
+  { id:"mirar",   png:"cursor", hueco:0, fondo:"vista" },
+  { id:"destino", png:"cursor", hueco:1, fondo:"vista" },
+  { id:"batalla", png:"cursor", hueco:2, fondo:"vista" },
+  { id:"guante",  png:"guante", hueco:0, fondo:"mapa"  },
+];
+// Lo que hay hoy en src/cartucho/*.png, para arrancar con ello y para el boton
+// de "volver al original": por sprite, [colorA, bytesA, colorB, bytesB].
+const DE_FABRICA = {
+  mirar:   [ 1,"00605028140a060000060a142850600000060a142850600000605028140a0600",
+           15,"f098acd66b35190f0f19356bd6ac98f00f19356bd6ac98f0f098acd66b35190f"],
+  destino: [ 1,"40a0562d1539211e1e2139152d56a04002056ab4a89c847878849ca8b46a0502",
+           15,"b05fa9d26a465e61615e466ad2a95fb00dfa954b56627a86867a62564b95fa0d"],
+  batalla: [ 1,"00383c3e1f0e040851223478e44100001c244488102042e1f3fe622c2c73c300",
+           15,"7c46434160311bf7aeddcb861bbee30162daba76ecdfb51e0c019dd3d38c3ce7"],
+  guante:  [ 5,"003c1f1f3f38600000000000000000000060ae80608000000000000000000000",
+           15,"3c4360e0c0c799e00000000000000000709e517e9060c0000000000000000000"],
+};
+// Trozos de 128x96 de las dos pantallas donde viven los sprites, sacados del
+// juego: tools/mapa_general.py para el mapa general y un volcado de la vista
+// de cerca (work/vistap_png) para la de cerca. Solo son el fondo de la previa.
+const FONDOS = {
+  mapa:  "data:image/png;base64,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",
+  vista: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAABgCAMAAADipIp7AAAAMFBMVEUYGBwAAAA+uEl00H1ZVeCAdvG5XlFl2+/bZVn/iX3Mw17e0Ic6okG3ZrXMzMz///9RINb2AAABCklEQVR42u2YQQ6DMAwEc7cl//+3JSRqQTi9xVup40Mi4ODFawYrLfKwI/oau6ONdJmAuVyfb9jb8+7n6l6APSrawoCS8n8TYNUC7Pb2z+zbuqBl5S90ILegzoBUQGX6jANmVvH9rznwKIAJOFAYPyNg1XVWz4F/tUAswCJUe5NmpwcSDpTvWAAH4AAcwIJDgPfQCZi5XciBnvtag2IO9MweOhfOJlR2QeuvPxS4hgM+WrDndyUHPDT5TwumA+5aAceq4oDPFnARB/xdAOW/QMiBOwUF88AAUQgrwDzAPMA8wDzAPMA8wDzAPMABRXBOSA9IuwAL4AAcgANYAAfgABzAAjgAB+AAFrwAOtvEqa3jBkcAAAAASUVORK5CYII=",
+};
+const FONDO_ANCHO = 128, FONDO_ALTO = 96;
+// Donde se posa el sprite dentro de ese trozo. El boton "otro sitio" los cicla:
+// el guante y las cruces pasan por encima de todo, y sobre el llano amarillo no
+// se ven igual que sobre las montanas.
+const SITIOS = [[16, 64], [56, 16], [96, 40], [16, 12], [56, 64]];
+
+// ------------------------------------------------------------------- estado
+// por sprite: dos planos de 16x16 (0/1) y el color de cada plano
+const estado = {};
+for (const s of SPRITES) estado[s.id] = deFabrica(s.id);
+let cual = 0, plano = 0, goma = false, pintando = false, valorPincel = 1, sitio = 0;
+
+function nuevo() { return Array.from({length: 16}, () => new Array(16).fill(0)); }
+function deFabrica(id) {
+  const d = DE_FABRICA[id];
+  return { planos: [planoDeHex(d[1]), planoDeHex(d[3])], colores: [d[0], d[2]] };
+}
+function planoDeHex(hex) {          // 32 bytes por cuadrantes -> 16x16
+  const b = [];
+  for (let i = 0; i < 64; i += 2) b.push(parseInt(hex.substr(i, 2), 16));
+  const p = nuevo();
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
+    p[y][x] = (b[(x >= 8 ? 16 : 0) + y] >> (7 - (x & 7))) & 1;
+  return p;
+}
+function bytesDe(p) {               // 16x16 -> 32 bytes: arriba-izq 0-7, abajo-izq 8-15, arriba-der 16-23, abajo-der 24-31
+  const b = new Array(32).fill(0);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (p[y][x]) b[(x >= 8 ? 16 : 0) + y] |= 0x80 >> (x & 7);
+  return b;
+}
+function hex(b) { return b.map(v => v.toString(16).padStart(2, "0").toUpperCase()).join(" "); }
+function cuantos(p) { let n = 0; for (const f of p) for (const v of f) n += v; return n; }
+
+// ------------------------------------------------------------------- fondos
+const imagenes = {};
+for (const k in FONDOS) { const i = new Image(); i.src = FONDOS[k]; i.onload = pinta; imagenes[k] = i; }
+
+// ------------------------------------------------------------------- dibujo
+const lienzo = document.getElementById("lienzo"), ctx = lienzo.getContext("2d");
+const previa = document.getElementById("previa"), pctx = previa.getContext("2d");
+const previa2 = document.getElementById("previa2"), p3ctx = previa2.getContext("2d");
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function colorDe(id, x, y) {
+  const e = estado[id];
+  if (e.planos[0][y][x] && e.colores[0]) return MSX[e.colores[0]];
+  if (e.planos[1][y][x] && e.colores[1]) return MSX[e.colores[1]];
+  return null;
+}
+function fondoDe(n) { return imagenes[SPRITES[n].fondo]; }
+
+function pinta() {
+  const s = SPRITES[cual], verFondo = document.getElementById("verFondo").checked;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#101014"; ctx.fillRect(0, 0, 320, 320);
+  // El fondo de verdad, el trozo de 16x16 que el sprite taparia, ampliado y
+  // APAGADO: el guante es amarillo y negro sobre un mapa amarillo y negro, asi
+  // que sin apagarlo el dibujo se pierde dentro del terreno. Entero se ve en la
+  // previa, que es donde se juzga como queda.
+  const img = fondoDe(cual);
+  if (verFondo && img.complete && img.width) {
+    ctx.drawImage(img, SITIOS[sitio][0], SITIOS[sitio][1], 16, 16, 0, 0, 320, 320);
+    ctx.fillStyle = "rgba(124,124,136,.66)"; ctx.fillRect(0, 0, 320, 320);
+  } else {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      ctx.fillStyle = (x + y) & 1 ? "#1c1c22" : "#26262e";
+      ctx.fillRect(x * ZOOM, y * ZOOM, ZOOM, ZOOM);
+    }
+  }
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const c = colorDe(s.id, x, y);
+    if (c) { ctx.fillStyle = rgb(c); ctx.fillRect(x * ZOOM, y * ZOOM, ZOOM, ZOOM); }
+    // el plano que NO esta activo se marca con un punto, para verlo debajo
+    const otro = estado[s.id].planos[1 - plano][y][x], este = estado[s.id].planos[plano][y][x];
+    if (otro && !este) { ctx.fillStyle = "rgba(255,0,0,.55)"; ctx.fillRect(x * ZOOM + 8, y * ZOOM + 8, 4, 4); }
+  }
+  if (document.getElementById("rejilla").checked) {
+    ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1;
+    for (let i = 0; i <= 16; i++) {
+      ctx.beginPath(); ctx.moveTo(i * ZOOM + .5, 0); ctx.lineTo(i * ZOOM + .5, 320); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * ZOOM + .5); ctx.lineTo(320, i * ZOOM + .5); ctx.stroke();
+    }
+  }
+  pintaPrevia();
+  document.getElementById("colorA").textContent =
+    NOMBRE[estado[s.id].colores[0]] + ", " + cuantos(estado[s.id].planos[0]) + " pixels";
+  document.getElementById("colorB").textContent =
+    NOMBRE[estado[s.id].colores[1]] + ", " + cuantos(estado[s.id].planos[1]) + " pixels";
+  document.getElementById("cual").textContent = "AB"[plano];
+  document.querySelectorAll("#paleta div").forEach((d, i) => d.classList.toggle("activo", i === estado[s.id].colores[plano]));
+  document.getElementById("planoA").classList.toggle("activo", plano === 0 && !goma);
+  document.getElementById("planoB").classList.toggle("activo", plano === 1 && !goma);
+  document.getElementById("goma").classList.toggle("activo", goma);
+  document.getElementById("bytes").textContent = SPRITES.map(t =>
+    t.id.padEnd(8) + "A (" + NOMBRE[estado[t.id].colores[0]] + "): " + hex(bytesDe(estado[t.id].planos[0])) +
+    "\n        B (" + NOMBRE[estado[t.id].colores[1]] + "): " + hex(bytesDe(estado[t.id].planos[1]))).join("\n");
+}
+
+function pintaPrevia() {
+  const s = SPRITES[cual], img = fondoDe(cual), [ox, oy] = SITIOS[sitio];
+  pctx.imageSmoothingEnabled = p3ctx.imageSmoothingEnabled = false;
+  pctx.fillStyle = "#000"; pctx.fillRect(0, 0, FONDO_ANCHO, FONDO_ALTO);
+  if (img.complete && img.width) pctx.drawImage(img, 0, 0);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const c = colorDe(s.id, x, y); if (!c) continue;
+    pctx.fillStyle = rgb(c); pctx.fillRect(ox + x, oy + y, 1, 1);
+  }
+  p3ctx.drawImage(previa, 0, 0, FONDO_ANCHO, FONDO_ALTO, 0, 0, FONDO_ANCHO * 2, FONDO_ALTO * 2);
+}
+
+// -------------------------------------------------------------------- raton
+function celda(ev) {
+  const r = lienzo.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / ZOOM), y = Math.floor((ev.clientY - r.top) / ZOOM);
+  return (x >= 0 && x < 16 && y >= 0 && y < 16) ? [x, y] : null;
+}
+function aplica(ev) {
+  const c = celda(ev); if (!c) return;
+  estado[SPRITES[cual].id].planos[plano][c[1]][c[0]] = valorPincel;
+  pinta();
+}
+lienzo.addEventListener("contextmenu", ev => ev.preventDefault());
+lienzo.addEventListener("mousedown", ev => {
+  pintando = true;
+  valorPincel = (ev.button === 2 || goma) ? 0 : 1;
+  aplica(ev);
+});
+lienzo.addEventListener("mousemove", ev => { if (pintando) aplica(ev); });
+window.addEventListener("mouseup", () => { pintando = false; });
+
+// ------------------------------------------------------------------ botones
+const cont = document.getElementById("sprites");
+SPRITES.forEach((s, n) => {
+  const b = document.createElement("button"); b.textContent = s.id;
+  b.onclick = () => { cual = n; cont.querySelectorAll("button").forEach((x, i) => x.classList.toggle("activo", i === n)); pinta(); };
+  if (n === 0) b.classList.add("activo");
+  cont.appendChild(b);
+});
+document.getElementById("planoA").onclick = () => { plano = 0; goma = false; pinta(); };
+document.getElementById("planoB").onclick = () => { plano = 1; goma = false; pinta(); };
+document.getElementById("goma").onclick = () => { goma = !goma; pinta(); };
+document.getElementById("vaciaPlano").onclick = () => { estado[SPRITES[cual].id].planos[plano] = nuevo(); pinta(); };
+document.getElementById("vaciaTodo").onclick = () => { estado[SPRITES[cual].id].planos = [nuevo(), nuevo()]; pinta(); };
+document.getElementById("original").onclick = () => { estado[SPRITES[cual].id] = deFabrica(SPRITES[cual].id); pinta(); };
+document.getElementById("rejilla").onchange = pinta;
+document.getElementById("verFondo").onchange = pinta;
+document.getElementById("otroSitio").onclick = () => { sitio = (sitio + 1) % SITIOS.length; pinta(); };
+const pal = document.getElementById("paleta");
+for (let i = 0; i < 16; i++) {
+  const d = document.createElement("div");
+  if (i === 0) d.className = "transp"; else d.style.background = rgb(MSX[i]);
+  d.title = NOMBRE[i];
+  d.onclick = () => { estado[SPRITES[cual].id].colores[plano] = i; pinta(); };
+  pal.appendChild(d);
+}
+
+// ------------------------------------------------------------------- abrir
+function masParecido(r, g, b) {
+  let mejor = 1, dist = Infinity;
+  for (let i = 1; i < 16; i++) {
+    const c = MSX[i], d = (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2;
+    if (d < dist) { dist = d; mejor = i; }
+  }
+  return mejor;
+}
+document.getElementById("fichero").addEventListener("change", ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    if (img.height !== 16 || (img.width !== 48 && img.width !== 16)) {
+      alert("Tiene que ser cursor.png (48x16) o guante.png (16x16); este mide " + img.width + "x" + img.height);
+      return;
+    }
+    const cuales = img.width === 48 ? SPRITES.filter(s => s.png === "cursor") : SPRITES.filter(s => s.png === "guante");
+    const c = document.createElement("canvas"); c.width = img.width; c.height = 16;
+    const k = c.getContext("2d"); k.drawImage(img, 0, 0);
+    const d = k.getImageData(0, 0, img.width, 16).data;
+    for (const s of cuales) {
+      const cuenta = {}, idx = nuevo();
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const o = (y * img.width + s.hueco * 16 + x) * 4;
+        let i = 0;
+        if (d[o + 3] >= 128 && !(d[o] === FONDO[0] && d[o + 1] === FONDO[1] && d[o + 2] === FONDO[2])) i = masParecido(d[o], d[o + 1], d[o + 2]);
+        idx[y][x] = i;
+        if (i) cuenta[i] = (cuenta[i] || 0) + 1;
+      }
+      // como tools/cursor.py: el plano A es el color con menos pixels; a igualdad, el de indice mas bajo
+      const orden = Object.keys(cuenta).map(Number).sort((a, b) => cuenta[a] - cuenta[b] || a - b);
+      if (orden.length > 2) alert("El sprite de " + s.id + " lleva " + orden.length + " colores y solo caben dos; se toman los dos menos usados");
+      const e = estado[s.id];
+      e.colores = [orden[0] || 0, orden[1] || 0];
+      e.planos = [nuevo(), nuevo()];
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        if (idx[y][x] === orden[0]) e.planos[0][y][x] = 1;
+        else if (idx[y][x] === orden[1]) e.planos[1][y][x] = 1;
+      }
+    }
+    pinta();
+  };
+  img.src = URL.createObjectURL(f);
+  ev.target.value = "";
+});
+
+// ----------------------------------------------------------------- guardar
+document.getElementById("guardar").onclick = () => {
+  const familia = SPRITES[cual].png;
+  const cuales = SPRITES.filter(s => s.png === familia);
+  const ancho = cuales.length * 16;
+  const c = document.createElement("canvas"); c.width = ancho; c.height = 16;
+  const k = c.getContext("2d");
+  const datos = k.createImageData(ancho, 16);
+  for (const s of cuales) for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const col = colorDe(s.id, x, y), o = (y * ancho + s.hueco * 16 + x) * 4;
+    if (col) { datos.data[o] = col[0]; datos.data[o + 1] = col[1]; datos.data[o + 2] = col[2]; datos.data[o + 3] = 255; }
+    else { datos.data[o] = FONDO[0]; datos.data[o + 1] = FONDO[1]; datos.data[o + 2] = FONDO[2]; datos.data[o + 3] = 0; }
+  }
+  k.putImageData(datos, 0, 0);
+  c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = familia + ".png"; a.click();
+  }, "image/png");
+};
+
+pinta();
+</script>
+</body>
+</html>

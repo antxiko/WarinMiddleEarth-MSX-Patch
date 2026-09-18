@@ -238,6 +238,15 @@ MUEVE_EN_LA_VISTA_ORIG = bytes.fromhex("cd4b73")
 # era imposible parar en la unidad que se queria.
 MANDO_EN_LA_ELECCION = 0x7758
 MANDO_EN_LA_ELECCION_ORIG = bytes.fromhex("cd6d06")
+# Y EL CURSOR DE LA BATALLA, por lo mismo: MUEVE_EL_CURSOR_DE_BATALLA (0x8E0D)
+# corre el cursor UNA casilla por vuelta del bucle de batalla, asi que su
+# velocidad es la del bucle. Con el tablero subiendo solo lo que cambia la
+# vuelta paso de 0,3170 a 0,1068 s -de 3,2 a 9,4 casillas por segundo- y se
+# volvio ingobernable. Su `call LEE_LOS_MANDOS` de 0x8E10 pasa a llamar a
+# MI_CURSOR_BATALLA, que deja pasar las direcciones una vez cada PASO cuadros
+# y el disparo y la tecla 1 siempre.
+MANDO_EN_LA_BATALLA = 0x8E10
+MANDO_EN_LA_BATALLA_ORIG = bytes.fromhex("cd6d06")
 # Y LA FUERZA DE LA TROPA EN LA BATALLA, que estaba rota de fabrica: el calculo
 # de FUERZA_DE_LA_TROPA (0x8DE4) no recibe el tipo de tropa sino el 0xC200 de la
 # unidad, y termina leyendo un byte cualquiera de la pagina 0x6D00 (medido: once
@@ -286,7 +295,13 @@ SUELTA_AL_MONTAR_ORIG = bytes.fromhex("cd6c8c")
 BATALLA_DEPRISA = 0x9160         # el `call MONTA_LA_PANTALLA_DE_BATALLA` del bucle
 BATALLA_DEPRISA_ORIG = bytes.fromhex("cdaf86")
 PINTA_CADA = 16                  # vueltas por dibujo con el modo rapido puesto
-PASO_DEL_CURSOR = 10
+PASO_DEL_CURSOR = 10             # cuadros por casilla del cursor del mapa: 5/s a 50 Hz
+PASO_EN_LA_BATALLA = 16          # y del de la batalla: 3,1/s, los que daba la cinta
+                                 # antes de que el tablero subiera solo lo que cambia.
+                                 # Medido en una batalla de verdad con
+                                 # tools/omsx_cursor_batalla.tcl (VG-8020): 3,00
+                                 # casillas/s con el, 4,00 sin el y el bucle a 7
+                                 # vueltas/s, que sin limite son 7 casillas/s
 CURSOR_PNG = os.path.join(SRC, "cursor.png")
 R1_SPRITES_16 = 0x02
 #
@@ -1179,6 +1194,13 @@ def main(argv):
             MANDO_EN_LA_ELECCION, MANDO_EN_LA_ELECCION_ORIG,
             bytes([0xCD]) + sim_nombres["MI_ELECCION"].to_bytes(2, "little"),
             "en el menu de la casilla, arriba y abajo cambian de unidad por toque (MI_ELECCION)"))
+        # Y el `call LEE_LOS_MANDOS` del cursor de la batalla por `call
+        # MI_CURSOR_BATALLA`: una casilla cada PASO cuadros, como en el mapa.
+        parches_vista.append(parchea(
+            MANDO_EN_LA_BATALLA, MANDO_EN_LA_BATALLA_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_CURSOR_BATALLA"].to_bytes(2, "little"),
+            "el cursor de la batalla se mueve una casilla cada %d cuadros con la "
+            "tecla pulsada (MI_CURSOR_BATALLA)" % PASO_EN_LA_BATALLA))
         # LA FUERZA DE LA TROPA. Los trece bytes de 0x8DE4 pasan a: un `jr` de
         # dos bytes que se salta los ocho siguientes -ahi vive el operando del
         # terreno, en 0x8DEA, que 0x902F sigue escribiendo y que NO puede
@@ -1326,6 +1348,9 @@ def main(argv):
                 mueve=sim_nombres["MI_MUEVE"], ultimo_paso=sim_nombres["ULTIMO_PASO"],
                 cuadros=sim_puente["CUADROS"], paso=PASO_DEL_CURSOR,
                 eleccion=sim_nombres["MI_ELECCION"], ultima_eleccion=sim_nombres["ULTIMA_ELECCION"],
+                batalla=sim_nombres["MI_CURSOR_BATALLA"],
+                ultimo_paso_batalla=sim_nombres["ULTIMO_PASO_BATALLA"],
+                paso_batalla=PASO_EN_LA_BATALLA,
                 patrones=sim_nombres["CURSOR_PATRONES"], colores=sim_nombres["CURSOR_COLORES"],
                 png=os.path.relpath(CURSOR_PNG, RAIZ).replace(os.sep, "/"),
                 planos=cursor_planos[0].hex(), planos_colores=list(cursor_planos[1]),
@@ -1408,6 +1433,7 @@ def main(argv):
                       "MI_PINTA", "CACHE", "CACHE_VALIDA", "POSICION_H", "POSICION_L",
                       "ULTIMO_MODO", "ATRIBUTOS", "CURSOR_PATRONES", "MI_MUEVE", "ULTIMO_PASO",
                       "MI_ELECCION", "ULTIMA_ELECCION",
+                      "MI_CURSOR_BATALLA", "ULTIMO_PASO_BATALLA",
                       "MI_GUANTE", "PON_EL_GUANTE", "ESCONDE_EL_GUANTE",
                       "GUANTE_PUESTO", "GUANTE_AT", "GUANTE_PATRONES"):
                 f.write("set ::%-22s 0x%04X\n" % (k, sim_nombres[k]))
