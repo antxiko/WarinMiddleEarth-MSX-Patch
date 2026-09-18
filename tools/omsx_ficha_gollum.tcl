@@ -39,6 +39,9 @@ set ::ESPACIO {8 0x01}
 # Brand III, el nombre que el parche NO traduce).
 set ::GOLLUM [expr {[info exists ::env(WAR_UNIDAD)] ? $::env(WAR_UNIDAD) : 21}]
 set ::ESPERO [expr {[info exists ::env(WAR_TEXTO)] ? $::env(WAR_TEXTO) : "Gollum"}]
+# El tipo que se espera en 0xBD00+n. Por defecto solo se comprueba en Gollum
+# (la 21, que tiene que ser del 6); con WAR_TIPO se comprueba en cualquiera.
+set ::TIPO [expr {[info exists ::env(WAR_TIPO)] ? $::env(WAR_TIPO) : ($::GOLLUM == 21 ? 6 : -1)}]
 set ::intento 0
 set ::entrar 0
 set ::puesto 0
@@ -83,14 +86,16 @@ proc mira {} {
         return
     }
     say "en la ficha de la unidad $::GOLLUM sale \"$::ESPERO\""
-    if {$::GOLLUM != 21} { remata 0 "" ; return }
+    if {$::TIPO < 0} { remata 0 "" ; return }
     set raza [expr {[b [expr {0xBD00 + $::GOLLUM}]] & 0x0F}]
     say "su ficha se pinta, y su raza en la RAM viva (0x[format %04X [expr {0xBD00 + $::GOLLUM}]]) es el tipo $raza"
-    foreach {n quien} {6 Sam 7 Merry 8 Pippin} {
-        say "    la unidad $n ($quien) es del tipo [expr {[b [expr {0xBD00 + $n}]] & 0x0F}]"
+    if {$::TIPO == 6} {
+        foreach {n quien} {6 Sam 7 Merry 8 Pippin} {
+            say "    la unidad $n ($quien) es del tipo [expr {[b [expr {0xBD00 + $n}]] & 0x0F}]"
+        }
     }
-    if {$raza != 6} { remata 1 "NO es el 6: el parche no ha llegado a la RAM" ; return }
-    remata 0 "GOLLUM ES DEL TIPO 6, EL DE LOS HOBBITS"
+    if {$raza != $::TIPO} { remata 1 "NO es el $::TIPO: el parche no ha llegado a la RAM" ; return }
+    remata 0 "LA UNIDAD $::GOLLUM ES DEL TIPO $::TIPO"
 }
 
 # OJO: el `exit` de openMSX NO corta el procedimiento, solo encola la salida, y

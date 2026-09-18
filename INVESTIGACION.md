@@ -613,12 +613,12 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 | 8 · Gollum, hobbit | hecho, verificado | un byte (0xBD15): era la unica unidad de tipo 8 de las 256, y ese tipo se dibujaba como el enano; en el juego corriendo, tipo 6 como Sam, Merry y Pippin |
 | 9 · el cursor de la batalla | hecho, verificado | 3,00 casillas/s con el limite y 4,00 sin el, con el bucle a 7 vueltas/s (tools/omsx_cursor_batalla.tcl, VG-8020) |
 | 10 · los sprites repintados | hecho, verificado | el guante en azul y los cursores sin el bloque opaco; el cotejo del mapa da 85 pixels distintos, los mismos que enciende guante.png, y 0 fuera |
-| 11 · dos heroes mas | hecho, verificado | Tom Bombadil y Radagast en las ranuras 0x18 y 0x19; sus fichas, con su nombre, leidas del buffer de texto con el juego corriendo |
+| 11 · dos heroes mas | hecho, verificado | Tom Bombadil (tipo 8, "Eterno") y Radagast (tipo 0) en las ranuras 0x18 y 0x19; sus fichas y 0xBD18 = 8 leidos con el juego corriendo |
 
 **1.578 bytes en 195 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 29 escritas a mano (568 bytes de codigo, punteros y texto) y 166
-sacadas de los lienzos (1.010 de dibujos repintados). `make test` = 192 en
-verde: 91 del cartucho, 33 del parche, 32 de los lienzos, 10 del cursor, 9 de
+sacadas de los lienzos (1.010 de dibujos repintados). `make test` = 193 en
+verde: 92 del cartucho, 33 del parche, 32 de los lienzos, 10 del cursor, 9 de
 los listados, 6 del mapa, 8 de los dos editores y 3 mas.
 
 ## Como se reparte
@@ -1322,7 +1322,9 @@ salio de un sitio distinto:
   porque el ingles era `Dwarves` (7 letras) y `Enanos` son 6;
 - **singular**: de la **entrada 8**, la que decia `Gollum`. Desde el cambio de
   arriba no la lee nadie, asi que se queda en `Enano`, que es lo que ese tipo
-  dibujaba de todas formas.
+  dibujaba de todas formas. (Eso es **en la cinta**, donde el tipo 8 se queda
+  vacio para siempre. En el CARTUCHO lo ocupa Tom Bombadil y esa entrada pasa a
+  decir `Eterno`: apartado 9.)
 
 Y de paso se quito el parche que traducia `Brand III` por `Bardo III`: Brand,
 nieto de Bardo el Arquero y rey de Valle, se llama igual en las dos lenguas. Es
@@ -1452,9 +1454,10 @@ antes y despues.
 
 No hubo que inventar figura ni fuerza. La raza es el nibble bajo de 0xBD00+n:
 
-- **Tom Bombadil es del tipo 4**, Enano, el de Gimli: dibujo, vida y golpe de
-  `NUMEROS_DE_LA_FIGURA` (0x8CF7), fuerza de 0x6D47 + tipo*16 y costes de
-  terreno de 0x6D37.
+- **Tom Bombadil es del tipo 8**, el que dejo libre Gollum al pasar a hobbit y
+  que aqui se rebautiza **"Eterno"** (ver mas abajo). El dibujo, la vida y el
+  golpe salen de `NUMEROS_DE_LA_FIGURA` (0x8CF7), la fuerza de 0x6D47 + tipo*16
+  y los costes de terreno de 0x6D37.
 - **Radagast es del tipo 0**, Mago, el de Gandalf, con el mismo trato de figura
   fuerte que le da `CUATRO_SI_ES_TIPO_0_1_O_7` (0x8DC0).
 
@@ -1475,6 +1478,51 @@ terrenos 1 y 2 no los pisa nadie.
 |-------|---------|---------|-------------|
 | Tom Bombadil | (50,28) | 10 | el Bosque Viejo: al este de Los Gamos (48,27) y al oeste de Bree (53,25) |
 | Radagast | (83,30) | 0 | Rhosgobel: al este del Anduin (la columna de terreno 3 en x=80), al oeste del Bosque Negro (los 13 empiezan en x=86) y al norte de Dol Guldur (84,39) |
+
+### El tipo 8 pasa a llamarse "Eterno"
+
+Gollum dejo el tipo 8 vacio al pasar a hobbit, y de las 256 unidades no se
+quedo ninguna ahi (medido). Ahora lo ocupa Bombadil, que de enano no tiene
+nada, y el tipo se rebautiza en las dos tablas de raza.
+
+**De donde sale el byte.** Las dos tablas se recorren contando terminadores
+-bit 7 en la ultima letra- desde su base, y detras de cada una empieza otra
+cosa: el singular arranca justo donde acaba el plural, y detras del singular
+esta "Mujer". O sea que **una entrada puede cambiar de largo mientras el total
+no cambie**. "Eternos" pide un byte mas que "Gollum" y "Eterno" uno mas que
+"Enano", y los dos salen del mismo sitio: **la entrada 7**, que es texto
+muerto. El tipo 7 son **Sauron y Saruman y nadie mas** (medido sobre las 256), y
+los dos TIENEN NOMBRE, asi que su raza no la lee nadie: las dos unicas rutinas
+que miran estas tablas -`FORMACION_SIN_NOMBRE` (0x6F57) y `NOMBRE_DEL_TIPO`
+(0x6DF6)- solo entran con unidades SIN nombre. Es la misma jugada que dejo el
+byte de "Orco", y por la misma razon.
+
+| tabla | entradas 7 y 8, antes | despues | total |
+|-------|----------------------|---------|-------|
+| plural (0x7D30) | `Mago` + `Gollum` | `Mag` + `Eternos` | 10 = 10 |
+| singular (0x7D5D) | `Mago` + `Enano` | `Mag` + `Eterno` | 9 = 9 |
+
+**Y va en el cartucho, no en el IPS**, porque el tipo 8 solo esta habitado en el
+cartucho: en la cinta sigue vacio desde que Gollum es hobbit.
+
+### Lo que el cambio de tipo NO hace, y lo que si
+
+**"Eterno" no se ve en pantalla.** La raza solo sale en la ficha de una unidad
+SIN nombre -`ARMA_LA_FICHA` mira `cp 01Ah` en 0x6F2C y, si la tiene, copia el
+nombre- y Bombadil es la 0x18, que tiene el suyo. Es exactamente lo que le pasa
+a Gollum con "Hobbit" desde que es del tipo 6, y ya estaba apuntado en la
+cabecera de `tools/omsx_ficha_gollum.tcl`. El rebautizo es de coherencia.
+
+**En la batalla se sigue dibujando como enano.** `0x8D0E` lleva un
+`cp 008h / ld a,004h`: el tipo 8 no tiene figura propia y se pinta con la del 4.
+Es lo mismo que le pasaba a Gollum antes de ser hobbit.
+
+**Lo unico que cambia de verdad son dos de los dieciseis terrenos.** La fila de
+0x6D47 + tipo*16 -que es a la vez el coste de andar y, desde `MI_FUERZA`, la
+fuerza en el terreno donde se pelea- solo se diferencia de la del enano en el
+14 y el 15, los de montana: el enano paga **3 y 2** y el Eterno **15 y 3**. Todo
+lo demas, identico. Esa fila esta libre y se puede ajustar si algun dia se
+quiere que el Eterno ande a su manera.
 
 ### Lo que NO hacen: llevar el Anillo
 

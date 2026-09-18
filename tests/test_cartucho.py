@@ -466,7 +466,7 @@ class TestLosDosHeroesNuevos(unittest.TestCase):
         def dato(base, n):
             return despues[base - 0x9E00 + n]
 
-        for n, tipo, nombre in ((0x18, 4, "Tom Bombadil"), (0x19, 0, "Radagast")):
+        for n, tipo, nombre in ((0x18, 8, "Tom Bombadil"), (0x19, 0, "Radagast")):
             self.assertEqual(dato(0xBD00, n) & 0x0F, tipo, "%s: la raza" % nombre)
             self.assertEqual(dato(0xBD00, n) >> 6, 0, "%s: tiene que ser de tu bando" % nombre)
             self.assertEqual(dato(0xBD00, n) & 0x10, 0, "%s: no empieza con el Anillo" % nombre)
@@ -505,6 +505,47 @@ class TestLosDosHeroesNuevos(unittest.TestCase):
             self.assertLess(coste, 128,
                             "%s en (%d,%d): el terreno %d no lo pisa un tipo %d"
                             % (nombre, x, y, terreno, tipo))
+
+    def test_el_tipo_8_se_llama_eterno_y_las_tablas_no_cambian_de_tamano(self):
+        """Las dos tablas de raza se recorren contando terminadores (bit 7 en
+        la ultima letra) desde su base, y detras de cada una empieza otra cosa:
+        el singular arranca justo donde acaba el plural. Asi que una entrada
+        puede cambiar de largo mientras el TOTAL no cambie. El byte que le
+        falta a 'Eterno' sale de la entrada 7, que es texto muerto: el tipo 7
+        son Sauron y Saruman y los dos tienen nombre, asi que su raza no la lee
+        nadie."""
+        despues, _ = self._alto()
+        self.assertEqual(despues[0xBD00 - 0x9E00 + 0x18] & 0x0F, 8,
+                         "Tom Bombadil tiene que ser del tipo 8")
+        medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+
+        def lista(cuerpo, i, cuantas):
+            """Las cadenas y lo que ocupan: bit 7 en la ultima letra de cada una."""
+            fuera, act = [], ""
+            while len(fuera) < cuantas:
+                act += chr(cuerpo[i] & 0x7F)
+                if cuerpo[i] & 0x80:
+                    fuera.append(act)
+                    act = ""
+                i += 1
+            return fuera, i
+
+        for base, esperado in ((0x7D06, "Eternos"), (0x7D3A, "Eterno")):
+            # el bloque medio, tal y como queda en la RAM: se carga en 0x3F4F
+            # y 0x0190 lo recoloca despues en 0x5E00
+            en_ram = base - 0x5E00 + 0x3F4F
+            nuevas, fin_n = lista(self.ram, en_ram, 9)
+            viejas, fin_v = lista(medio, base - 0x5E00, 9)
+            self.assertEqual(fin_n - en_ram, fin_v - (base - 0x5E00),
+                             "la tabla de 0x%04X no puede cambiar de tamano" % base)
+            self.assertEqual(nuevas[8], esperado, "la entrada 8 de 0x%04X" % base)
+            self.assertEqual(viejas[8], {"Eternos": "Gollum", "Eterno": "Enano"}[esperado],
+                             "en la cinta la entrada 8 es la que dejo Gollum")
+            # las entradas VIVAS -las razas que alguna unidad sin nombre usa-
+            # se quedan como estan; la 7 es la que dona el byte
+            self.assertEqual(nuevas[:7], viejas[:7],
+                             "las razas de los tipos 0 a 6 no se tocan")
+            self.assertNotIn("Gollum", nuevas, "Gollum ya no es una raza")
 
     def test_no_se_pierde_ni_un_enano(self):
         """Las dos ranuras eran pelotones de enanos de (22,12). Sus hombres se
