@@ -156,7 +156,9 @@ The two slots come from **0x18 and 0x19**, two dwarf platoons both standing on
 Gollum vacated when he became a hobbit, renamed here to **"Eterno"** — and
 lives in the Old Forest at (50,28), east of Buckland; Radagast is **type 0**
 (Wizard), Gandalf's own type, and lives at Rhosgobel, (83,30), between the
-Anduin and Mirkwood. Radagast's six values sit **two points below Gandalf's**.
+Anduin and Mirkwood. **Bombadil carries Gandalf's own six values**, copied from
+his slot when the ROM is built rather than written out by hand, and Radagast's
+sit **two points below**.
 The one thing they cannot do is bear the Ring: the delivery menu cuts the list
 short before Gollum.
 

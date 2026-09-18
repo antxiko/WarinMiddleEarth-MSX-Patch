@@ -388,8 +388,10 @@ RAZA_SINGULAR_7Y8 = 0x7D5D      # "Mago" y "Enano"
 # Energico 158, Decidido 192. Radagast va DOS PUNTOS por debajo en los cuatro,
 # que es lo que pidio el usuario.
 HEROES_NUEVOS = (
-    dict(n=0x18, nombre="Tom Bombadil", tipo=TIPO_ETERNO, x=50, y=28,
-         valioso=7, habil=9, duro=10, bravo=10, energico=150, decidido=192),
+    # Bombadil lleva LOS MISMOS SEIS VALORES QUE GANDALF, y se copian de su
+    # ranura al montar la ROM en vez de escribirlos aqui: asi no pueden
+    # separarse si algun dia cambia la unidad 0.
+    dict(n=0x18, nombre="Tom Bombadil", tipo=TIPO_ETERNO, x=50, y=28, como=0x00),
     dict(n=0x19, nombre="Radagast", tipo=0, x=83, y=30,
          valioso=6, habil=8, duro=8, bravo=4, energico=138, decidido=176),
 )
@@ -1405,6 +1407,16 @@ def main(argv):
         # lleve tambien: si no, el mapa general y la vista de cerca compararian
         # dos partidas distintas y saldrian diferencias que no son del guante
         # ni de la tabla de nombres.
+        def valores(h, base):
+            """Los cuatro bytes de los seis valores. Un heroe con `como` los
+            copia tal cual de esa otra ranura; el que no, los trae escritos."""
+            if "como" in h:
+                return alto[base + h["como"] - ORG_ALTO]
+            return {UNIDAD_VAL_HAB: (h["habil"] << 4) | h["valioso"],
+                    UNIDAD_DUR_BRA: (h["bravo"] << 4) | h["duro"],
+                    UNIDAD_ENERGICO: h["energico"],
+                    UNIDAD_DECIDIDO: h["decidido"]}[base]
+
         for h in HEROES_NUEVOS:
             for base, valor, que in (
                     (UNIDAD_X, h["x"], "columna"),
@@ -1413,10 +1425,10 @@ def main(argv):
                     (UNIDAD_DY, h["y"], "fila del destino"),
                     (UNIDAD_TIPO, h["tipo"], "tipo, bando 0 y sin banderas"),
                     (UNIDAD_CUANTOS, 0, "efectivos: un heroe va solo"),
-                    (UNIDAD_VAL_HAB, (h["habil"] << 4) | h["valioso"], "Valioso y Habil"),
-                    (UNIDAD_DUR_BRA, (h["bravo"] << 4) | h["duro"], "Duro y Bravo"),
-                    (UNIDAD_ENERGICO, h["energico"], "Energico"),
-                    (UNIDAD_DECIDIDO, h["decidido"], "Decidido")):
+                    (UNIDAD_VAL_HAB, valores(h, UNIDAD_VAL_HAB), "Valioso y Habil"),
+                    (UNIDAD_DUR_BRA, valores(h, UNIDAD_DUR_BRA), "Duro y Bravo"),
+                    (UNIDAD_ENERGICO, valores(h, UNIDAD_ENERGICO), "Energico"),
+                    (UNIDAD_DECIDIDO, valores(h, UNIDAD_DECIDIDO), "Decidido")):
                 dir_ = base + h["n"]
                 viejo = bytes([alto[dir_ - ORG_ALTO]])
                 if viejo == bytes([valor]):
@@ -1572,7 +1584,8 @@ def main(argv):
         # marcas, y lo que leen los tests: nadie tiene que escribirlo a mano.
         resumen["heroes"] = dict(
             unidades=[dict(n=h["n"], nombre=h["nombre"], tipo=h["tipo"],
-                           x=h["x"], y=h["y"]) for h in HEROES_NUEVOS],
+                           x=h["x"], y=h["y"], como=h.get("como"))
+                      for h in HEROES_NUEVOS],
             reparto=list(DONDE_VAN_LOS_ENANOS),
             nombres=bool(vista), parches=parches_heroes)
     if panel:

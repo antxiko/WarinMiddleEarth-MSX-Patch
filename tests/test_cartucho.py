@@ -480,6 +480,12 @@ class TestLosDosHeroesNuevos(unittest.TestCase):
             for base in (0xC000, 0xC100):
                 for v in (dato(base, n) & 0x0F, dato(base, n) >> 4):
                     self.assertTrue(1 <= v <= 10, "%s: %d se sale de la escala" % (nombre, v))
+        # Tom Bombadil lleva LOS SEIS VALORES DE GANDALF, clavados. No se
+        # comparan contra numeros escritos aqui sino contra la ranura 0: si
+        # algun dia cambia Gandalf, tienen que cambiar los dos a la vez.
+        for base in (0xC000, 0xC100, 0xC200, 0xC300):
+            self.assertEqual(dato(base, 0x18), dato(base, 0x00),
+                             "Tom Bombadil tiene que llevar los valores de Gandalf (0x%04X)" % base)
         # Radagast es Gandalf menos dos puntos en los cuatro
         for base in (0xC000, 0xC100):
             for desplaza in (0, 4):
