@@ -151,6 +151,7 @@ GANCHO_RAM = 0x0415         # el operando del `call` de 0x0414, en la INTERRUPCI
 GANCHO_OPERANDO = 0x5E10    # y el `ld hl,nn` del bloque medio que lo rellena
 GANCHO_VACIO = 0x0428
 ORG_MEDIO = 0x5E00          # donde corre el bloque medio, ya recolocado
+ORG_ALTO = 0x9E00           # y donde corre el alto, tambien recolocado por 0x0190
 # Y donde calla: MENU_TECLA_0 ya ha comprobado que la tecla es el '0' de
 # empezar la partida, y lo primero que hace es recoger el nivel elegido. Ese
 # `ld a,(MENU_NIVEL)` se cambia por un `call` al trozo que avisa al puente y
@@ -326,6 +327,68 @@ REFRESCA_EL_GUANTE_ORIG = bytes.fromhex("cdc307")
 ESTAMPA_EL_GUANTE = 0x6575
 ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("e5")
 GUANTE_PNG = os.path.join(SRC, "guante.png")
+
+# DOS HEROES MAS: TOM BOMBADIL Y RADAGAST.
+#
+# El juego lleva 256 ranuras de unidad en arrays paralelos del bloque alto,
+# indexados por numero de unidad, y estan TODAS ocupadas: ninguna con
+# coordenadas (0,0) y ninguna formacion con 0 efectivos (medido). Asi que los
+# dos heroes ocupan las ranuras 0x18 y 0x19 -los dos pelotones de enanos de
+# (22,12)- y sus 39 hombres se reparten entre las cuatro de (23,15), que son
+# 0x1A-0x1D: no se pierde ni un soldado. Van pegadas detras de Saruman (0x17),
+# que es lo que deja la lista de nombres contigua.
+#
+# Y los dos tipos ya existen, asi que no hay que inventar figura ni fuerza:
+# Bombadil es el tipo 4 (Enano) y Radagast el tipo 0 (Mago), el de Gandalf.
+NUEVOS = 0x18               # la primera ranura de las dos
+UNIDAD_X = 0xB900           # los seis arrays, indexados por numero de unidad
+UNIDAD_Y = 0xBA00
+UNIDAD_DX = 0xBB00          # el destino
+UNIDAD_DY = 0xBC00
+UNIDAD_TIPO = 0xBD00        # nibble bajo el tipo, dos bits altos el bando
+UNIDAD_VAL_HAB = 0xC000     # nibble bajo Valioso, alto Habil
+UNIDAD_DUR_BRA = 0xC100     # nibble bajo Duro, alto Bravo
+UNIDAD_ENERGICO = 0xC200
+UNIDAD_DECIDIDO = 0xC300
+UNIDAD_CUANTOS = 0xC500     # los efectivos de una formacion; un heroe lleva 0
+#
+# Donde caen, medido sobre la tabla de sitios (0x7A5E) y el mapa descomprimido
+# (0xCC00 + (x+1)*102 + (y+1); los terrenos 1 y 2 no los pisa nadie):
+#
+#   Bombadil en (50,28), terreno 10: el Bosque Viejo, al este de Los Gamos
+#     (48,27) y al oeste de Bree (53,25).
+#   Radagast en (83,30), terreno 0: Rhosgobel, al este del Anduin -la columna
+#     de terreno 3 en x=80-, al oeste del Bosque Negro -los 13 empiezan en
+#     x=86- y al norte de Dol Guldur (84,39).
+#
+# Los seis valores van en la escala 1..10 de la cinta (medida sobre los 22
+# heroes). Gandalf es el techo: Valioso 8, Habil 10, Duro 10, Bravo 6,
+# Energico 158, Decidido 192. Radagast va DOS PUNTOS por debajo en los cuatro,
+# que es lo que pidio el usuario.
+HEROES_NUEVOS = (
+    dict(n=0x18, nombre="Tom Bombadil", tipo=4, x=50, y=28,
+         valioso=7, habil=9, duro=10, bravo=10, energico=150, decidido=192),
+    dict(n=0x19, nombre="Radagast", tipo=0, x=83, y=30,
+         valioso=6, habil=8, duro=8, bravo=4, energico=138, decidido=176),
+)
+DONDE_VAN_LOS_ENANOS = (0x1A, 0x1B, 0x1C, 0x1D)     # los de (23,15)
+#
+# Y los cinco sitios que miran la lista de nombres, mas los dos topes por
+# numero de unidad. La lista mudada vive en src/cartucho/nombres.asm.
+NOMBRES_PUNTERO = 0x6982        # el operando del `ld hl,06b46h` de BUSCA_EL_NOMBRE
+NOMBRES_PUNTERO_ORIG = bytes.fromhex("466b")
+NOMBRES_LARGO = 0x6985          # el `ld bc,000b5h`: el tope del `cpir`
+NOMBRES_LARGO_ORIG = bytes.fromhex("b500")
+MENU_CABECERA = 0x7302          # el `ld hl,06b3dh` de MENU_DE_ENTREGA
+MENU_CABECERA_ORIG = bytes.fromhex("3d6b")
+MENU_CORTE_PONE = 0x72F8        # `ld (06be4h),a`: mete el 0 que acaba la lista
+MENU_CORTE_QUITA = 0x7309       # `ld hl,06be4h`: y le devuelve su 0xB7
+MENU_CORTE_ORIG = bytes.fromhex("e46b")
+TOPE_PERSEGUIDO = 0x6E19        # el operando del `cp 017h` de 0x6E18
+TOPE_PERSEGUIDO_ORIG = bytes.fromhex("17")
+TOPE_FICHA = 0x6F2D             # el operando del `cp 018h` de 0x6F2C
+TOPE_FICHA_ORIG = bytes.fromhex("18")
+TOPE_NUEVO = 0x1A               # las dos ranuras nuevas tienen nombre
 
 # EL PANEL FILE/MEMO/TIME, CON EL COLOR DE LA VISTA (--panel). En la cinta
 # parcheada de Araubi el texto de la vista de cerca se escribe con el atributo
@@ -696,6 +759,7 @@ def main(argv):
     vista = False
     mapa = False
     panel = False
+    heroes = False
     sombra = False
     salidas_pedidas = None
     kit = None
@@ -717,6 +781,13 @@ def main(argv):
             mapa = True; i += 1
         elif argv[i] == "--panel":
             panel = True; i += 1
+        elif argv[i] == "--heroes":
+            # Las DOS RANURAS de Tom Bombadil y Radagast, en el bloque alto.
+            # Va aparte de --vista a proposito: la ROM de referencia con la
+            # que se coteja el mapa y la vista tiene que llevar las mismas
+            # unidades, o el cotejo compara dos partidas distintas. Los
+            # NOMBRES, en cambio, viven en nombres.asm y piden --vista.
+            heroes = True; i += 1
         elif argv[i] == "--vista-sombra":
             # La misma vista pero con la sombra de 768 B: solo se suben las
             # filas que cambian. Es la variante que se monta para MEDIR.
@@ -1100,6 +1171,11 @@ def main(argv):
         if bloque == "medio":
             o = disposicion["medio"]["rom"] + dir_ - ORG_MEDIO
             carga = CARGA_MEDIO + dir_ - ORG_MEDIO
+        elif bloque == "alto":
+            # El alto se carga en 0x88B8 y 0x0190 lo recoloca en 0x9E00, igual
+            # que el medio. Ahi viven las tablas de las 256 unidades.
+            o = disposicion["alto"]["rom"] + dir_ - ORG_ALTO
+            carga = CARGA_ALTO + dir_ - ORG_ALTO
         else:
             assert bloque == "bajo"
             o = disposicion["bajo"]["rom"] + dir_ - CARGA_BAJO
@@ -1259,6 +1335,80 @@ def main(argv):
         parches_vista.append(parchea(
             ESTAMPA_EL_GUANTE, ESTAMPA_EL_GUANTE_ORIG, bytes([0xC9]),
             "MUEVE_EL_CURSOR deja de estampar el guante por software: ahora son dos sprites"))
+    if vista and heroes:
+        # LOS NOMBRES de los dos heroes nuevos. La lista se muda entera a
+        # nombres.asm porque en 0x6B46 no cabe ni un byte mas: detras empieza
+        # la red de caminos de 0x6BFB. Por eso esto pide --vista: es donde
+        # viaja nombres.asm.
+        parches_vista.append(parchea(
+            NOMBRES_PUNTERO, NOMBRES_PUNTERO_ORIG,
+            sim_nombres["MI_NOMBRES"].to_bytes(2, "little"),
+            "BUSCA_EL_NOMBRE lee la lista mudada, la de 26 nombres"))
+        parches_vista.append(parchea(
+            NOMBRES_LARGO, NOMBRES_LARGO_ORIG,
+            (sim_nombres["MI_NOMBRES_FIN"] - sim_nombres["MI_NOMBRES"]).to_bytes(2, "little"),
+            "y el tope del `cpir` es el largo de la lista nueva"))
+        parches_vista.append(parchea(
+            MENU_CABECERA, MENU_CABECERA_ORIG,
+            sim_nombres["MI_NOMBRES_CABECERA"].to_bytes(2, "little"),
+            "MENU_DE_ENTREGA saca su lista de la cabecera mudada"))
+        for dir_ in (MENU_CORTE_PONE, MENU_CORTE_QUITA):
+            parches_vista.append(parchea(
+                dir_, MENU_CORTE_ORIG,
+                sim_nombres["MI_NOMBRES_CORTE"].to_bytes(2, "little"),
+                "el corte del menu de entrega, en el 0xB7 de Faramir de la lista nueva"))
+        # Y los dos topes por numero de unidad, para que 0x18 y 0x19 tengan
+        # nombre. El de 0x6E18 era 0x17, asi que de paso Saruman pasa a tener
+        # nombre cuando alguien le persigue: en la ficha ya lo tenia.
+        parches_vista.append(parchea(
+            TOPE_PERSEGUIDO, TOPE_PERSEGUIDO_ORIG, bytes([TOPE_NUEVO]),
+            "a quien persigue: las unidades 0 a 0x%02X tienen nombre" % (TOPE_NUEVO - 1)))
+        parches_vista.append(parchea(
+            TOPE_FICHA, TOPE_FICHA_ORIG, bytes([TOPE_NUEVO]),
+            "la ficha: de la 0x%02X para arriba es donde deja de haber nombre" % TOPE_NUEVO))
+    parches_heroes = []
+    if heroes:
+        # Y LAS DOS RANURAS, en el bloque alto. Lo que habia eran dos pelotones
+        # de enanos; sus hombres se reparten entre los cuatro de (23,15).
+        #
+        # Esto va aparte de los nombres para que la ROM de referencia de los
+        # cotejos -work/war_parche_sin_vista.rom, que se monta sin --vista- lo
+        # lleve tambien: si no, el mapa general y la vista de cerca compararian
+        # dos partidas distintas y saldrian diferencias que no son del guante
+        # ni de la tabla de nombres.
+        for h in HEROES_NUEVOS:
+            for base, valor, que in (
+                    (UNIDAD_X, h["x"], "columna"),
+                    (UNIDAD_Y, h["y"], "fila"),
+                    (UNIDAD_DX, h["x"], "columna del destino: quieto donde esta"),
+                    (UNIDAD_DY, h["y"], "fila del destino"),
+                    (UNIDAD_TIPO, h["tipo"], "tipo, bando 0 y sin banderas"),
+                    (UNIDAD_CUANTOS, 0, "efectivos: un heroe va solo"),
+                    (UNIDAD_VAL_HAB, (h["habil"] << 4) | h["valioso"], "Valioso y Habil"),
+                    (UNIDAD_DUR_BRA, (h["bravo"] << 4) | h["duro"], "Duro y Bravo"),
+                    (UNIDAD_ENERGICO, h["energico"], "Energico"),
+                    (UNIDAD_DECIDIDO, h["decidido"], "Decidido")):
+                dir_ = base + h["n"]
+                viejo = bytes([alto[dir_ - ORG_ALTO]])
+                if viejo == bytes([valor]):
+                    continue        # ya vale lo que tiene que valer
+                parches_heroes.append(parchea(
+                    dir_, viejo, bytes([valor]),
+                    "%s, unidad 0x%02X: %s" % (h["nombre"], h["n"], que),
+                    bloque="alto"))
+        # Los enanos que se quedaron sin peloton, repartidos.
+        sueltos = sum(alto[UNIDAD_CUANTOS + h["n"] - ORG_ALTO] for h in HEROES_NUEVOS)
+        reparto = [sueltos // len(DONDE_VAN_LOS_ENANOS)] * len(DONDE_VAN_LOS_ENANOS)
+        for k in range(sueltos - sum(reparto)):
+            reparto[k] += 1
+        assert sum(reparto) == sueltos
+        for n, mas in zip(DONDE_VAN_LOS_ENANOS, reparto):
+            viejo = alto[UNIDAD_CUANTOS + n - ORG_ALTO]
+            assert viejo + mas <= 255, "una formacion no puede pasar de 255 hombres"
+            parches_heroes.append(parchea(
+                UNIDAD_CUANTOS + n, bytes([viejo]), bytes([viejo + mas]),
+                "los enanos de 0x18 y 0x19: la formacion 0x%02X pasa de %d a %d"
+                % (n, viejo, viejo + mas), bloque="alto"))
     with open(salida, "wb") as f:
         f.write(rom)
 
@@ -1374,6 +1524,15 @@ def main(argv):
                 planos=guante_planos[0].hex(), planos_colores=list(guante_planos[1]),
                 parches=[q for q in parches_vista
                          if q["dir"] in (REFRESCA_EL_GUANTE, ESTAMPA_EL_GUANTE)]))
+    if heroes:
+        # Los dos heroes nuevos: quienes son, donde caen y los parches de sus
+        # ranuras. Lo que lee el cotejo del mapa para saber donde van sus
+        # marcas, y lo que leen los tests: nadie tiene que escribirlo a mano.
+        resumen["heroes"] = dict(
+            unidades=[dict(n=h["n"], nombre=h["nombre"], tipo=h["tipo"],
+                           x=h["x"], y=h["y"]) for h in HEROES_NUEVOS],
+            reparto=list(DONDE_VAN_LOS_ENANOS),
+            nombres=bool(vista), parches=parches_heroes)
     if panel:
         resumen["panel"] = dict(
             atributo=medio[ATRIBUTO_DEL_TEXTO - ORG_MEDIO],

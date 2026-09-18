@@ -142,6 +142,23 @@ the figure, the health and the hit from the type, and `0x8D0E` has type 8 drawn
 a hobbit in everything — name, figure, strength and terrain costs — just like
 Sam, Merry and Pippin. **One byte.**
 
+**8 · Two more heroes: Tom Bombadil and Radagast.** Cartridge only, and for a
+measured reason: all 256 unit slots are taken, and the list of 24 names
+(`0x6B46`) is **exactly 181 bytes**, with the road network starting at `0x6BFB`
+right behind it. Not one byte to spare, so the whole list is **relocated** into
+the free RAM the cartridge carries — five pointers and two per-unit-number
+limits — and grows to 26 names. The tape cannot do this: there is no dependable
+RAM to put it in, and an IPS can only write where the tape loads.
+
+The two slots come from **0x18 and 0x19**, two dwarf platoons both standing on
+(22,12); **their 39 men are redistributed** among the four formations on
+(23,15), so not a single soldier is lost. Bombadil is **type 4** (Dwarf) and
+lives in the Old Forest at (50,28), east of Buckland; Radagast is **type 0**
+(Wizard), Gandalf's own type, and lives at Rhosgobel, (83,30), between the
+Anduin and Mirkwood. Radagast's six values sit **two points below Gandalf's**.
+The one thing they cannot do is bear the Ring: the delivery menu cuts the list
+short before Gollum.
+
 None of the images above are screen captures: the game re-uploads the screen to
 the VDP constantly, so two photographs of the *same* state, three seconds apart,
 already differ in 37 % of their pixels. They are drawn from the ZX screen buffer

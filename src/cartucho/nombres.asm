@@ -1063,4 +1063,79 @@ TURBO_SIN_TOCAR:
 TEXTO_RAPIDO_SI:  defb "Batalla rapida: SI.           ",0
 TEXTO_RAPIDO_NO:  defb "Batalla rapida: NO.           ",0
 
+; ==========================================================================
+; LA LISTA DE NOMBRES, MUDADA: DOS HEROES MAS
+;
+; QUE PROBLEMA RESUELVE
+;
+; El juego guarda un nombre por unidad para las ranuras 0x00-0x17, en una
+; lista de 0x6B46 separada por bytes 0xB7. Mide 181 bytes CLAVADOS: delante
+; lleva la cabecera del menu de entrega (0x6B3D: renglones y columnas) con
+; "Vuelve" detras, y en 0x6BFB justo empieza la red de caminos de 64 puntos
+; que lee 0x69C6. No hay ni un byte de holgura, asi que los dos nombres
+; nuevos -22 bytes- no caben ahi.
+;
+; Pero solo CINCO sitios miran la lista, y por eso se puede mudar entera:
+;
+;   0x6982  el puntero de BUSCA_EL_NOMBRE (0x6981)
+;   0x6985  el largo, que es el tope del `cpir` que cuenta separadores
+;   0x7302  el puntero a la cabecera, en MENU_DE_ENTREGA (0x72F5)
+;   0x72F8  y 0x7309: las dos escrituras del byte de CORTE, que es el 0xB7
+;           de "Faramir". El menu mete un 0 ahi para que la lista se acabe
+;           antes de Gollum, y se lo devuelve al salir.
+;
+; Mas los dos topes por numero de unidad, que suben de 0x17/0x18 a 0x1A:
+; 0x6E19 (a quien persigue) y 0x6F2D (la ficha).
+;
+; POR QUE AQUI Y NO EN EL IPS DE LA CINTA
+;
+; Porque en la cinta no hay donde meterlos: el mapa de RAM
+; (tools/mapa_ram.py) dice que dentro de los tres bloques no queda hueco de
+; fiar, y un IPS solo puede escribir donde la cinta carga. O sea que los dos
+; heroes son cosa del CARTUCHO, como la musica, el mapa dibujado o la vista
+; de cerca. La cinta se queda como esta.
+;
+; LO QUE NO HACE
+;
+; Los dos nuevos NO salen en el menu de entrega del Anillo: van detras de
+; Saruman y el corte deja la lista en "Faramir". Es a proposito y esta
+; decidido; lo que costaria meterlos esta en la memoria del proyecto.
+; ==========================================================================
+
+MI_NOMBRES_CABECERA:
+                defb 21                 ; renglones del menu, como en la cinta
+                defb 9                  ; y su anchura en columnas
+                defb "Vuelve",0B7h
+MI_NOMBRES:
+                defb "Gandalf",0B7h     ; 0x00
+                defb "Aragorn",0B7h     ; 0x01
+                defb "Boromir",0B7h     ; 0x02
+                defb "Legolas",0B7h     ; 0x03
+                defb "Gimli",0B7h       ; 0x04
+                defb "Frodo",0B7h       ; 0x05
+                defb "Sam",0B7h         ; 0x06
+                defb "Merry",0B7h       ; 0x07
+                defb "Pippin",0B7h      ; 0x08
+                defb "Elrond",0B7h      ; 0x09
+                defb "Dain II",0B7h     ; 0x0A
+                defb "Celeborn",0B7h    ; 0x0B
+                defb "Thranduil",0B7h   ; 0x0C
+                defb "Brand III",0B7h   ; 0x0D
+                defb "Theodred",0B7h    ; 0x0E
+                defb "Theoden",0B7h     ; 0x0F
+                defb "Eowyn",0B7h       ; 0x10
+                defb "Eomer",0B7h       ; 0x11
+                defb "Imrahil",0B7h     ; 0x12
+                defb "Denethor",0B7h    ; 0x13
+                defb "Faramir"          ; 0x14
+MI_NOMBRES_CORTE:                      ; el 0xB7 que el menu de entrega pisa con un 0
+                defb 0B7h
+                defb "Gollum",0B7h      ; 0x15
+                defb "Sauron",0B7h      ; 0x16  (del otro bando)
+                defb "Saruman",0B7h     ; 0x17  (del otro bando)
+                defb "Tom Bombadil",0B7h ; 0x18  NUEVO: enano, el Bosque Viejo
+                defb "Radagast",0B7h    ; 0x19  NUEVO: mago, Rhosgobel
+MI_NOMBRES_FIN:
+MI_NOMBRES_LARGO: equ MI_NOMBRES_FIN-MI_NOMBRES
+
 NOMBRES_FIN:

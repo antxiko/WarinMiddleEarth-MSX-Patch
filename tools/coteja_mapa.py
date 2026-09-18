@@ -119,6 +119,34 @@ def traduce_el_panel(plan):
     return bytes(at), bytes(col)
 
 
+LIMPIO = 0x30       # papel amarillo sin brillo: el fondo del mapa (0x6ABA)
+MARCA_SIN_PANEL = 0x70      # y la marca de unidad de la cinta (0x6AE0)
+
+
+def heroes_nuevos(plan):
+    """Las casillas de los heroes que el cartucho anade y la ROM vieja no
+    tiene. Salen de los parches que el plan DECLARA sobre 0xB900 (columna) y
+    0xBA00 (fila) del bloque alto, no de una lista escrita aqui."""
+    p = {q["dir"]: int(q["nuevo"], 16) for q in plan.get("heroes", {}).get("parches", [])
+         if q.get("bloque") == "alto" and len(q["nuevo"]) == 2}
+    return [(p[0xB900 + n], p[0xBA00 + n])
+            for n in sorted(d - 0xB900 for d in p if 0xB900 <= d < 0xBA00)]
+
+
+def celda_de_la_marca(x, y):
+    """Donde cae la marca de una unidad en los 768 atributos, tal y como lo
+    calcula MARCA_UNA_UNIDAD (0x6AC5): la columna de caracter es x >> 2 -hay
+    cuatro casillas de mapa por columna- y la fila es (y - 4) >> 2, porque las
+    cuatro primeras filas del mapa no se ven."""
+    return (x >> 2) & 0x1F, ((y & 0x7F) - 4) >> 2
+
+
+def celda_en_la_vram(col, fila):
+    """Los ocho bytes de color de esa celda, en la tabla de 0x2000."""
+    o = (fila // 8) * 2048 + (fila % 8) * 256 + col * 8
+    return range(0x2000 + o, 0x2000 + o + 8)
+
+
 def atributos_del_guante(plan, col, fila):
     g = plan["vista"]["guante"]
     y = (fila - 1) & 0xFF
@@ -152,6 +180,12 @@ def cotejo(nuevo, viejo, png, plan, work):
     g = plan["vista"]["guante"]
     patrones_png = bytes.fromhex(g["planos"])
     tr_at, tr_col = traduce_el_panel(plan)
+    nuevos = heroes_nuevos(plan)
+    marca = plan["panel"]["marca"] if plan.get("panel") and plan["panel"]["parches"] else MARCA_SIN_PANEL
+    if nuevos:
+        print("  (la ROM nueva anade %d heroes; a la vieja se le ponen sus marcas en %s"
+              " para poder comparar los lienzos)"
+              % (len(nuevos), ", ".join("(%d,%d)" % celda_de_la_marca(x, y) for x, y in nuevos)))
     if plan.get("panel") and plan["panel"]["parches"]:
         q = plan["panel"]
         print("  (el panel pasa de 0x%02X a 0x%02X y la marca de unidad de 0x%02X a 0x%02X:"
@@ -167,6 +201,19 @@ def cotejo(nuevo, viejo, png, plan, work):
         lv = lv[:TAM_BITMAP] + bytes(tr_at[b] for b in lv[TAM_BITMAP:TAM_LIENZO])
         vv = (bytes(vv[:0x2000]) + bytes(tr_col[b] for b in vv[0x2000:0x3800])
               + bytes(vv[0x3800:]))
+        # Los heroes que anade el cartucho van en las DOS ROMs -la de
+        # referencia se monta con --heroes a proposito, para que el cotejo no
+        # compare dos partidas distintas-, asi que aqui no hay nada que
+        # traducir: lo que se exige es que los dos los marquen en la misma
+        # celda, la que les toca por su casilla del mapa. Es lo que prueba, con
+        # el juego corriendo, que un heroe nuevo SE VE en el mapa general.
+        for x, y in nuevos:
+            c, f = celda_de_la_marca(x, y)
+            o = TAM_BITMAP + f * 32 + c
+            exige(ln[o] == marca,
+                  "vuelta %d: la ROM nueva marca la celda (%d,%d), donde esta el heroe nuevo" % (n, c, f))
+            exige(lv[o] == marca,
+                  "vuelta %d: y la vieja tambien: las dos llevan las mismas unidades" % n)
         en, ev = estado(nuevo, n), estado(viejo, n)
         col, fila = int(en["col"]), int(en["fila"])
         exige((col, fila) == (int(ev["col"]), int(ev["fila"])),
