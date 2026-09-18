@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Editor de marcas</title>
+<!--
+  LA MARCA DE LAS UNIDADES EN EL MAPA GENERAL: UN DIBUJO DE 8x8
+
+  Hoy una unidad en el mapa general no es un dibujo: es UN BYTE. REPINTA_LOS_
+  EJERCITOS (0x6AAF) limpia los 768 atributos de la pantalla del ZX y le pone
+  0x78 -papel BLANCO- a la celda de cada unidad; por eso el mapa se ve amarillo
+  con manchas blancas, y por eso borrar la marca es gratis: se limpian todos los
+  atributos y se vuelven a poner.
+
+  Esto es el editor del dibujo que iria ENCIMA de esa celda -8x8 pixeles, un
+  bit por pixel- y de SUS DOS COLORES, que son los del atributo. Hoy ese
+  atributo es 0x78, negro sobre blanco, pero se puede elegir otro: el juego
+  traduce el atributo del ZX con ATRIBUTO_A_COLOR (0x049F), dos tablas de ocho
+  colores del MSX, asi que salen DOCE colores y 100 parejas. Dos por celda y no
+  mas: es el ZX Spectrum por debajo.
+
+    anillo   el del propio juego: el caracter 0x5F de la fuente, el que el
+             parche pinta en la ficha del Portador del Anillo
+    escudo   dibujado aqui, para comparar
+
+    Guardar PNG   escribe marcas.png (16 x 8: las dos marcas seguidas), en
+                  blanco y negro y a tamano real
+
+  OJO: que el dibujo se pueda editar NO quiere decir que el juego ya lo pinte.
+  Estampar pixeles en el lienzo del mapa (0x4000) obliga a saber BORRARLOS
+  cuando la unidad se mueve, y hoy el borrado es gratis porque solo hay
+  atributos. Eso es el trabajo de despues; esto es para decidir el dibujo.
+-->
+<style>
+  :root { --fondo:#18181c; --tinta:#e8e8e8; --marco:#3a3a44; --panel:#24242b; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:14px/1.4 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 10px; }
+  .fila { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--marco); border-radius:6px; padding:10px; }
+  button, label.boton { background:#3b3b48; color:var(--tinta); border:1px solid #555; border-radius:4px; padding:5px 10px; cursor:pointer; font:inherit; }
+  button.activo, label.activo { background:#5a5aa0; border-color:#8a8ad0; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display:block; }
+  #lienzo { border:1px solid var(--marco); cursor:crosshair; background:#000; }
+  pre { margin:4px 0 0; font-size:12px; white-space:pre-wrap; color:#bbb; }
+  small { color:#999; }
+  input[type=file] { display:none; }
+  .paleta { display:grid; grid-template-columns: repeat(6, 26px); gap:4px; margin-top:4px; }
+  .paleta div { width:26px; height:26px; border:2px solid #222; border-radius:3px; cursor:pointer; box-sizing:border-box; }
+  .paleta div.activo { border-color:#fff; }
+  .paleta div.imposible { cursor:not-allowed; opacity:.25; }
+  .paleta div.imposible::after { content:"x"; display:block; text-align:center; color:#fff; font-size:15px; line-height:22px; }
+</style>
+</head>
+<body>
+<main>
+<h1>La marca de una unidad en el mapa: un dibujo de 8x8 y sus dos colores</h1>
+
+<div class="fila" style="margin-bottom:10px">
+  <span id="marcas" class="panel" style="padding:6px"></span>
+  <span class="panel" style="padding:6px">
+    <label class="boton" for="fichero">Abrir PNG</label><input type="file" id="fichero" accept="image/png">
+    <button id="guardar">Guardar PNG</button>
+  </span>
+  <span class="panel" style="padding:6px">
+    <button id="vaciar">Vaciar</button>
+    <button id="original">Volver al original</button>
+    <button id="invertir">Invertir dibujo</button>
+    <button id="cambiar">Cambiar los colores</button>
+  </span>
+</div>
+
+<div class="fila">
+  <div class="panel">
+    <canvas id="lienzo" width="256" height="256"></canvas>
+    <small>izquierdo: pinta &middot; derecho: borra &middot; asi es como se vera la celda de la unidad</small>
+    <div style="margin-top:10px">Color del dibujo:</div>
+    <div class="paleta" id="pal_tinta"></div>
+    <div style="margin-top:8px">Color del fondo de la celda:</div>
+    <div class="paleta" id="pal_papel"></div>
+    <div style="margin-top:8px; font-size:13px" id="atributo"></div>
+    <small>Los tachados no se pueden pedir CON el otro color: dentro de una celda del ZX
+    los dos comparten brillo, y solo el negro, el magenta, el cian y el blanco valen para
+    los dos.</small>
+  </div>
+  <div class="panel">
+    <div>Un ejercito en el mapa, a tamano real y x3:</div>
+    <canvas id="previa" width="128" height="96" style="margin-top:6px"></canvas>
+    <canvas id="previa3" width="384" height="288" style="margin-top:6px"></canvas>
+    <div style="margin-top:8px"><label><input type="checkbox" id="conMarca" checked> pintar el fondo de la celda (como hace ahora el juego)</label></div>
+    <div style="margin-top:4px"><label><input type="checkbox" id="rejilla" checked> rejilla</label></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+  <div>Los ocho bytes de cada marca (un bit por pixel, el 7 a la izquierda):</div>
+  <pre id="bytes"></pre>
+</div>
+
+<p><small>Guardar escribe <code>marcas.png</code> (16 x 8: anillo y escudo seguidos) con los colores
+elegidos dentro, que es de donde se deduce el atributo al leerlo. Una celda del mapa solo puede llevar DOS
+colores -es la pantalla del ZX por debajo-, y el atributo que sale es el byte que habria que escribir en
+0x6AE0 en vez del 0x78 de ahora.</small></p>
+</main>
+<script>
+// LOS COLORES QUE SE PUEDEN PEDIR, Y POR QUE NO SON LOS QUINCE DEL MSX
+//
+// La celda lleva un atributo del ZX -brillo, papel y tinta- y el juego NO lo
+// manda a la pantalla: lo traduce antes ATRIBUTO_A_COLOR (0x049F) con dos
+// tablas de ocho colores del MSX, 0x04CE sin brillo y 0x04D6 con el. De ahi
+// salen DOCE colores y no quince (el verde medio, el rojo medio y el gris no
+// los da ningun atributo), y de ahi sale tambien que no toda pareja valga: los
+// dos colores tienen que caber en la MISMA tabla, porque el brillo es uno solo
+// para la celda. El negro, el magenta, el cian y el blanco estan en las dos,
+// asi que no imponen nada.
+const TABLA_SIN = [1, 4, 6, 13, 12, 7, 10, 15];
+const TABLA_CON = [1, 5, 9, 13, 3, 7, 11, 15];
+const MSX = [null,
+  [0x00,0x00,0x00],[0x3E,0xB8,0x49],[0x74,0xD0,0x7D],[0x59,0x55,0xE0],[0x80,0x76,0xF1],
+  [0xB9,0x5E,0x51],[0x65,0xDB,0xEF],[0xDB,0x65,0x59],[0xFF,0x89,0x7D],[0xCC,0xC3,0x5E],
+  [0xDE,0xD0,0x87],[0x3A,0xA2,0x41],[0xB7,0x66,0xB5],[0xCC,0xCC,0xCC],[0xFF,0xFF,0xFF]];
+const NOMBRE = ["","negro","verde medio","verde claro","azul oscuro","azul claro","rojo oscuro",
+  "cian","rojo medio","rojo claro","amarillo oscuro","amarillo claro","verde oscuro","magenta",
+  "gris","blanco"];
+const ALCANZABLES = [...new Set([...TABLA_SIN, ...TABLA_CON])].sort((a, b) => a - b);
+// El atributo del panel (0x70 con el parche) y el del fondo del mapa (0x30):
+// la marca no puede llevar ninguno de los dos, y el editor lo dice.
+const ATRIBUTO_PANEL = 0x70, ATRIBUTO_MAPA = 0x30;
+
+function atributoDe(tinta, papel) {
+  // Hay colores que estan en las DOS tablas -el negro, el magenta, el cian y el
+  // blanco-, asi que una pareja de esos la dan DOS atributos: negro sobre
+  // blanco es 0x38 y 0x78, y se ven igual. Se prueba primero con brillo porque
+  // es el que el juego ya usa (0x78 en la celda de unidad, 0x70 en el panel):
+  // con empate, mejor no cambiar el byte que hay.
+  for (const [br, t] of [[1, TABLA_CON], [0, TABLA_SIN]]) {
+    const tz = t.indexOf(tinta), pz = t.indexOf(papel);
+    if (tz >= 0 && pz >= 0) return (br << 6) | (pz << 3) | tz;
+  }
+  return null;
+}
+const ZOOM = 32;
+const LADO = 8;
+
+// De fabrica: el anillo es el caracter 0x5F de la fuente del juego -el que el
+// parche pinta en la ficha del Portador-, asi que el del mapa seria EL MISMO
+// anillo. El escudo esta dibujado aqui para comparar.
+// Cada marca lleva su dibujo y su pareja de colores: [dibujo, tinta, papel].
+// De fabrica, los de ahora mismo (negro sobre blanco, atributo 0x78).
+const DE_FABRICA = {
+  anillo: ["1c2a5363672e1c00", 1, 15],
+  escudo: ["7e425a4242241800", 1, 15],
+};
+const MARCAS = Object.keys(DE_FABRICA);
+
+// Trozo de 128x96 del mapa general, dibujado por tools/mapa_general.py desde la
+// propia cinta: es el fondo de verdad sobre el que se veria la marca.
+const FONDO = "data:image/png;base64,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";
+// Donde se posan las marcas en la previa, en celdas de 8x8 (16 x 12 celdas).
+const EJERCITO = [[3,7],[4,7],[5,7],[3,8],[4,8],[6,5],[9,3],[10,3],[12,8],[13,9]];
+
+const estado = {};
+for (const m of MARCAS) estado[m] = deFabrica(m);
+let cual = 0, pintando = false, valor = 1;
+
+function nuevo() { return Array.from({length: LADO}, () => new Array(LADO).fill(0)); }
+function deFabrica(m) {
+  const [hex, tinta, papel] = DE_FABRICA[m], p = nuevo();
+  for (let y = 0; y < LADO; y++) {
+    const b = parseInt(hex.substr(y * 2, 2), 16);
+    for (let x = 0; x < LADO; x++) p[y][x] = (b >> (7 - x)) & 1;
+  }
+  return { p, tinta, papel };
+}
+function bytesDe(p) {
+  return p.map(fila => fila.reduce((b, v, x) => b | (v ? 0x80 >> x : 0), 0));
+}
+function hex(b) { return b.map(v => v.toString(16).padStart(2, "0").toUpperCase()).join(" "); }
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function tintaDe(m) { return MSX[estado[m].tinta]; }
+function papelDe(m) { return MSX[estado[m].papel]; }
+
+const img = new Image(); img.src = FONDO; img.onload = pinta;
+const lienzo = document.getElementById("lienzo"), ctx = lienzo.getContext("2d");
+const previa = document.getElementById("previa"), pctx = previa.getContext("2d");
+const previa3 = document.getElementById("previa3"), p3ctx = previa3.getContext("2d");
+
+function pinta() {
+  const m = MARCAS[cual], e = estado[m];
+  ctx.fillStyle = rgb(papelDe(m)); ctx.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) {
+    if (e.p[y][x]) { ctx.fillStyle = rgb(tintaDe(m)); ctx.fillRect(x * ZOOM, y * ZOOM, ZOOM, ZOOM); }
+  }
+  if (document.getElementById("rejilla").checked) {
+    ctx.strokeStyle = "rgba(128,128,160,.45)"; ctx.lineWidth = 1;
+    for (let i = 0; i <= LADO; i++) {
+      ctx.beginPath(); ctx.moveTo(i * ZOOM + .5, 0); ctx.lineTo(i * ZOOM + .5, 256); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * ZOOM + .5); ctx.lineTo(256, i * ZOOM + .5); ctx.stroke();
+    }
+  }
+  pintaPaletas();
+  pintaPrevia();
+  document.getElementById("bytes").textContent = MARCAS.map(q => {
+    const a = atributoDe(estado[q].tinta, estado[q].papel);
+    return q.padEnd(8) + hex(bytesDe(estado[q].p)) +
+      "   " + NOMBRE[estado[q].tinta] + " sobre " + NOMBRE[estado[q].papel] +
+      " = atributo 0x" + (a === null ? "??" : a.toString(16).toUpperCase().padStart(2, "0"));
+  }).join("\n");
+}
+
+// Las dos paletas: solo los DOCE colores que el juego puede dar, y de esos, los
+// que hacen pareja con el otro color elegido. Los que no, se tachan: no es que
+// queden feos, es que no hay atributo del ZX capaz de producirlos juntos.
+function pintaPaletas() {
+  const m = MARCAS[cual], e = estado[m];
+  for (const cual2 of ["tinta", "papel"]) {
+    const cont = document.getElementById("pal_" + cual2);
+    cont.innerHTML = "";
+    for (const c of ALCANZABLES) {
+      const d = document.createElement("div");
+      d.style.background = rgb(MSX[c]);
+      const pareja = cual2 === "tinta" ? atributoDe(c, e.papel) : atributoDe(e.tinta, c);
+      const posible = pareja !== null;
+      d.className = (e[cual2] === c ? "activo " : "") + (posible ? "" : "imposible");
+      d.title = NOMBRE[c] + (posible ? "" : " (no cabe con el otro color: distinto brillo)");
+      if (posible) d.onclick = () => { e[cual2] = c; pinta(); };
+      cont.appendChild(d);
+    }
+  }
+  const a = atributoDe(e.tinta, e.papel);
+  let aviso = "";
+  if (a === ATRIBUTO_PANEL) aviso = " — OJO: es el del panel File/Memo/Time, y el juego reconoce el panel por su atributo";
+  else if (a === ATRIBUTO_MAPA) aviso = " — OJO: es el del fondo del mapa, la marca no se veria";
+  document.getElementById("atributo").innerHTML =
+    "atributo <b>0x" + a.toString(16).toUpperCase().padStart(2, "0") + "</b>" +
+    " (" + NOMBRE[e.tinta] + " sobre " + NOMBRE[e.papel] + ")" +
+    "<span style='color:#e88'>" + aviso + "</span>";
+}
+
+function pintaPrevia() {
+  const m = MARCAS[cual], e = estado[m], conMarca = document.getElementById("conMarca").checked;
+  pctx.imageSmoothingEnabled = p3ctx.imageSmoothingEnabled = false;
+  pctx.fillStyle = "#000"; pctx.fillRect(0, 0, 128, 96);
+  if (img.complete && img.width) pctx.drawImage(img, 0, 0);
+  for (const [cx, cy] of EJERCITO) {
+    const ox = cx * 8, oy = cy * 8;
+    if (conMarca) { pctx.fillStyle = rgb(papelDe(m)); pctx.fillRect(ox, oy, 8, 8); }
+    for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) {
+      if (e.p[y][x]) { pctx.fillStyle = rgb(tintaDe(m)); pctx.fillRect(ox + x, oy + y, 1, 1); }
+    }
+  }
+  p3ctx.drawImage(previa, 0, 0, 128, 96, 0, 0, 384, 288);
+}
+
+function celda(ev) {
+  const r = lienzo.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / ZOOM), y = Math.floor((ev.clientY - r.top) / ZOOM);
+  return (x >= 0 && x < LADO && y >= 0 && y < LADO) ? [x, y] : null;
+}
+function aplica(ev) {
+  const c = celda(ev); if (!c) return;
+  estado[MARCAS[cual]].p[c[1]][c[0]] = valor;
+  pinta();
+}
+lienzo.addEventListener("contextmenu", ev => ev.preventDefault());
+lienzo.addEventListener("mousedown", ev => { pintando = true; valor = ev.button === 2 ? 0 : 1; aplica(ev); });
+lienzo.addEventListener("mousemove", ev => { if (pintando) aplica(ev); });
+window.addEventListener("mouseup", () => { pintando = false; });
+
+const cont = document.getElementById("marcas");
+MARCAS.forEach((m, n) => {
+  const b = document.createElement("button"); b.textContent = m;
+  b.onclick = () => { cual = n; cont.querySelectorAll("button").forEach((x, i) => x.classList.toggle("activo", i === n)); pinta(); };
+  if (n === 0) b.classList.add("activo");
+  cont.appendChild(b);
+});
+document.getElementById("vaciar").onclick = () => { estado[MARCAS[cual]].p = nuevo(); pinta(); };
+document.getElementById("original").onclick = () => { estado[MARCAS[cual]] = deFabrica(MARCAS[cual]); pinta(); };
+document.getElementById("invertir").onclick = () => {
+  const p = estado[MARCAS[cual]].p;
+  for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) p[y][x] ^= 1;
+  pinta();
+};
+document.getElementById("cambiar").onclick = () => {
+  const e = estado[MARCAS[cual]];
+  [e.tinta, e.papel] = [e.papel, e.tinta];
+  pinta();
+};
+document.getElementById("rejilla").onchange = pinta;
+document.getElementById("conMarca").onchange = pinta;
+
+function masParecido(r, g, b) {
+  let mejor = ALCANZABLES[0], dist = Infinity;
+  for (const i of ALCANZABLES) {
+    const c = MSX[i], d = (r - c[0]) ** 2 + (g - c[1]) ** 2 + (b - c[2]) ** 2;
+    if (d < dist) { dist = d; mejor = i; }
+  }
+  return mejor;
+}
+document.getElementById("fichero").addEventListener("change", ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const im = new Image();
+  im.onload = () => {
+    if (im.height !== LADO || im.width !== LADO * MARCAS.length) {
+      alert("marcas.png tiene que medir " + (LADO * MARCAS.length) + "x" + LADO + "; este mide " + im.width + "x" + im.height);
+      return;
+    }
+    const c = document.createElement("canvas"); c.width = im.width; c.height = LADO;
+    const k = c.getContext("2d"); k.drawImage(im, 0, 0);
+    const d = k.getImageData(0, 0, im.width, LADO).data;
+    MARCAS.forEach((m, n) => {
+      // Los dos colores salen del propio PNG: el que menos pixels tiene es la
+      // tinta, como en los lienzos de sprites. Con un solo color, papel vacio.
+      const cuenta = {}, idx = nuevo();
+      for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) {
+        const o = (y * im.width + n * LADO + x) * 4;
+        const i = masParecido(d[o], d[o + 1], d[o + 2]);
+        idx[y][x] = i;
+        cuenta[i] = (cuenta[i] || 0) + 1;
+      }
+      const orden = Object.keys(cuenta).map(Number).sort((a, b) => cuenta[a] - cuenta[b] || a - b);
+      if (orden.length > 2) alert("La marca de " + m + " lleva " + orden.length + " colores y en una celda solo caben dos; se toman los dos mas usados");
+      const tinta = orden[0], papel = orden.length > 1 ? orden[orden.length - 1] : (tinta === 15 ? 1 : 15);
+      if (atributoDe(tinta, papel) === null)
+        alert("La marca de " + m + " pide " + NOMBRE[tinta] + " sobre " + NOMBRE[papel] + ", y no hay atributo del ZX que los de juntos");
+      const p = nuevo();
+      for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) p[y][x] = idx[y][x] === tinta ? 1 : 0;
+      estado[m] = { p, tinta, papel };
+    });
+    pinta();
+  };
+  im.src = URL.createObjectURL(f);
+  ev.target.value = "";
+});
+
+document.getElementById("guardar").onclick = () => {
+  const ancho = LADO * MARCAS.length;
+  const c = document.createElement("canvas"); c.width = ancho; c.height = LADO;
+  const k = c.getContext("2d");
+  const datos = k.createImageData(ancho, LADO);
+  MARCAS.forEach((m, n) => {
+    const e = estado[m];
+    for (let y = 0; y < LADO; y++) for (let x = 0; x < LADO; x++) {
+      const col = MSX[e.p[y][x] ? e.tinta : e.papel], o = (y * ancho + n * LADO + x) * 4;
+      datos.data[o] = col[0]; datos.data[o + 1] = col[1]; datos.data[o + 2] = col[2]; datos.data[o + 3] = 255;
+    }
+  });
+  k.putImageData(datos, 0, 0);
+  c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "marcas.png"; a.click();
+  }, "image/png");
+};
+
+pinta();
+</script>
+</body>
+</html>
