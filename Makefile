@@ -511,6 +511,21 @@ verifica_mapa_parche: war_unificada.rom work/war_parche_sin_vista.rom
 	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzop_ref/lienzo.log work/lienzop_nuevo/lienzo.log
 	python3 tools/coteja_mapa.py work/lienzop_nuevo work/lienzop_ref work/lienzop_png --plan work/unificada/plan.json --work work/cuerpos_parche
 
+# LA MARCA DE LAS UNIDADES: que el dibujo se pone donde toca y, sobre todo,
+# que se BORRA al moverse la unidad. Se deja correr el bucle hasta el quinto
+# repintado del mapa -uno cada 256 vueltas- y se cotejan dos de ellos con la
+# pantalla ENCENDIDA, que es como se juega: asi el cotejo mide tambien el
+# ritmo del VDP. El cotejo se declara INUTIL si entre los dos repintados no se
+# movio ninguna unidad.
+.PHONY: verifica_marcas
+verifica_marcas: war_unificada.rom
+	@rm -rf work/marcas
+	WAR_OUT="$(abspath work/marcas)" \
+	  WAR_MARCAS_N="0x$$(grep -E '^MARCAS_N' work/unificada/nombres.sym | sed -E 's/.*EQU 0*([0-9A-Fa-f]+)H/\1/')" \
+	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_marcas.tcl
+	@grep -E "repintado|MARCAS_N" work/marcas/marcas.log
+	python3 tools/coteja_marcas.py work/marcas src/cartucho/marca.png
+
 # Y LA MEDIDA: ciclos por vuelta de la vista y vueltas por segundo, antes y
 # despues, con la misma sonda. Un numero, no una impresion.
 mide_vista: war_musica.rom work/war_sin_vista.rom

@@ -99,6 +99,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cursor                           # noqa: E402
 import guante                           # noqa: E402
+import marca as dibujo_marca            # noqa: E402
 import mapa_general                     # noqa: E402
 import zx0                              # noqa: E402
 
@@ -272,6 +273,13 @@ SUBE_LOS_ATRIBUTOS = 0x884C      # el `call ATRIBUTOS_A_VRAM` de cada vuelta
 SUBE_LOS_ATRIBUTOS_ORIG = bytes.fromhex("cd0406")
 ARMA_LOS_DOS_BANDOS = 0x90A6     # el `call ATRIBUTOS_A_VRAM` de al montarla
 ARMA_LOS_DOS_BANDOS_ORIG = bytes.fromhex("cd0406")
+# LA MARCA DE LAS UNIDADES EN EL MAPA GENERAL. El `call ATRIBUTOS_A_VRAM` con
+# el que acaba REPINTA_LOS_EJERCITOS: ahi se cuela MI_MARCAS, que sube los
+# atributos igual y ademas le estampa un dibujo de 8x8 a la celda de cada
+# unidad. Sin el, una unidad es solo una celda de otro color y dos juntas se
+# funden en una mancha.
+DIBUJO_DE_UNIDAD = 0x6AF1        # el `call ATRIBUTOS_A_VRAM` con el que acaba 0x6AAF
+DIBUJO_DE_UNIDAD_ORIG = bytes.fromhex("cd0406")
 # Y EL INFILTRADO DEL CENTRO DEL CAMPO. Al montar la batalla, 0x914B llama a
 # DEJA_DE_LLEVARLA_A_MANO (0x8C6C), que ademas de dejar el cursor y el
 # despachador en su sitio termina plantando en la casilla del CENTRO la unidad
@@ -327,6 +335,9 @@ REFRESCA_EL_GUANTE_ORIG = bytes.fromhex("cdc307")
 ESTAMPA_EL_GUANTE = 0x6575
 ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("e5")
 GUANTE_PNG = os.path.join(SRC, "guante.png")
+MARCA_PNG = os.path.join(SRC, "marca.png")   # la marca de unidad del mapa general
+MAX_MARCAS = 118            # el tope de la tabla: unidades 0x00..0x77 menos la 0x16 y la 0x17,
+                            # que 0x6AE3 se salta. Tiene que ser el mismo que el de nombres.asm
 
 # DOS HEROES MAS: TOM BOMBADIL Y RADAGAST.
 #
@@ -597,9 +608,9 @@ def escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom, hueco,
         with open(ruta, "wb" if isinstance(datos, (bytes, bytearray)) else "w") as f:
             f.write(datos)
 
-    # El fuente que se puede tocar y los dos .inc de dibujos que mete dentro.
+    # El fuente que se puede tocar y los .inc de dibujos que mete dentro.
     shutil.copy(os.path.join(SRC, "nombres.asm"), os.path.join(src_kit, "nombres.asm"))
-    for n in ("cursor.inc", "guante.inc"):
+    for n in ("cursor.inc", "guante.inc", "marca.inc"):
         shutil.copy(os.path.join(salidas, n), os.path.join(src_kit, n))
 
     # Los binarios: la cabeza (arranque + stub con el plan dentro), los datos
@@ -1031,6 +1042,10 @@ def main(argv):
         guante_planos = guante.escribe_inc(GUANTE_PNG, os.path.join(salidas, "guante.inc"))
         for aviso in guante_planos[2]:
             print("guante.png:" + aviso)
+        # Y la marca que lleva en su celda cada unidad del mapa general.
+        assert os.path.exists(MARCA_PNG), \
+            "falta %s: `python3 tools/marca.py saca work %s` saca el Anillo de la fuente" % (MARCA_PNG, MARCA_PNG)
+        marca_bytes = dibujo_marca.escribe_inc(MARCA_PNG, os.path.join(salidas, "marca.inc"))
         equs_nombres = [("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0),
                         ("CUADROS", sim_puente["CUADROS"]),
                         ("PINTA_CADA", PINTA_CADA)]
@@ -1347,6 +1362,15 @@ def main(argv):
             SIGUE_LA_FICHA, SIGUE_LA_FICHA_ORIG,
             bytes([0xCD]) + sim_nombres["MI_SUBE_FICHA"].to_bytes(2, "little"),
             "cada ficha que cambia se sube sola, dos celdas (MI_SUBE_FICHA)"))
+        # LA MARCA DE LAS UNIDADES. Los atributos del mapa se suben igual, y
+        # ademas la celda de cada unidad se lleva un dibujo de 8x8. Borrarlo
+        # sale gratis: el lienzo de 0x4000 no se toca, asi que la copia limpia
+        # del mapa es el propio lienzo.
+        parches_vista.append(parchea(
+            DIBUJO_DE_UNIDAD, DIBUJO_DE_UNIDAD_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_MARCAS"].to_bytes(2, "little"),
+            "cada unidad del mapa lleva un dibujo de 8x8 en su celda, y no solo "
+            "un color (MI_MARCAS)"))
         # La tecla F: el montaje y el dibujo del tablero pasan por MI_TURBO,
         # que con el modo rapido encendido solo deja pintar una vuelta de cada
         # PINTA_CADA. El resto del bucle no se toca.
@@ -1577,7 +1601,21 @@ def main(argv):
                 png=os.path.relpath(GUANTE_PNG, RAIZ).replace(os.sep, "/"),
                 planos=guante_planos[0].hex(), planos_colores=list(guante_planos[1]),
                 parches=[q for q in parches_vista
-                         if q["dir"] in (REFRESCA_EL_GUANTE, ESTAMPA_EL_GUANTE)]))
+                         if q["dir"] in (REFRESCA_EL_GUANTE, ESTAMPA_EL_GUANTE)]),
+            # Y LA MARCA de cada unidad en el mapa general: el dibujo de 8x8
+            # que MI_MARCAS le estampa a su celda. El cotejo del mapa lo lee de
+            # aqui para saber que tiene que encontrar en la VRAM y donde; nadie
+            # lo escribe a mano.
+            marcas=dict(
+                entrada=sim_nombres["MI_MARCAS"],
+                cuantas=sim_nombres["MARCAS_N"],
+                tabla=sim_nombres["MARCAS_TAB"],
+                dibujo=sim_nombres["DIBUJO_MARCA"],
+                tope=MAX_MARCAS,
+                png=os.path.relpath(MARCA_PNG, RAIZ).replace(os.sep, "/"),
+                bytes=marca_bytes.hex(),
+                parches=[q for q in parches_vista
+                         if q["dir"] == DIBUJO_DE_UNIDAD]))
     if heroes:
         # Los dos heroes nuevos: quienes son, donde caen y los parches de sus
         # ranuras. Lo que lee el cotejo del mapa para saber donde van sus

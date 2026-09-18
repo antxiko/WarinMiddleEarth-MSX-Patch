@@ -1594,6 +1594,70 @@ proposito-, pero un cotejo que no puede distinguir eso no sirve.
   canta; cambiada UNA letra de "Gimli" en la lista, cantan tres.
 - **El kit sin Python** monta la ROM identica byte a byte.
 
+## 10) La marca de las unidades: un dibujo, no un color
+
+### Lo que habia
+
+En el mapa general una unidad **no es un dibujo**. `REPINTA_LOS_EJERCITOS`
+(0x6AAF) devuelve los 768 atributos de la pantalla del Spectrum al 0x30 del
+fondo -respetando solo el del panel, que es como el juego lo reconoce- y le
+escribe **UN BYTE** al atributo de la celda de cada unidad (0x6AE0). Luego los
+sube todos con `ATRIBUTOS_A_VRAM` (0x0604).
+
+O sea que una unidad es **una celda de otro color**, y de ahi el problema que
+se ve jugando: dos unidades en celdas vecinas se funden en una mancha en la
+que no se puede contar cuantas hay.
+
+### Lo que hay ahora
+
+`MI_MARCAS` (nombres.asm) le estampa ademas un **dibujo de 8x8** a esa celda.
+De fabrica es el **Anillo**: los ocho bytes del caracter 0x5F de la fuente del
+juego, el mismo que el parche pinta en la ficha del Portador. No esta
+inventado, y se puede repintar en `src/cartucho/marca.png`.
+
+### POR QUE NO HACE FALTA GUARDAR UNA COPIA DEL MAPA
+
+Estampar pixeles obliga a saber **borrarlos** cuando la unidad se mueve, y de
+ahi salio la idea de guardar una copia limpia del lienzo -6.144 bytes- en la
+RAM libre. **No hace falta: esa copia ya existe.**
+
+El juego es un port del Spectrum y mantiene su pantalla emulada en 0x4000, en
+la **pagina 1, que es RAM durante toda la partida** (el puente conmuta la
+pagina 2, no esta). Asi que basta con estampar **solo en la VRAM** y no tocar
+el lienzo: borrar una marca es volver a subir a la VRAM los ocho bytes que el
+lienzo ya tiene. Cuesta **2 bytes por marca** -la fila y la columna- en vez de
+6.144, y es correcto por construccion: el lienzo es la verdad y la VRAM su
+copia, asi que restaurar desde el lienzo siempre devuelve lo que el juego cree
+que hay en pantalla.
+
+### El ritmo, que es donde estaba la trampa
+
+Los dos bucles van a **39 y 37 ciclos por byte**. Con la pantalla encendida el
+TMS9918 no admite dos accesos a la VRAM a menos de unos 29 y se le caen bytes:
+le pasa a `PANTALLA_A_VRAM` (0x05BD) y a `RECUADRO_A_VRAM` (0x0702), que van a
+**22** y pierden casi 4.000 bytes de los 6.144 (ver mas arriba). Por eso
+ninguna de las dos se reutiliza aqui, aunque las dos hacian justo lo que hacia
+falta: **una marca con un byte caido se quedaria sucia hasta el repintado
+siguiente**, que son 256 vueltas mas tarde.
+
+### Lo que cuesta
+
+`REPINTA_LOS_EJERCITOS` **no corre por fotograma**: el bucle de partida mueve
+UNA unidad por vuelta (0x6719) y solo la llama cuando el contador da la
+vuelta, o sea **una vez cada 256**. Y lo que ya se pagaba ahi son los 597.698
+ciclos de `ATRIBUTOS_A_VRAM`. Esto anade unos 110.000: un 18 % sobre una
+rutina que corre una vez cada 256 vueltas.
+
+### EL JUEGO NO MUEVE NADA HASTA QUE SE ARRANCA LA PARTIDA
+
+Medido al montar la sonda, y explica por que la primera no volcaba nada:
+**729.052 vueltas del bucle de partida y un unico repintado**, el de la
+entrada. Al entrar al mapa, 0x81DE-0x81E4 desvia al retardo de 0x8274 los dos
+`call` del bucle -el de mover la unidad siguiente (0x7F65) y el del reloj
+(0x7F6B)-, asi que mientras el jugador no pulsa abajo del todo no se mueve una
+sola unidad ni avanza el calendario. `PULSA_ABAJO_DEL_TODO` (0x81EA) se los
+devuelve.
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo
