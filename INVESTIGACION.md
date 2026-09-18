@@ -610,15 +610,20 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 | 5 · los textos en espanol | hecho, verificado | leidos de la RAM del emulador: 29 carteles cuadran, las cuatro listas se siguen leyendo |
 | 6 · el mapa repintado | hecho, verificado | 122 de 128 tiles; volcado de la cinta parcheada = previo, 0 pixeles distintos de 196.608 |
 | 7 · de cinta a cartucho | hecho, verificado | RAM, VRAM, VDP y PSG iguales a los de la cinta en cuatro maquinas; nadie ha jugado una partida entera desde el |
+| 8 · Gollum, hobbit | hecho, verificado | un byte (0xBD15): era la unica unidad de tipo 8 de las 256, y ese tipo se dibujaba como el enano; en el juego corriendo, tipo 6 como Sam, Merry y Pippin |
+| 9 · el cursor de la batalla | hecho, verificado | 3,00 casillas/s con el limite y 4,00 sin el, con el bucle a 7 vueltas/s (tools/omsx_cursor_batalla.tcl, VG-8020) |
+| 10 · los sprites repintados | hecho, verificado | el guante en azul y los cursores sin el bloque opaco; el cotejo del mapa da 85 pixels distintos, los mismos que enciende guante.png, y 0 fuera |
 
-**1.396 bytes en 130 entradas de la tabla, ninguna fuera de ella y ninguna
-desplazada**: 27 escritas a mano (548 bytes de codigo, punteros y texto) y 103
-sacadas de los lienzos (848 de tiles repintados). `make test` = 114 en verde: 79 del parche y 35 del cartucho.
+**1.578 bytes en 195 entradas de la tabla, ninguna fuera de ella y ninguna
+desplazada**: 29 escritas a mano (568 bytes de codigo, punteros y texto) y 166
+sacadas de los lienzos (1.010 de dibujos repintados). `make test` = 178 en
+verde: 82 del cartucho, 33 del parche, 32 de los lienzos, 10 del cursor, 9 de
+los listados, 6 del mapa, 3 del editor y 3 mas.
 
 ## Como se reparte
 
-`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -1.515
-en 39 registros, 1.718 bytes de fichero- y se aplica sobre tu propia cinta.
+`make ips` saca **`war_parche.ips`**, que lleva solo los bytes que cambian -1.830
+en 50 registros, 2.088 bytes de fichero- y se aplica sobre tu propia cinta.
 Comprobado: aplicado sobre `war.tsx` da un fichero identico byte a byte al que
 saca `make parche`.
 
@@ -946,8 +951,9 @@ Tres decisiones del usuario: el cursor fijo en el centro, el cursor **editable**
 -`src/cartucho/cursor.png`, 48 x 16, los tres cursores (mirar, elegir
 destino, batalla) con hasta dos colores mas el transparente; `tools/cursor.py`
 lo saca de los tiles de la cinta parcheada y lo vuelve a leer como planos de
-sprite; `tools/editor_cursor.html` es un editor de los dos planos que se abre
-en el navegador y guarda ese PNG- y **una casilla cada diez cuadros** con la tecla pulsada: con la vuelta
+sprite; `tools/editor_sprites.html` es un editor de los dos planos que se abre
+en el navegador, ensena el dibujo sobre un trozo de la pantalla de verdad y
+guarda ese PNG (tambien el del guante del mapa general)- y **una casilla cada diez cuadros** con la tecla pulsada: con la vuelta
 a mas de cuarenta por segundo el cursor, que avanza una casilla por vuelta,
 iba a 25 casillas por segundo. Ahora `MI_MUEVE` deja pasar un paso cada diez
 cuadros -cinco por segundo a 50 Hz-, y una pulsacion suelta mueve al instante.
@@ -1278,6 +1284,107 @@ de la VRAM. O sea que el cambio es exactamente el intercambio y nada mas.
 Y siete tests, sobre las DOS cintas: que el atributo sale de 0x763F y no de una
 constante, que la marca se aparta solo si choca, y que los cuatro sitios van
 juntos y caen sobre lo que la cinta trae.
+
+## 8) Gollum, los orcos y el cursor de la batalla — HECHO y VERIFICADO
+
+Cuatro cosas que pidio el usuario el 2026-09-18, con la ROM unificada ya
+jugandose.
+
+### Gollum es un hobbit: un byte
+
+La raza de una unidad es el **nibble bajo de `0xBD00+n`**, en el bloque alto, o
+sea que viaja en la cinta. Gollum es la unidad **21** y tenia el tipo **8**.
+
+Lo que no estaba a la vista: el tipo 8 **no tiene figura propia**. En
+`NUMEROS_DE_LA_FIGURA` (0x8CF7), al montar la batalla, del tipo salen el dibujo,
+la vida y el golpe de la figura; y ahi mismo, en **0x8D0E**, hay un
+`cp 008h / ld a,004h`: el tipo 8 se dibuja **como el 4**, el enano. Asi que
+Gollum peleaba con la figura del enano y con su propia linea en la tabla de
+nombres.
+
+Con el tipo **6** es un hobbit en todo -nombre, figura, fuerza (`0x6D47` +
+tipo*16) y costes de terreno (`0x6D37`)-, igual que Sam, Merry y Pippin.
+
+**Y el 8 se queda sin nadie**, lo cual es medible: de las 256 unidades de
+`0xBD00`, la 21 era la unica de ese tipo. Comprobado tambien con el juego
+corriendo (`tools/omsx_ficha_gollum.tcl`): `0xBD15` = 6, los mismos que las
+unidades 6, 7 y 8, y su ficha se sigue pintando con su nombre.
+
+### `Orc` -> `Orco` y `Orcs` -> `Orcos`, sin mover un byte
+
+Las dos tablas de razas se recorren contando bits de fin desde su base, asi que
+una cadena puede cambiar de largo **mientras el total no cambie**: detras de
+cada tabla empieza otra cosa. Cada plural necesitaba un byte mas, y cada uno
+salio de un sitio distinto:
+
+- **plural**: del **espacio de relleno de `Enanos `**, que ya venia en la cinta
+  porque el ingles era `Dwarves` (7 letras) y `Enanos` son 6;
+- **singular**: de la **entrada 8**, la que decia `Gollum`. Desde el cambio de
+  arriba no la lee nadie, asi que se queda en `Enano`, que es lo que ese tipo
+  dibujaba de todas formas.
+
+Y de paso se quito el parche que traducia `Brand III` por `Bardo III`: Brand,
+nieto de Bardo el Arquero y rey de Valle, se llama igual en las dos lenguas. Es
+un ejemplo de lo de siempre: **deshacer es quitar la entrada, no cambiarla por
+otra**. Ahora un test exige que el parche no toque ni un byte de esa lista.
+
+### El cursor de la batalla va al reloj, no al bucle
+
+`MUEVE_EL_CURSOR_DE_BATALLA` (0x8E0D) corre el cursor **una casilla por vuelta**
+del bucle de batalla, asi que su velocidad es la del bucle. Al hacer que el
+tablero subiera al VDP solo lo que cambia, la vuelta paso de 0,3170 a 0,1068 s
+-de 3,2 a 9,4 casillas por segundo- y el cursor se volvio ingobernable. Es el
+mismo problema que arreglo `MI_MUEVE` en el mapa, y se arregla igual:
+**`MI_CURSOR_BATALLA`** sustituye su `call LEE_LOS_MANDOS` de **0x8E10** y deja
+pasar las cuatro direcciones una vez cada **16 cuadros**; el disparo y la tecla 1
+pasan siempre, que ya tienen su espera a soltar en `PULSA_EN_LA_BATALLA`.
+
+Medido en una batalla de verdad, en la MISMA batalla y la misma partida -se
+deshace el parche escribiendo los tres bytes originales en la RAM, que un cotejo
+entre dos ROMs no valdria porque las batallas no son iguales-, con
+`tools/omsx_cursor_batalla.tcl` en un VG-8020:
+
+    con MI_CURSOR_BATALLA    3,00 casillas/s   (el bucle a 7,0 vueltas/s)
+    como en la cinta         4,00 casillas/s   (el bucle a 4,0 vueltas/s)
+
+Lo que importa no es la resta: es que **la velocidad deja de depender de lo
+rapido que vaya la batalla**. En esa misma pasada, sin el limite el cursor
+habria ido a 7 casillas por segundo.
+
+**Y costo una medida tirada a la basura**: la primera version plantaba el cursor
+en (2,2) nada mas empezar la batalla y contaba cuanto avanzaba. Daba 18 casillas
+CON el parche y 9 sin el, o sea que el parche "aceleraba" el cursor. Un punto de
+observacion sobre 0x8E0E enseno por que: **0x9141, dentro del montaje de la
+batalla, recoloca el cursor en el centro (16,16)** despues de que la sonda lo
+plantara. Se contaba desde donde no estaba. La sonda espera ahora a 0x9141 y
+ademas cuenta los pasos con el punto de observacion, que no depende de donde
+empiece ni de si topa con el borde.
+
+### Los sprites, repintados y editables
+
+`tools/editor_sprites.html` (que sustituye a `editor_cursor.html`) edita los
+**cuatro** sprites de hardware del cartucho -los tres cursores y el guante-, con
+los dibujos dentro y **un trozo real de la pantalla donde vive cada uno** debajo:
+el mapa general para el guante y la vista de cerca para los cursores. En el
+lienzo el fondo va apagado con un velo y entero en la previa, porque el guante
+era amarillo y negro sobre un mapa amarillo y negro y el dibujo se perdia dentro
+del terreno.
+
+Dos cambios de aspecto:
+
+- **el guante, azul**: relleno azul claro y contorno blanco, en vez de amarillo
+  oscuro y negro, que eran los colores del propio mapa;
+- **los cursores, casi transparentes**: el plano de detras era un **bloque opaco
+  de 16x16** que tapaba el terreno; ahora es el contorno del trazo -sus ocho
+  vecinos-, asi que se ve el mapa alrededor y el cursor se sigue leyendo sobre
+  cualquier fondo. De 208 pixels de bloque a 128 de halo en el de mirar.
+
+El cotejo del mapa (`make verifica_mapa_parche`) tuvo que ajustarse, y el ajuste
+es mas fuerte que lo que habia: antes exigia las dos pantallas identicas pixel a
+pixel; ahora exige **cero diferencias fuera del guante** y que las de dentro
+sean **exactamente los pixels que enciende `guante.png`**. Si el guante se
+moviera de sitio, se comiera una fila o dejara de pintar algo, se ve. Da 38
+comprobaciones y 0 fallos, con 85 pixels distintos y 0 fuera.
 
 ## Lo que queda abierto
 

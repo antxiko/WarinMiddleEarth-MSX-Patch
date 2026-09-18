@@ -41,9 +41,9 @@ for a real MSX1 (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.ts
 ## What it changes
 
 It lands in the game's middle block (which runs at `0x5E00`) and in the map's
-tile table in the high block: **1,396 bytes across 130 table entries**. Of those,
-**27 are written by hand** — 548 bytes of code, pointers and text — and **103
-fall out of the canvases**, 848 bytes of repainted tiles. Each one is checked
+tile table in the high block: **1,578 bytes across 195 table entries**. Of those,
+**29 are written by hand** — 568 bytes of code, pointers and text — and **166
+fall out of the canvases**, 1,010 bytes of repainted drawings. Each one is checked
 against the bytes it expects before writing — nothing shifts, and `make parche`
 fails if a single byte changes outside the table (`tools/parchea.py`).
 
@@ -88,13 +88,17 @@ that byte was free** (measured: zero uses across all 13,260 cells). It now marks
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
 
 **5 · The text finishes its translation.** Animagic's conversion left the map's
-place names in English and truncated three race names. Nineteen strings change:
-ten place names (`Bywater` → `Delagua`, `Michel Delving` → `Cavada Grande`,
-`Dale` → `Valle`…), one unit name (`Brand III` → `Bardo III`), the three races
-(`Brujo` → `Mago`, `Elf` → `Elfo`, `Hum` → `Hombre`), the sheet's four adjectives
-(`Habil` → `Firme`, `Valioso` → `Virtuoso`, `Duro` → `Valiente`,
+place names in English and several race names truncated. Thirteen entries
+change: ten place names (`Bywater` → `Delagua`, `Michel Delving` →
+`Cavada Grande`, `Dale` → `Valle`…), the races (`Brujo` → `Mago`, `Elf` →
+`Elfo`, `Hum` → `Hombre`, `Orc` → `Orco` and `Orcs` → `Orcos`), the sheet's four
+adjectives (`Habil` → `Firme`, `Valioso` → `Virtuoso`, `Duro` → `Valiente`,
 `Bravo` → `Fuerte`) and its last line (`Aliado a la Sociedad` →
 `Aliado a la Comunidad`).
+
+Character names are **left alone**: `Brand III` — Bard the Bowman's grandson,
+king of Dale — is spelled the same in Spanish, and an earlier patch mistranslated
+it.
 
 Not one byte moves. A place-name record carries the **size of its signpost**
 (`ancho<<4 | filas`) and the text fills it exactly, so a new name has to measure
@@ -130,6 +134,14 @@ is one byte at `0x763F`.
 |---|---|
 | ![](docs/imagenes/tiles-del-mapa.png) | ![](docs/imagenes/tiles-repintados.png) |
 
+**7 · Gollum is a hobbit.** A unit's race is the low nibble of `0xBD00+n`, and
+Gollum — unit 21 — had type 8, which was his and nobody else's (measured: the
+only one of the 256). And type 8 was not just a name: in battle `0x8CF7` takes
+the figure, the health and the hit from the type, and `0x8D0E` has type 8 drawn
+**as type 4**, so Gollum turned up wearing the dwarf's figure. With type 6 he is
+a hobbit in everything — name, figure, strength and terrain costs — just like
+Sam, Merry and Pippin. **One byte.**
+
 None of the images above are screen captures: the game re-uploads the screen to
 the VDP constantly, so two photographs of the *same* state, three seconds apart,
 already differ in 37 % of their pixels. They are drawn from the ZX screen buffer
@@ -158,13 +170,23 @@ sprite and a fixed window**: instead of expanding the character screen into a
 bitmap and pushing 12,288 bytes to VRAM on every loop, it pushes the 768 bytes
 of the name table, because each cell's byte already is the pattern index; and
 the map chunk is only redrawn when the cursor (two 16x16 sprites, editable in
-`src/cartucho/cursor.png` with `tools/editor_cursor.html`, which opens in the
-browser) moves: the cursor stays in the centre and the map moves, as in the
+`src/cartucho/cursor.png` with `tools/editor_sprites.html`, which opens in the
+browser and shows the drawing over the actual screen) moves: the cursor stays in the centre and the map moves, as in the
 original. Measured on an NMS 8250: from 3.2 to 43.2 loops per second at rest,
 with the cursor at five cells per second and the picture checked against the
 old one (`make verifica_vista_parche`). One thing the faster loop broke and is
-fixed: in the menu that cycles through the units sharing a cell, up and down
-act on the key press, not while the key is held.
+fixed: in the menu that cycles through the units sharing a cell, up and down act on the key press, not while the key is held.
+And another one found later: **the battle cursor** moves one cell per loop, so
+once the board only uploaded what changed it became ungovernable; it now follows
+the clock and not the loop, one cell every sixteen frames. Measured in a real
+battle: **3.00 cells per second with the limit and 4.00 without it**, with the
+loop at 7 turns per second — which without a limit is 7 cells.
+
+The **sprites are editable** with `tools/editor_sprites.html`, which opens in
+the browser and shows them over a piece of the screen they live on: the map's
+gauntlet was yellow and black over a yellow and black map — you could not see it
+— and is now blue, and the three cursors stopped being an opaque 16x16 block and
+are down to the stroke and its outline, with the terrain showing around them.
 
 And **the overview map is no longer drawn: it is decompressed**. Walking its
 23,500 cells stamping pixels took 3.9 seconds, and you paid it every time you

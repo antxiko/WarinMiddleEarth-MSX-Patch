@@ -35,9 +35,9 @@ para un MSX1 real (`openmsx -machine Philips_VG_8020 -cassetteplayer war_parche.
 ## Que cambia
 
 Cae en el bloque medio del juego (el que corre desde `0x5E00`) y en la tabla de
-tiles del mapa del bloque alto: **1.396 bytes en 130 entradas de la tabla**. De
-ellas, **27 estan escritas a mano** -548 bytes de codigo, punteros y texto- y
-**103 salen solas de los lienzos**, 848 bytes de tiles repintados. Cada una
+tiles del mapa del bloque alto: **1.578 bytes en 195 entradas de la tabla**. De
+ellas, **29 estan escritas a mano** -568 bytes de codigo, punteros y texto- y
+**166 salen solas de los lienzos**, 1.010 bytes de dibujos repintados. Cada una
 comprueba antes de escribir que los bytes originales son los que espera; nada se
 desplaza, y `make parche` avisa si cambia un solo byte fuera de la tabla
 (`tools/parchea.py`).
@@ -84,13 +84,17 @@ nuevos al final de la tabla de 0x9E00 (los 111 a 114, que estaban a cero).
 | ![](docs/imagenes/enemigas_con_casco.png) | ![](docs/imagenes/ojo_de_sauron.png) |
 
 **5 · El texto termina de traducirse.** La conversion de Animagic dejo los
-toponimos del mapa en ingles y tres nombres de raza truncados. Cambian
-diecinueve cadenas: diez sitios del mapa (`Bywater` -> `Delagua`,
-`Michel Delving` -> `Cavada Grande`, `Dale` -> `Valle`...), un nombre de unidad
-(`Brand III` -> `Bardo III`), las tres razas (`Brujo` -> `Mago`, `Elf` ->
-`Elfo`, `Hum` -> `Hombre`), los cuatro adjetivos de la ficha (`Habil` ->
-`Firme`, `Valioso` -> `Virtuoso`, `Duro` -> `Valiente`, `Bravo` -> `Fuerte`) y
-su ultima linea (`Aliado a la Sociedad` -> `Aliado a la Comunidad`).
+toponimos del mapa en ingles y varios nombres de raza truncados. Cambian trece
+entradas: diez sitios del mapa (`Bywater` -> `Delagua`, `Michel Delving` ->
+`Cavada Grande`, `Dale` -> `Valle`...), las razas (`Brujo` -> `Mago`, `Elf` ->
+`Elfo`, `Hum` -> `Hombre`, `Orc` -> `Orco` y `Orcs` -> `Orcos`), los cuatro
+adjetivos de la ficha (`Habil` -> `Firme`, `Valioso` -> `Virtuoso`, `Duro` ->
+`Valiente`, `Bravo` -> `Fuerte`) y su ultima linea (`Aliado a la Sociedad` ->
+`Aliado a la Comunidad`).
+
+Los nombres de los personajes **no se tocan**: `Brand III` -el nieto de Bardo el
+Arquero, rey de Valle- se llama igual en las dos lenguas, y hubo un parche que
+lo traducia por error.
 
 Y no se mueve un byte. El registro de un sitio lleva **el tamano de su cartel**
 (`ancho<<4 | filas`) y el texto lo rellena entero, asi que el nombre nuevo tiene
@@ -99,7 +103,9 @@ que medir lo mismo: `Cavada ` + `Grande ` llena el cartel de 7x2 donde iba
 contando bits de fin, asi que **dentro** de una lista una cadena si puede cambiar
 de largo: eso es lo que paga las palabras mas largas. `Brujo ` -> `Mago` libera
 dos bytes, y sale dos veces en cada lista: los cuatro justos que necesitan
-`Elf` -> `Elfo` y `Hum` -> `Hombre`.
+`Elf` -> `Elfo` y `Hum` -> `Hombre`. El byte de `Orcos` sale del espacio de
+relleno que ya traia `Enanos `, y el de `Orco` de la entrada que era de Gollum,
+que desde el cambio 7 no la lee nadie.
 
 La misma casilla y la misma unidad, con la cinta original y con la parcheada:
 
@@ -126,6 +132,14 @@ en `0x763F`.
 | los tiles de la cinta | repintados |
 |---|---|
 | ![](docs/imagenes/tiles-del-mapa.png) | ![](docs/imagenes/tiles-repintados.png) |
+
+**7 · Gollum es un hobbit.** La raza de cada unidad es el nibble bajo de
+`0xBD00+n`, y Gollum -la unidad 21- tenia el tipo 8, que era suyo y de nadie mas
+(medido: la unica de las 256). Y con el 8 no era solo el nombre: en la batalla
+`0x8CF7` saca del tipo la figura, la vida y el golpe, y `0x8D0E` manda dibujar el
+tipo 8 **como el 4**, asi que Gollum salia con la figura del enano. Con el 6 es
+un hobbit en todo -nombre, figura, fuerza y costes de terreno-, igual que Sam,
+Merry y Pippin. **Un byte.**
 
 Ninguna de estas imagenes es una captura de pantalla: el juego resube la
 pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres
@@ -157,14 +171,25 @@ ventana quieta**: en vez de expandir la pantalla de caracteres a bitmap y
 subir 12.288 bytes a la VRAM en cada vuelta, sube los 768 de la tabla de
 nombres, porque el byte de cada celda ya es el indice de patron; y el trozo de
 mapa solo se repinta cuando el cursor -dos sprites de 16x16, editables en
-`src/cartucho/cursor.png` con `tools/editor_cursor.html`, que se abre en el
-navegador- se mueve: el cursor se queda en el centro y lo que se mueve es el
+`src/cartucho/cursor.png` con `tools/editor_sprites.html`, que se abre en el
+navegador y ensena el dibujo sobre la pantalla de verdad- se mueve: el cursor se queda en el centro y lo que se mueve es el
 mapa, como en el original. Medido en un NMS 8250: de 3,2 a 43,2 vueltas por
 segundo en reposo, con el cursor a cinco casillas por segundo y la imagen
 cotejada contra la de antes (`make verifica_vista_parche`). Una cosa que la
 vuelta rapida rompio y esta arreglada: en el menu que pasa de una unidad a
 otra de la misma casilla, arriba y abajo van por toque, no mientras se
-mantiene la tecla.
+mantiene la tecla. Y otra que se vio despues: **el cursor de la batalla** se
+corre una casilla por vuelta del bucle, asi que al subir al VDP solo lo que
+cambia se volvio ingobernable; ahora va al reloj y no al bucle, una casilla cada
+dieciseis cuadros. Medido en una batalla de verdad: **3,00 casillas por segundo
+con el limite y 4,00 sin el**, con el bucle a 7 vueltas por segundo -que sin
+limite son 7 casillas-.
+
+Los **sprites se editan** con `tools/editor_sprites.html`, que se abre en el
+navegador y los ensena sobre un trozo de la pantalla donde viven: el guante del
+mapa era amarillo y negro sobre un mapa amarillo y negro -no se veia- y va ahora
+en azul, y los tres cursores dejaron de ser un bloque opaco de 16x16 para
+quedarse en el trazo y su borde, con el terreno viendose alrededor.
 
 Y **el mapa general ya no se dibuja: se descomprime**. Recorrer sus 23.500
 casillas estampando pixeles costaba 3,9 segundos, y se pagaban cada vez que se

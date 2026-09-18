@@ -1,6 +1,6 @@
 # The patch
 
-A hundred and thirty entries, **1,396 bytes**, none outside the table and none
+A hundred and ninety-five entries, **1,578 bytes**, none outside the table and none
 shifted: every patch is exactly as long as what it replaces, so no address in
 the game moves.
 
@@ -187,7 +187,7 @@ how many pixels, and what it was changed to.
 
 ## The IPS
 
-`make ips` produces **`war_parche.ips`**: 1,718 bytes in 39 records, holding
+`make ips` produces **`war_parche.ips`**: 2,088 bytes in 50 records, holding
 only what changes. Verified on the spot — and in the tests — that **applied to
 `war.tsx` it gives back the patched cassette byte for byte**.
 
@@ -197,7 +197,7 @@ That is what gets shared. Not the game.
 
 `make test` is 79 of them, and they are not decoration. Among others:
 
-- that **`orig` and `nuevo` are the same length** in all 130 entries, i.e.
+- that **`orig` and `nuevo` are the same length** in all 195 entries, i.e.
   nothing shifts;
 - that every entry **falls inside its block**;
 - that the table's bytes are **exactly** what comes out of assembling

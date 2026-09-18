@@ -1,6 +1,6 @@
 # El parche
 
-Ciento treinta entradas, **1.396 bytes**, ninguna fuera de la tabla y ninguna
+Ciento noventa y cinco entradas, **1.578 bytes**, ninguna fuera de la tabla y ninguna
 desplazada: cada parche mide exactamente lo mismo que lo que sustituye, así que
 ninguna dirección del juego se mueve.
 
@@ -185,7 +185,7 @@ era, cuántos píxeles y por qué color se ha cambiado.
 
 ## El IPS
 
-`make ips` saca **`war_parche.ips`**: 1.718 bytes en 39 registros, con sólo
+`make ips` saca **`war_parche.ips`**: 2.088 bytes en 50 registros, con sólo
 lo que cambia. Comprobado en el sitio —y en las pruebas— que **aplicado sobre
 `war.tsx` devuelve la cinta parcheada byte a byte**.
 
@@ -195,7 +195,7 @@ Se reparte eso, no el juego.
 
 `make test` son 79, y no son de adorno. Entre ellas:
 
-- que **`orig` y `nuevo` miden igual** en las 130 entradas, o sea que nada
+- que **`orig` y `nuevo` miden igual** en las 195 entradas, o sea que nada
   se desplaza;
 - que cada entrada **cae dentro de su bloque**;
 - que los bytes de la tabla son **exactamente** lo que sale de ensamblar

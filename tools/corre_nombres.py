@@ -340,6 +340,27 @@ def corre_eleccion(m, plan, mando, ultima, sp=0x5BFF):
     return z
 
 
+def corre_cursor_batalla(m, plan, mando, cuadros, ultimo, sp=0x5BFF):
+    """MI_CURSOR_BATALLA con el mando que devolveria LEE_LOS_MANDOS (con
+    trampa), el contador de cuadros y el cuadro del ultimo paso. BC, DE y HL
+    llevan valores conocidos para ver si salen igual: en 0x8E13 el HL que
+    0x8E0D acaba de cargar sigue vivo. Devuelve la CPU: A es lo que ve la
+    rutina del cursor."""
+    c = plan["vista"]["cursor"]
+    m.ram[c["cuadros"]] = cuadros
+    m.ram[c["ultimo_paso_batalla"]] = ultimo
+
+    def lee(z):
+        z.a = mando
+        return ("a", mando)
+
+    z = Z80(m, Vdp(), c["batalla"], sp, {LEE_LOS_MANDOS: lee})
+    z.bc, z.de, z.hl = 0x1234, 0x5678, 0x9ABC
+    z.push(CENTINELA)
+    z.corre()
+    return z
+
+
 def atributos_esperados(plan, ci, ri, modo):
     """Los ocho bytes de ATRIBUTOS para el cursor en la celda (ci, ri) de la
     ventana y ese modo: Y una linea por encima, X, el patron y el color."""

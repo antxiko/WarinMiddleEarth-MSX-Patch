@@ -580,12 +580,15 @@ class TestAplicacion(unittest.TestCase):
         medio = cuerpos["medio"]
         self.assertEqual(
             self._lista(medio, 0x7D06, 9),
-            ["Magos", "Nazgul", "Hombres", "Elfos", "Enanos ", "Orcs", "Hobbits",
+            ["Magos", "Nazgul", "Hombres", "Elfos", "Enanos", "Orcos", "Hobbits",
              "Mago", "Gollum"])
+        # En singular la entrada 8 ya no dice 'Gollum': es texto muerto desde
+        # que Gollum es un hobbit, y su byte sobrante es el que necesitaba
+        # 'Orco'. Dice 'Enano' porque es lo que el tipo 8 dibujaba (0x8D0E).
         self.assertEqual(
             self._lista(medio, 0x7D39, 10),
-            ["Mago", "Nazgul", "Hombre", "Elfo", "Enano", "Orc", "Hobbit", "Mago",
-             "Gollum", "Mujer"])
+            ["Mago", "Nazgul", "Hombre", "Elfo", "Enano", "Orco", "Hobbit", "Mago",
+             "Enano", "Mujer"])
         # y las dos listas de detras, que el parche no toca, tienen que seguir
         # leyendose bien: es la prueba de que nada se ha desplazado
         self.assertEqual(self._lista(medio, 0x7D6A, 4),
@@ -609,19 +612,47 @@ class TestAplicacion(unittest.TestCase):
                                (0x7DFC - 1, " Bravo")):
             self.assertEqual(self._lista(cuerpos["medio"], base, 1), [esperado])
 
-    def test_los_24_nombres_siguen_siendo_24(self):
-        """La lista de 0x6B46 va separada por 0xB7; 'Brand III' y 'Bardo III'
-        miden lo mismo, asi que ni el numero de nombres ni sus posiciones
-        cambian."""
+    def test_los_24_nombres_no_los_toca_nadie(self):
+        """La lista de 0x6B46, separada por 0xB7, se queda BYTE A BYTE como la
+        trae la cinta. Hubo un parche que traducia 'Brand III' por 'Bardo III',
+        y estaba mal: Brand, nieto de Bardo el Arquero y rey de Valle, se llama
+        igual en espanol. Se quito entero el 2026-09-18."""
         cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
         antes = bytes(cuerpos["medio"])
         parchea.aplica(cuerpos)
         despues = bytes(cuerpos["medio"])
         i, j = 0x6B46 - 0x5E00, 0x6BF3 - 0x5E00
-        self.assertEqual(antes[i:j].count(0xB7), despues[i:j].count(0xB7))
+        self.assertEqual(despues[i:j], antes[i:j],
+                         "el parche no puede tocar la lista de los 24 nombres")
         nombres = despues[i:j].decode("latin-1").split("\xb7")
-        self.assertIn("Bardo III", nombres)
-        self.assertNotIn("Brand III", nombres)
+        self.assertIn("Brand III", nombres)
+        self.assertNotIn("Bardo III", nombres)
+        self.assertNotIn("Bard III ", nombres)
+        self.assertEqual(nombres[0], "Gandalf")
+        self.assertEqual(nombres[21], "Gollum")
+
+    def test_gollum_es_un_hobbit_y_nadie_se_queda_en_el_tipo_8(self):
+        """La raza de cada unidad es el nibble bajo de 0xBD00+n (bloque alto).
+        Gollum, la 21, tenia el tipo 8 -su propia raza, que en batalla dibujaba
+        como el enano por 0x8D0E- y pasa al 6, el de los hobbits, el mismo que
+        Sam, Merry y Pippin. Y el 8 tiene que quedarse VACIO: si alguna unidad
+        se quedara ahi, leeria el nombre muerto de la entrada 8."""
+        cuerpos = {n: bytearray(b) for n, b in self._origs().items()}
+        antes = bytes(cuerpos["alto"])
+        parchea.aplica(cuerpos)
+        alto = cuerpos["alto"]
+        i = 0xBD00 - 0x9E00
+        self.assertEqual(antes[i + 21] & 0x0F, 8, "en la cinta, Gollum es del tipo 8")
+        self.assertEqual(alto[i + 21] & 0x0F, 6, "con el parche tiene que ser un hobbit")
+        self.assertEqual(alto[i + 21] >> 4, antes[i + 21] >> 4, "el nibble alto no se toca")
+        for n in (6, 7, 8):     # Sam, Merry y Pippin, que ya eran hobbits
+            self.assertEqual(alto[i + n] & 0x0F, 6)
+        tipos = [alto[i + n] & 0x0F for n in range(256)]
+        self.assertEqual(tipos.count(8), 0, "el tipo 8 tiene que quedarse sin nadie")
+        self.assertEqual(tipos.count(6), 5, "los cuatro hobbits de siempre y Gollum")
+        # y el resto de la tabla, intacta: solo cambia ese byte
+        self.assertEqual(bytes(alto[i:i + 256]),
+                         antes[i:i + 21] + bytes([antes[i + 21] & 0xF0 | 6]) + antes[i + 22:i + 256])
 
     def test_la_cinta_parcheada_se_reconstruye_con_xor_valido(self):
         if not os.path.exists(os.path.join(EXT, "manifest.json")):
