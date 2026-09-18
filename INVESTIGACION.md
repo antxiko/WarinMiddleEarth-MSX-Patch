@@ -1738,6 +1738,45 @@ cero, asi que el `djnz` del bucle de celdas no contaba y solo se subia el primer
 tercio. **Un byte perdido por el VDP y una celda sin subir se ven igual en
 pantalla, pero no en el cotejo**: la pista fue que fallaran los ocho bytes.
 
+## 13) La pantalla de pre-batalla, a velocidad humana
+
+Ruben, probando la WIME04: *"el menu va aceleradisimo"*, *"va a toda putisima
+hostia, pero mucho"*. Y mando su partida grabada, que es lo que permitio
+medirlo en vez de buscarlo a ojo.
+
+**Donde**: `PANTALLA_DE_BATALLA` (0x752C), el modo 0x17 -la pantalla que enseña
+las unidades propias una a una con el cartel "Comienza la Batalla" antes de
+entrar al combate-. Arriba y abajo llaman a `SIGUIENTE_DE_LAS_TUYAS` (0x7573) y
+`ANTERIOR_DE_LAS_TUYAS` (0x757C), **una por vuelta del bucle**.
+
+**Como se encontro**: `tools/omsx_quien_lee_el_mando.tcl` carga el replay del
+tester, lo deja al final, mantiene una direccion pulsada y anota **quien llama
+a LEE_LOS_MANDOS**, leyendo la direccion de retorno de la pila. Salio un unico
+llamador -0x7567- y **96 lecturas en 3 segundos: 32 por segundo**. Esa sonda
+sirve para cualquier pantalla de la que un tester diga que va rapida.
+
+**La causa es la de siempre**: ese bucle repinta la vista de cerca, que con la
+cache pasó de 3,2 a mas de 40 vueltas por segundo. Todo lo que se movia "una
+por vuelta" se volvio ingobernable. Ya le habia pasado al cursor del mapa
+(`MI_MUEVE`), al menu de la casilla (`MI_ELECCION`) y al cursor de la batalla
+(`MI_CURSOR_BATALLA`); esta pantalla se quedo sin mirar.
+
+**El arreglo**: `MI_PREBATALLA` sustituye al `call LEE_LOS_MANDOS` de 0x7564 y
+solo deja pasar las direcciones una vez cada 10 cuadros, que a 50 Hz son 5 por
+segundo -el mismo ritmo que el cursor del mapa general-. El disparo y la tecla
+1 pasan siempre: son los que salen de la pantalla. Y sin ninguna direccion
+pulsada el contador se deja listo, asi que un toque suelto cambia de unidad al
+instante: lo que se frena es MANTENER pulsado.
+
+**Medido despues**, con la ROM nueva (`tools/omsx_prebatalla.tcl`):
+
+    antes   32 cambios de unidad por segundo
+    ahora   5,33 por segundo        6 veces mas lento
+
+Y en esa misma medida el bucle llego a dar **2.554 vueltas por segundo** y los
+cambios siguieron siendo 5,33: van **al reloj y no al bucle**, que es
+exactamente lo que hacia falta.
+
 ## Lo que queda abierto
 
 - **Nadie ha jugado una partida entera** con el mapa repintado; Araubi si jugo
