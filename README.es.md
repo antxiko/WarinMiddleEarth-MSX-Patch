@@ -266,6 +266,22 @@ clavado, ninguna otra lo lleva -o sea que el borrado funciona- y el lienzo
 sigue limpio. El cotejo se declara INUTIL si entre los dos repintados ninguna
 celda se queda sin marca, para no cantar victoria sin haber probado nada.
 
+Y **el fondo de la batalla toma el color del terreno** donde se pelea, en vez
+del mismo verde siempre: llano verde oscuro, bosque verde claro, rio azul
+claro, camino amarillo oscuro y montaña rojo oscuro -que es lo mas parecido a
+marron que da un MSX1, que no tiene-. Sale de un solo byte, porque el juego ya
+guarda el terreno en 0x8DEA al montar la batalla, tres instrucciones antes de
+elegir el color (`make verifica_marcas`, y los grupos de terreno en
+[INVESTIGACION.md](INVESTIGACION.md)).
+
+Y de paso se arreglaron **las figuras rotas**: en el tablero, 1.544 bytes de
+4.096 no llegaban a la VRAM, porque las dos rutinas del juego que lo suben van
+a 22 ciclos por byte y el TMS9918 no admite dos accesos a menos de unos 29. No
+lo causo el parche de la batalla, lo destapo: antes el tablero se resubia
+entero cada vuelta y lo que se caia se arreglaba solo. Subiendo a 37 ciclos
+-un 1,3 % de la vuelta- el cotejo pasa de 1.544 bytes a **cero**
+(`make verifica_batalla`).
+
 La ROM que se juega es `war_unificada.rom` (`make rom_unificada`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 

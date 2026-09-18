@@ -280,6 +280,15 @@ ARMA_LOS_DOS_BANDOS_ORIG = bytes.fromhex("cd0406")
 # funden en una mancha.
 DIBUJO_DE_UNIDAD = 0x6AF1        # el `call ATRIBUTOS_A_VRAM` con el que acaba 0x6AAF
 DIBUJO_DE_UNIDAD_ORIG = bytes.fromhex("cd0406")
+# EL FONDO DE LA BATALLA, SEGUN EL TERRENO. Todas las batallas se peleaban
+# sobre el mismo verde, y el color sale de un unico byte: el `ld a,020h` con el
+# que COMPRIME_EL_MAPA (0x9394) remata antes de saltar a BORRA_PANTALLA.
+# Medido con tools/omsx_fondo_batalla.tcl: durante una batalla entera, los
+# atributos del tablero tienen UN SOLO escritor, el `lddr` de 0x7F37, o sea ese
+# mismo camino. Y el terreno ya esta guardado en 0x8DEA tres instrucciones
+# antes (0x902F), asi que MI_FONDO solo tiene que mirarlo en una tabla de 16.
+FONDO_DE_LA_BATALLA = 0x93AE     # `ld a,020h` + `jp BORRA_PANTALLA`
+FONDO_DE_LA_BATALLA_ORIG = bytes.fromhex("3e20c3127f")
 # Y EL INFILTRADO DEL CENTRO DEL CAMPO. Al montar la batalla, 0x914B llama a
 # DEJA_DE_LLEVARLA_A_MANO (0x8C6C), que ademas de dejar el cursor y el
 # despachador en su sitio termina plantando en la casilla del CENTRO la unidad
@@ -1371,6 +1380,15 @@ def main(argv):
             bytes([0xCD]) + sim_nombres["MI_MARCAS"].to_bytes(2, "little"),
             "cada unidad del mapa lleva un dibujo de 8x8 en su celda, y no solo "
             "un color (MI_MARCAS)"))
+        # EL FONDO DE LA BATALLA. Los cinco bytes del `ld a,020h` + el `jp`,
+        # por un salto a MI_FONDO: el mismo salto, pero con el atributo que le
+        # toque al terreno donde se pelea. Sobran dos bytes, que van a `nop`.
+        parches_vista.append(parchea(
+            FONDO_DE_LA_BATALLA, FONDO_DE_LA_BATALLA_ORIG,
+            bytes([0xC3]) + sim_nombres["MI_FONDO"].to_bytes(2, "little")
+            + bytes([0x00, 0x00]),
+            "el fondo de la batalla toma el color del terreno donde se pelea, "
+            "en vez del mismo verde siempre (MI_FONDO)"))
         # La tecla F: el montaje y el dibujo del tablero pasan por MI_TURBO,
         # que con el modo rapido encendido solo deja pintar una vuelta de cada
         # PINTA_CADA. El resto del bucle no se toca.

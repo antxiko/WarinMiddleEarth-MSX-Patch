@@ -511,6 +511,19 @@ verifica_mapa_parche: war_unificada.rom work/war_parche_sin_vista.rom
 	@grep -E "DIBUJA_EL_MAPA|vuelta del bucle" work/lienzop_ref/lienzo.log work/lienzop_nuevo/lienzo.log
 	python3 tools/coteja_mapa.py work/lienzop_nuevo work/lienzop_ref work/lienzop_png --plan work/unificada/plan.json --work work/cuerpos_parche
 
+# EL TABLERO DE LA BATALLA: ¿llega a la VRAM todo lo que el juego dibuja?
+# Con la pantalla encendida el TMS9918 no admite dos accesos a menos de ~29
+# ciclos, y las dos rutinas del juego que suben el tablero van a 22: de ahi
+# salian las figuras rotas que vio el usuario -1.544 bytes de 4.096 caidos,
+# medidos-. Se entra en una batalla de verdad, se vuelca el bufer del juego y
+# la VRAM, y se exige que sean IDENTICOS en las filas del tablero.
+.PHONY: verifica_batalla
+verifica_batalla: war_unificada.rom
+	@rm -rf work/bat_coteja
+	WAR_OUT="$(abspath work/bat_coteja)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_fondo_batalla.tcl
+	@grep -E "BATALLA|volcado" work/bat_coteja/fondo_batalla.log
+	python3 tools/coteja_batalla.py work/bat_coteja
+
 # LA MARCA DE LAS UNIDADES: que el dibujo se pone donde toca y, sobre todo,
 # que se BORRA al moverse la unidad. Se deja correr el bucle hasta el quinto
 # repintado del mapa -uno cada 256 vueltas- y se cotejan dos de ellos con la
