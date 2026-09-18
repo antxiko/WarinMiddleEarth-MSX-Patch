@@ -169,6 +169,7 @@ class TestLaRom(unittest.TestCase):
             todos.append(self.plan["mapa"]["parche"])
         todos += self.plan.get("panel", {}).get("parches", [])
         todos += self.plan.get("vista", {}).get("parches", [])
+        todos += self.plan.get("heroes", {}).get("parches", [])
         return todos
 
     def test_cabecera_ab_y_tamano(self):
@@ -196,7 +197,7 @@ class TestLaRom(unittest.TestCase):
         # sobre lo esperado, que para eso el plan dice cuales son y donde caen.
         for q in self.parches():
             bloque = q.get("bloque", "medio")
-            o = q["dir"] - {"medio": 0x5E00, "bajo": 0x0190}[bloque]
+            o = q["dir"] - {"medio": 0x5E00, "bajo": 0x0190, "alto": 0x9E00}[bloque]
             viejo, nuevo = bytes.fromhex(q["orig"]), bytes.fromhex(q["nuevo"])
             self.assertEqual(esperado[bloque][o:o + len(viejo)], viejo,
                              "el parche de 0x%04X no cae sobre lo que dice" % q["dir"])
@@ -267,15 +268,19 @@ class TestLaRom(unittest.TestCase):
         bajo, medio, alto = (lee(os.path.join(self.CUERPOS, n + '.raw')) for n in ('bajo', 'medio', 'alto'))
         # la RAM: como la deja el cargador de la cinta en 0xD741, con los
         # parches que el plan declara puestos en su bloque: el medio (que aqui
-        # aun esta en 0x3F4F, sin recolocar) o el bajo (0x044B, la vista).
+        # aun esta en 0x3F4F, sin recolocar), el bajo (0x044B, la vista) o el
+        # alto (las tablas de las 256 unidades, con los dos heroes nuevos).
+        cuerpos = dict(medio=medio, bajo=bajo, alto=alto)
+        orgs = dict(medio=0x5E00, bajo=0x0190, alto=0x9E00)
         for q in self.parches():
             nuevo = bytes.fromhex(q["nuevo"])
-            if q.get("bloque", "medio") == "medio":
-                o = q["dir"] - 0x5E00
-                medio = medio[:o] + nuevo + medio[o + len(nuevo):]
-            else:
-                o = q["dir"] - 0x0190
-                bajo = bajo[:o] + nuevo + bajo[o + len(nuevo):]
+            bloque = q.get("bloque", "medio")
+            o = q["dir"] - orgs[bloque]
+            c = cuerpos[bloque]
+            self.assertEqual(c[o:o + len(nuevo)], bytes.fromhex(q["orig"]),
+                             "el parche de 0x%04X no cae sobre lo que dice" % q["dir"])
+            cuerpos[bloque] = c[:o] + nuevo + c[o + len(nuevo):]
+        bajo, medio, alto = cuerpos["bajo"], cuerpos["medio"], cuerpos["alto"]
         # Con las finales en la ROM, del bloque bajo solo viaja el codigo: las
         # dos pantallas se quedan donde estan y se descomprimen al acabar la
         # partida. Esos 13.824 bytes de RAM tienen que quedar SIN TOCAR, que es
@@ -350,6 +355,188 @@ class TestLaRomParcheConMusica(TestLaRom):
     CUERPOS = os.path.join(WORK, "cuerpos_parche")
 
 
+class TestLosDosHeroesNuevos(unittest.TestCase):
+    """Tom Bombadil y Radagast, las unidades 0x18 y 0x19 del cartucho.
+
+    Se comprueba sobre la RAM que deja el interprete del plan, no sobre lo que
+    el codigo dice que va a hacer: la lista de nombres mudada, las dos ranuras
+    y que no se haya perdido ni un enano por el camino. Y las direcciones
+    salen del PLAN -de los parches que la ROM declara-, no escritas aqui, que
+    es como no se quedan viejas.
+    """
+
+    ROM = os.path.join(RAIZ, "war_unificada.rom")
+    DERIVADOS = os.path.join(WORK, "unificada")
+    CUERPOS = CUERPOS_PARCHE
+
+    # Los 24 nombres de la cinta, en orden. Escritos aqui a proposito: si el
+    # parche mangara uno al mudar la lista, el test tiene que cantarlo, y para
+    # eso la referencia no puede salir del mismo sitio que lo comprobado.
+    DE_LA_CINTA = ["Gandalf", "Aragorn", "Boromir", "Legolas", "Gimli", "Frodo",
+                   "Sam", "Merry", "Pippin", "Elrond", "Dain II", "Celeborn",
+                   "Thranduil", "Brand III", "Theodred", "Theoden", "Eowyn",
+                   "Eomer", "Imrahil", "Denethor", "Faramir", "Gollum",
+                   "Sauron", "Saruman"]
+    NUEVOS = ["Tom Bombadil", "Radagast"]
+
+    def setUp(self):
+        plan = os.path.join(self.DERIVADOS, "plan.json")
+        hace_falta(self.ROM, plan)
+        self.rom = lee(self.ROM)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        self.parches = {q["dir"]: q for q in (self.plan.get("vista", {}).get("parches", [])
+                                              + self.plan.get("heroes", {}).get("parches", []))}
+        self.ram = ejecuta_plan(self, self.rom, self.plan)[0]
+
+    def operando(self, dir_):
+        """El valor que el plan declara meter en ese operando del juego."""
+        self.assertIn(dir_, self.parches, "la ROM no declara parche en 0x%04X" % dir_)
+        return bytes.fromhex(self.parches[dir_]["nuevo"])
+
+    def palabra(self, dir_):
+        return int.from_bytes(self.operando(dir_), "little")
+
+    def la_lista(self):
+        """La lista de nombres tal y como el juego la va a leer en la RAM."""
+        return bytes(self.ram[self.palabra(0x6982):][:self.palabra(0x6985)])
+
+    def test_la_lista_mudada_lleva_los_24_de_la_cinta_y_los_dos_nuevos(self):
+        """BUSCA_EL_NOMBRE (0x6981) cuenta separadores 0xB7 con un `cpir`, asi
+        que lo que importa es el orden y que no falte ni sobre ninguno: el
+        nombre numero n es el de la unidad n."""
+        nombres = self.la_lista().decode("latin-1").split("\xb7")
+        self.assertEqual(nombres[-1], "", "la lista tiene que acabar en separador")
+        self.assertEqual(nombres[:-1], self.DE_LA_CINTA + self.NUEVOS)
+        # Y el largo del `cpir` es el largo de verdad: si se quedara corto, el
+        # `cpir` pararia antes y los ultimos nombres no se encontrarian.
+        self.assertEqual(self.palabra(0x6985), len(self.la_lista()))
+        self.assertEqual(self.la_lista().count(0xB7), len(self.DE_LA_CINTA) + len(self.NUEVOS))
+
+    def test_los_24_de_la_cinta_van_byte_a_byte_como_en_0x6b46(self):
+        """El tramo viejo de 0x6B46 sigue en su sitio en el bloque medio -no se
+        borra, simplemente ya no lo lee nadie- y la lista nueva empieza con
+        exactamente esos 181 bytes."""
+        medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+        i = 0x6B46 - 0x5E00
+        de_la_cinta = medio[i:i + 0xB5]
+        self.assertEqual(de_la_cinta.count(0xB7), 24)
+        self.assertEqual(self.la_lista()[:len(de_la_cinta)], de_la_cinta,
+                         "los 24 nombres de la cinta tienen que ir intactos y por delante")
+
+    def test_el_corte_del_menu_de_entrega_cae_en_el_0xb7_de_faramir(self):
+        """MENU_DE_ENTREGA mete un 0 ahi para que la lista se acabe antes de
+        Gollum, y se lo devuelve al salir. Si cayera en otro sitio, el menu
+        ofreceria a Sauron y a Saruman, o se comeria un nombre."""
+        corte = self.palabra(0x72F8)
+        self.assertEqual(self.palabra(0x7309), corte, "las dos escrituras tienen que ir al mismo byte")
+        self.assertEqual(self.ram[corte], 0xB7, "el corte tiene que caer en un separador")
+        cabecera = self.palabra(0x7302)
+        hasta = bytes(self.ram[cabecera + 2:corte]).decode("latin-1").split("\xb7")
+        self.assertEqual(hasta, ["Vuelve"] + self.DE_LA_CINTA[:21],
+                         "el menu tiene que ir de Vuelve a Faramir, sin Gollum")
+        self.assertNotIn("Tom Bombadil", hasta)
+        self.assertNotIn("Radagast", hasta)
+
+    def test_la_cabecera_del_menu_es_la_de_la_cinta(self):
+        """Dos bytes: renglones y anchura en columnas. LISTA_DE_UNA_FILA
+        (0x640A) centra la lista con ellos, asi que si cambian se mueve el
+        menu entero."""
+        cabecera = self.palabra(0x7302)
+        medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+        i = 0x6B3D - 0x5E00
+        self.assertEqual(bytes(self.ram[cabecera:cabecera + 2]), medio[i:i + 2])
+        self.assertEqual(bytes(self.ram[cabecera + 2:cabecera + 9]), b"Vuelve\xb7")
+
+    def test_los_dos_topes_por_numero_de_unidad_suben_a_0x1a(self):
+        """0x6E18 (a quien persigue) y 0x6F2C (la ficha). Sin esto las dos
+        ranuras nuevas saldrian como 'Formacion de 0 Enanos'."""
+        self.assertEqual(self.operando(0x6E19), bytes([0x1A]))
+        self.assertEqual(self.operando(0x6F2D), bytes([0x1A]))
+
+    def _alto(self):
+        """El bloque alto tal y como queda en la RAM, en 0x88B8, antes de que
+        0x0190 lo recoloque en 0x9E00."""
+        alto = lee(os.path.join(self.CUERPOS, "alto.raw"))
+        return bytes(self.ram[0x88B8:0x88B8 + len(alto)]), alto
+
+    def test_las_dos_ranuras_son_heroes_de_su_raza_y_de_tu_bando(self):
+        despues, antes = self._alto()
+
+        def dato(base, n):
+            return despues[base - 0x9E00 + n]
+
+        for n, tipo, nombre in ((0x18, 4, "Tom Bombadil"), (0x19, 0, "Radagast")):
+            self.assertEqual(dato(0xBD00, n) & 0x0F, tipo, "%s: la raza" % nombre)
+            self.assertEqual(dato(0xBD00, n) >> 6, 0, "%s: tiene que ser de tu bando" % nombre)
+            self.assertEqual(dato(0xBD00, n) & 0x10, 0, "%s: no empieza con el Anillo" % nombre)
+            self.assertEqual(dato(0xC500, n), 0, "%s: un heroe va solo, sin formacion" % nombre)
+            # en el mapa, y quieto: el destino es la casilla en la que esta
+            self.assertNotEqual((dato(0xB900, n), dato(0xBA00, n)), (0, 0),
+                                "%s: en (0,0) no se le sembraria en el mapa" % nombre)
+            self.assertEqual((dato(0xBB00, n), dato(0xBC00, n)),
+                             (dato(0xB900, n), dato(0xBA00, n)), "%s: quieto donde esta" % nombre)
+            # y los seis valores, en la escala 1..10 de la cinta
+            for base in (0xC000, 0xC100):
+                for v in (dato(base, n) & 0x0F, dato(base, n) >> 4):
+                    self.assertTrue(1 <= v <= 10, "%s: %d se sale de la escala" % (nombre, v))
+        # Radagast es Gandalf menos dos puntos en los cuatro
+        for base in (0xC000, 0xC100):
+            for desplaza in (0, 4):
+                gandalf = (dato(base, 0x00) >> desplaza) & 0x0F
+                radagast = (dato(base, 0x19) >> desplaza) & 0x0F
+                self.assertEqual(radagast, gandalf - 2, "Radagast va dos puntos por debajo de Gandalf")
+        for base in (0xC200, 0xC300):
+            self.assertLess(dato(base, 0x19), dato(base, 0x00), "y tambien en Energico y Decidido")
+
+    def test_las_dos_casillas_son_pisables_por_su_raza(self):
+        """El coste de terreno sale de 0x6D47 + tipo*16; negativo es
+        intransitable. Si se les planta en el mar no se les puede mover."""
+        import render_mapa_completo as R
+        despues, _ = self._alto()
+        mapa = R.descomprime_el_mapa(despues)
+        medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+        for n, nombre in ((0x18, "Tom Bombadil"), (0x19, "Radagast")):
+            x = despues[0xB900 - 0x9E00 + n]
+            y = despues[0xBA00 - 0x9E00 + n]
+            tipo = despues[0xBD00 - 0x9E00 + n] & 0x0F
+            terreno = mapa[(x + 1) * 102 + (y + 1)] & 0x0F
+            coste = medio[0x6D47 - 0x5E00 + tipo * 16 + terreno]
+            self.assertLess(coste, 128,
+                            "%s en (%d,%d): el terreno %d no lo pisa un tipo %d"
+                            % (nombre, x, y, terreno, tipo))
+
+    def test_no_se_pierde_ni_un_enano(self):
+        """Las dos ranuras eran pelotones de enanos de (22,12). Sus hombres se
+        reparten entre los cuatro de (23,15): el total del bando tiene que
+        seguir siendo el mismo."""
+        despues, antes = self._alto()
+        i = 0xC500 - 0x9E00
+        j = 0xBD00 - 0x9E00
+
+        def enanos(cuerpo):
+            return sum(cuerpo[i + n] for n in range(0x18, 0x78) if (cuerpo[j + n] & 0x0F) == 4)
+
+        self.assertEqual(enanos(despues), enanos(antes),
+                         "el parche no puede perder ni sumar enanos")
+        self.assertEqual(antes[i + 0x18] + antes[i + 0x19], 39, "los que habia en las dos ranuras")
+        for n in range(0x1A, 0x1E):
+            self.assertGreater(despues[i + n], antes[i + n], "la formacion 0x%02X tiene que crecer" % n)
+
+    def test_el_resto_de_las_256_ranuras_no_se_toca(self):
+        """Solo cambian las dos ranuras nuevas y los cuatro contadores de los
+        enanos. Cualquier otro byte de las siete tablas seria un destrozo."""
+        despues, antes = self._alto()
+        permitido = {0x18, 0x19}
+        for base in (0xB900, 0xBA00, 0xBB00, 0xBC00, 0xBD00, 0xC000, 0xC100,
+                     0xC200, 0xC300, 0xC500):
+            o = base - 0x9E00
+            cambiados = {n for n in range(256) if despues[o + n] != antes[o + n]}
+            esperado = permitido | ({0x1A, 0x1B, 0x1C, 0x1D} if base == 0xC500 else set())
+            self.assertTrue(cambiados <= esperado,
+                            "0x%04X: tambien cambian %s" % (base, sorted(cambiados - esperado)))
+
+
 class TestLaMusica(unittest.TestCase):
     """Lo que solo tiene sentido con musica: donde cae, que cambia y que no."""
 
@@ -369,6 +556,7 @@ class TestLaMusica(unittest.TestCase):
             todos.append(self.plan["mapa"]["parche"])
         todos += self.plan.get("panel", {}).get("parches", [])
         todos += self.plan.get("vista", {}).get("parches", [])
+        todos += self.plan.get("heroes", {}).get("parches", [])
         return todos
 
     def test_cabe_en_el_hueco_y_no_se_sale_del_ultimo_banco(self):

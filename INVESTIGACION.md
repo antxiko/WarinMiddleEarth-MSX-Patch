@@ -613,12 +613,13 @@ encontrado llamador**, que no es lo mismo que demostrar que estan muertos.
 | 8 · Gollum, hobbit | hecho, verificado | un byte (0xBD15): era la unica unidad de tipo 8 de las 256, y ese tipo se dibujaba como el enano; en el juego corriendo, tipo 6 como Sam, Merry y Pippin |
 | 9 · el cursor de la batalla | hecho, verificado | 3,00 casillas/s con el limite y 4,00 sin el, con el bucle a 7 vueltas/s (tools/omsx_cursor_batalla.tcl, VG-8020) |
 | 10 · los sprites repintados | hecho, verificado | el guante en azul y los cursores sin el bloque opaco; el cotejo del mapa da 85 pixels distintos, los mismos que enciende guante.png, y 0 fuera |
+| 11 · dos heroes mas | hecho, verificado | Tom Bombadil y Radagast en las ranuras 0x18 y 0x19; sus fichas, con su nombre, leidas del buffer de texto con el juego corriendo |
 
 **1.578 bytes en 195 entradas de la tabla, ninguna fuera de ella y ninguna
 desplazada**: 29 escritas a mano (568 bytes de codigo, punteros y texto) y 166
-sacadas de los lienzos (1.010 de dibujos repintados). `make test` = 178 en
-verde: 82 del cartucho, 33 del parche, 32 de los lienzos, 10 del cursor, 9 de
-los listados, 6 del mapa, 3 del editor y 3 mas.
+sacadas de los lienzos (1.010 de dibujos repintados). `make test` = 192 en
+verde: 91 del cartucho, 33 del parche, 32 de los lienzos, 10 del cursor, 9 de
+los listados, 6 del mapa, 8 de los dos editores y 3 mas.
 
 ## Como se reparte
 
@@ -1385,6 +1386,139 @@ pixel; ahora exige **cero diferencias fuera del guante** y que las de dentro
 sean **exactamente los pixels que enciende `guante.png`**. Si el guante se
 moviera de sitio, se comiera una fila o dejara de pintar algo, se ve. Da 38
 comprobaciones y 0 fallos, con 85 pixels distintos y 0 fuera.
+
+## 9) Dos heroes mas: Tom Bombadil y Radagast — HECHO y VERIFICADO
+
+Lo pidio el usuario el 2026-09-18: Tom Bombadil de clase enano y Radagast como
+Gandalf pero un par de puntos por debajo. Antes de tocar nada se midio si cabia,
+y lo que salio fue que **cabe, pero no donde uno esperaria**.
+
+### Lo que el binario dice: no hay sitio en ninguno de los dos lados
+
+**Las 256 ranuras de unidad estan TODAS ocupadas.** Censados los siete arrays
+paralelos del bloque alto (0xB900 columna, 0xBA00 fila, 0xBB00/0xBC00 destino,
+0xBD00 tipo y bando, 0xC000-0xC300 los seis valores, 0xC500 efectivos): cero
+ranuras en (0,0) -que es como el juego dice "esta no esta en el mapa"- y
+ninguna de las 96 formaciones aliadas con 0 efectivos. No hay ranura de regalo.
+
+**Y la lista de nombres esta encajonada.** Los 24 nombres de `BUSCA_EL_NOMBRE`
+(0x6981) viven en 0x6B46 y ocupan **181 bytes clavados**. Delante lleva la
+cabecera del menu de entrega del Anillo -0x6B3D, renglones y columnas- con
+"Vuelve" detras; y **en 0x6BFB justo** empieza la red de caminos de 64 puntos
+que lee 0x69C6. Los 22 bytes que piden los dos nombres nuevos no caben.
+
+### Lo que si se puede: mudarla
+
+Solo **cinco sitios** miran esa lista, y eso es lo que la hace mudable:
+
+| donde | que es |
+|-------|--------|
+| 0x6982 | el puntero de `BUSCA_EL_NOMBRE` |
+| 0x6985 | el largo, que es el tope del `cpir` que cuenta separadores 0xB7 |
+| 0x7302 | el puntero a la cabecera, en `MENU_DE_ENTREGA` (0x72F5) |
+| 0x72F8 y 0x7309 | las dos escrituras del byte de CORTE, el 0xB7 de "Faramir" |
+
+Mas dos topes por numero de unidad, que suben de 0x17 y 0x18 a **0x1A**:
+0x6E19 (a quien persigue) y 0x6F2D (la ficha). Barridos todos los `cp` por
+numero de unidad del listado, el resto son el filtro de bando (0x16, 0x17 y
+0x78), que no tiene nada que ver.
+
+La lista mudada -cabecera, "Vuelve" y 26 nombres- vive en
+`src/cartucho/nombres.asm` y viaja con el resto del codigo nuevo.
+
+### Por que esto es del CARTUCHO y no de la cinta
+
+Porque en la cinta **no hay donde meterla**. El mapa de RAM
+(`tools/mapa_ram.py`) deja claro que la unica RAM de fiar es la **ajena a la
+cinta**, y un IPS solo puede escribir donde la cinta carga. Los huecos que se
+ven dentro de los bloques son bytes que la cinta trae y que nadie leyo *en la
+partida medida*, que no es lo mismo que "nadie los lee nunca". Asi que los dos
+heroes son cosa del cartucho, como la musica, el mapa dibujado, la vista de
+cerca y los sprites. **El IPS de la cinta no se toca**: sigue en 2.088 bytes y
+50 registros.
+
+### De donde salen las dos ranuras
+
+De la **0x18 y la 0x19**, que eran dos pelotones de enanos plantados los dos en
+(22,12). Van pegadas detras de Saruman (0x17), que es lo que deja la lista de
+nombres contigua y el numero de nombre igual al numero de unidad.
+
+**Y no se pierde ni un enano**: sus 31 + 8 hombres se reparten entre las cuatro
+formaciones de (23,15) -0x1A a 0x1D-, que pasan de 12, 4, 19 y 24 a 22, 14, 29
+y 33. Un test lo exige sumando los efectivos de todas las formaciones de tipo 4
+antes y despues.
+
+### Los dos tipos ya existian
+
+No hubo que inventar figura ni fuerza. La raza es el nibble bajo de 0xBD00+n:
+
+- **Tom Bombadil es del tipo 4**, Enano, el de Gimli: dibujo, vida y golpe de
+  `NUMEROS_DE_LA_FIGURA` (0x8CF7), fuerza de 0x6D47 + tipo*16 y costes de
+  terreno de 0x6D37.
+- **Radagast es del tipo 0**, Mago, el de Gandalf, con el mismo trato de figura
+  fuerte que le da `CUATRO_SI_ES_TIPO_0_1_O_7` (0x8DC0).
+
+Y lo de "un par de puntos menos" sale gratis, porque los seis valores son **por
+ranura**. Medida la escala sobre los 22 heroes de la cinta, va de 1 a 10 y
+Gandalf es el techo: Valioso 8, Habil 10, Duro 10, Bravo 6, Energico 158,
+Decidido 192. Radagast va **dos puntos por debajo en los cuatro** (6, 8, 8, 4) y
+tambien en Energico y Decidido; un test lo comprueba restando, no leyendo una
+constante.
+
+### Donde caen
+
+Medido sobre la tabla de sitios (0x7A5E) y el mapa descomprimido
+-`0xCC00 + (x+1)*102 + (y+1)`-, con los costes de 0x6D47 por delante: los
+terrenos 1 y 2 no los pisa nadie.
+
+| heroe | casilla | terreno | por que ahi |
+|-------|---------|---------|-------------|
+| Tom Bombadil | (50,28) | 10 | el Bosque Viejo: al este de Los Gamos (48,27) y al oeste de Bree (53,25) |
+| Radagast | (83,30) | 0 | Rhosgobel: al este del Anduin (la columna de terreno 3 en x=80), al oeste del Bosque Negro (los 13 empiezan en x=86) y al norte de Dol Guldur (84,39) |
+
+### Lo que NO hacen: llevar el Anillo
+
+`MENU_DE_ENTREGA` corta la lista antes de Gollum -mete un 0 en el 0xB7 de
+"Faramir" y se lo devuelve al salir-, y los dos nuevos van detras de Saruman.
+Asi que **no salen en el menu de entrega**. Es una decision del usuario, no un
+descuido: mover el corte metaria tambien a Gollum, a Sauron y a Saruman, y
+ademas el menu es de 9 columnas y "Tom Bombadil" son 12 letras.
+
+### La opcion `--heroes`, y por que va aparte de `--vista`
+
+Las dos ranuras se parchean con `--heroes` y los nombres con `--vista`, que es
+donde viaja `nombres.asm`. **No es capricho**: la ROM de referencia con la que
+se cotejan el mapa general y la vista de cerca
+(`work/war_parche_sin_vista.rom`) se monta sin `--vista`, y si no llevara las
+mismas unidades los cotejos compararian **dos partidas distintas**. Con las dos
+ROMs jugando la misma partida, la unica diferencia vuelve a ser lo que el
+cotejo quiere medir.
+
+Se vio en el sitio: la primera version metia todo junto y el cotejo del mapa
+canto 87 pixels distintos fuera del guante, y el de la vista 12 fallos y 44
+celdas. No eran un fallo del parche -eran las marcas de los dos heroes nuevos y
+los numeros de las formaciones de enanos, que la sonda de la vista mira a
+proposito-, pero un cotejo que no puede distinguir eso no sirve.
+
+### Lo comprobado
+
+- **En el emulador, con el juego corriendo** (`tools/omsx_ficha_gollum.tcl`,
+  VG-8020): el cursor a su casilla, fuego, y el buffer de texto de la ficha
+  (0x7C17) leido. Sale **"Tom Bombadil"** en la unidad 24 y **"Radagast"** en la
+  25. Y la regresion, que es lo que de verdad prueba que la mudanza no rompio
+  nada: **Gandalf, Gollum y Brand III** siguen saliendo con su nombre.
+- **El cotejo del mapa general** pasa de 38 a **50 comprobaciones, 0 fallos**, y
+  las doce nuevas exigen que las dos ROMs marquen la celda que le toca a cada
+  heroe por su casilla -columna `x >> 2`, fila `(y - 4) >> 2`, como lo calcula
+  `MARCA_UNA_UNIDAD` (0x6AC5)-. Esa es la prueba de que un heroe nuevo SE VE en
+  el mapa general.
+- **El cotejo de la vista de cerca** (`make verifica_vista_parche`), en verde.
+- **Nueve tests nuevos** (`TestLosDosHeroesNuevos`), sobre la RAM que deja el
+  interprete del plan, no sobre lo que el codigo dice que hace. Y las
+  direcciones salen del plan, no escritas a mano.
+- **Y muerden**: puesto Radagast en una casilla de mar, el test del terreno
+  canta; cambiada UNA letra de "Gimli" en la lista, cantan tres.
+- **El kit sin Python** monta la ROM identica byte a byte.
 
 ## Lo que queda abierto
 

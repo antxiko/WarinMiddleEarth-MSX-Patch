@@ -141,6 +141,23 @@ tipo 8 **como el 4**, asi que Gollum salia con la figura del enano. Con el 6 es
 un hobbit en todo -nombre, figura, fuerza y costes de terreno-, igual que Sam,
 Merry y Pippin. **Un byte.**
 
+**8 · Dos heroes mas: Tom Bombadil y Radagast.** Solo en el cartucho, y por una
+razon medida: las 256 ranuras de unidad estan TODAS ocupadas y la lista de los
+24 nombres (`0x6B46`) ocupa **181 bytes clavados**, con la red de caminos
+empezando en `0x6BFB` justo detras. No cabe ni un byte, asi que la lista se
+**muda entera** a la RAM libre que lleva el cartucho -cinco punteros y dos topes
+por numero de unidad- y crece a 26 nombres. En la cinta eso no se puede hacer:
+no hay RAM de fiar donde ponerla, y el IPS solo escribe donde la cinta carga.
+
+Las dos ranuras salen de la **0x18 y la 0x19**, dos pelotones de enanos
+plantados los dos en (22,12); **sus 39 hombres se reparten** entre las cuatro
+formaciones de (23,15), asi que no se pierde ni un soldado. Bombadil es del
+**tipo 4** (Enano) y vive en el Bosque Viejo, en (50,28), al este de Los Gamos;
+Radagast es del **tipo 0** (Mago), el de Gandalf, y vive en Rhosgobel, en
+(83,30), entre el Anduin y el Bosque Negro. Los seis valores de Radagast van
+**dos puntos por debajo de los de Gandalf**. Lo unico que no pueden es llevar el
+Anillo: el menu de entrega corta la lista antes de Gollum.
+
 Ninguna de estas imagenes es una captura de pantalla: el juego resube la
 pantalla al VDP sin parar, asi que dos fotos del *mismo* estado separadas tres
 segundos ya salen con el 37 % de los pixels distintos. Estan dibujadas desde el
