@@ -1464,9 +1464,35 @@ No hubo que inventar figura ni fuerza. La raza es el nibble bajo de 0xBD00+n:
 Y lo de "un par de puntos menos" sale gratis, porque los seis valores son **por
 ranura**. Medida la escala sobre los 22 heroes de la cinta, va de 1 a 10 y
 Gandalf es el techo: Valioso 8, Habil 10, Duro 10, Bravo 6, Energico 158,
-Decidido 192. Radagast va **dos puntos por debajo en los cuatro** (6, 8, 8, 4) y
-tambien en Energico y Decidido; un test lo comprueba restando, no leyendo una
-constante.
+Decidido 192.
+
+**Tom Bombadil lleva los seis valores de Gandalf, clavados**, y no escritos a
+mano: se copian de la ranura 0 al montar la ROM, asi que no pueden separarse si
+algun dia cambia Gandalf. En pantalla las dos fichas salen con los mismos
+numeros -192, 010, "Es muy", "Virtuoso"-; lo unico que cambia es el nombre.
+**Radagast va dos puntos por debajo en los cuatro** (6, 8, 8, 4) y tambien en
+Energico y Decidido. Los dos tests comprueban la RELACION -igualdad en uno,
+resta en el otro-, no una constante escrita al lado.
+
+Y la escala de la ficha, medida sobre `REPARTE_EN_OCHO` (0x6E88), que parte el
+valor en ocho tramos de dos y elige adverbio en 0x7D9A:
+
+| valor | adverbio |
+|-------|----------|
+| 0-1 | `No es muy` |
+| 2-3 | `No` |
+| 4-5 | `No muy` |
+| 6-7 | `Es algo` |
+| 8-9 | (sin adverbio) |
+| 10-11 | `Es muy` |
+| 12-13 | `Muy` |
+| 14-15 | `Realmente` |
+
+Los dos tramos de arriba **no los alcanza nadie en la cinta**, porque ningun
+valor pasa de 10; con los nibbles solo se llega ahi poniendolos a 12 o mas.
+Queda apuntado por si algun dia se quiere a alguien fuera de la escala. (Y no
+hay riesgo de desbordar el contador de Decidido: `SUMA_UN_MES_A_LOS_CONTADORES`
+(0x834A) **satura en 255**.)
 
 ### Donde caen
 

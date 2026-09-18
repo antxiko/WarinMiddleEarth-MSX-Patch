@@ -155,8 +155,9 @@ formaciones de (23,15), asi que no se pierde ni un soldado. Bombadil ocupa el
 **tipo 8** -el que dejo libre Gollum al pasar a hobbit, y que aqui se rebautiza
 **"Eterno"**- y vive en el Bosque Viejo, en (50,28), al este de Los Gamos;
 Radagast es del **tipo 0** (Mago), el de Gandalf, y vive en Rhosgobel, en
-(83,30), entre el Anduin y el Bosque Negro. Los seis valores de Radagast van
-**dos puntos por debajo de los de Gandalf**. Lo unico que no pueden es llevar el
+(83,30), entre el Anduin y el Bosque Negro. **Bombadil lleva los seis valores de
+Gandalf**, copiados de su ranura al montar la ROM y no escritos a mano, y los de
+**Radagast van dos puntos por debajo**. Lo unico que no pueden es llevar el
 Anillo: el menu de entrega corta la lista antes de Gollum.
 
 El byte que le falta a "Eterno" en cada una de las dos tablas de raza sale de la
