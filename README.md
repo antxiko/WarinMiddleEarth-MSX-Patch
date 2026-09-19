@@ -276,6 +276,32 @@ re-uploaded whole every turn, so whatever fell got fixed on the next one.
 Uploading at 37 cycles -1.3 % of a turn- takes the check from 1,544 bytes to
 **zero** (`make verifica_batalla`).
 
+And **all the dead RAM that could be reclaimed has been**, measured rather than
+assumed: five recorded games with watchpoints -one on tape and four on the
+cartridge, three of them reaching battles- say which bytes nobody touches, and
+`tools/mapa_ram.py` counts them from the plan and that measurement. Three
+things:
+
+- **ZX0 decompresses in place.** The end screens and the overview map used to
+  be copied from ROM into a 4,096-byte buffer and from there onto the screen;
+  ZX0 is designed so the compressed block can sit right at the end of its
+  destination -with the 2 bytes of slack the compressor itself reports- and the
+  output never catches up with it. The whole buffer goes.
+- **The 128 map tiles are read from ROM.** Their only reader in the game died
+  with the name-table view, and the routine that pushes them to VRAM is ours: it
+  reads them through the 0x8000 window, like the end screens. Their 1,152 bytes
+  at 0x9E00 are free.
+- **Sixteen holes in the game, declared and guarded**: the terrain painters,
+  the relocated name list, the view's bitmap expansion, the software gauntlet,
+  the POKE mailbox... 1,314 bytes nobody reaches any more. The plan carries
+  them, `mapa_ram.py` adds them up and the tests demand that no patch lands on
+  them and no live instruction jumps into them.
+
+With the view routine packed next to the end-screen one, the free RAM in page 0
+is a single block. All told, **from 8,946 to 15,387 bytes** for whatever comes
+next; what was left alone -the battle sprites, the stack, tape saving- and why,
+in [INVESTIGACION.md](INVESTIGACION.md).
+
 The ROM to play is `war_unificada.rom` (`make rom_unificada`): the patched tape
 with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
 

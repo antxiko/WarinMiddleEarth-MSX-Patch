@@ -34,6 +34,7 @@ el descompresor su ensamblador, pasando por dos implementaciones distintas.
 Uso:  zx0.py <fichero> [<fichero>...]     mide y comprueba la ida y vuelta
 """
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -71,10 +72,16 @@ def falta_el_compresor(exe=None):
             "  Pon la ruta con ZX0EXE=/ruta/a/zx0.exe o con: make ... ZX0EXE=...\n" % exe)
 
 
-def comprime(datos, exe=None):
+def comprime(datos, exe=None, con_delta=False):
     """Los bytes comprimidos. El compresor trabaja con ficheros, asi que pasa
     por dos temporales; a cambio es EL compresor, con su parsing optimo, y no
-    una aproximacion escrita aqui."""
+    una aproximacion escrita aqui.
+
+    Con `con_delta` devuelve ademas el DELTA que el compresor imprime: los
+    bytes que la entrada tiene que acabar mas alla de donde acaba la salida
+    para poder descomprimir EN EL SITIO (la entrada pegada al final del
+    destino). Es lo que permite que la rutina de las finales no necesite bufer.
+    Sale de la linea "File compressed from X to Y bytes! (delta N)"."""
     exe = exe or ZX0EXE
     if not os.path.exists(exe):
         raise FileNotFoundError(falta_el_compresor(exe))
@@ -89,7 +96,13 @@ def comprime(datos, exe=None):
         if r.returncode != 0 or not os.path.exists(salida):
             raise RuntimeError("zx0 ha fallado:\n%s%s" % (r.stdout, r.stderr))
         with open(salida, "rb") as f:
-            return f.read()
+            z = f.read()
+    if not con_delta:
+        return z
+    m = re.search(r"\(delta (\d+)\)", r.stdout)
+    if not m:
+        raise RuntimeError("zx0 no ha dicho el delta:\n%s%s" % (r.stdout, r.stderr))
+    return z, int(m.group(1))
 
 
 _dzx0_cache = {}
@@ -148,17 +161,17 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
-    print("%-28s %8s %8s %8s %7s" % ("fichero", "crudo", "ZX0", "ahorro", "ida y vuelta"))
+    print("%-28s %8s %8s %8s %5s  %s" % ("fichero", "crudo", "ZX0", "ahorro", "delta", "ida y vuelta"))
     fallos = 0
     for ruta in argv[1:]:
         with open(ruta, "rb") as f:
             datos = f.read()
-        z = comprime(datos)
+        z, delta = comprime(datos, con_delta=True)
         vuelta = descomprime(z)
         bien = vuelta == datos
         fallos += not bien
-        print("%-28s %8d %8d %+8d   %s"
-              % (os.path.basename(ruta), len(datos), len(z), len(datos) - len(z),
+        print("%-28s %8d %8d %+8d %5d  %s"
+              % (os.path.basename(ruta), len(datos), len(z), len(datos) - len(z), delta,
                  "OK" if bien else "NO DEVUELVE LO MISMO (%d bytes)" % len(vuelta)))
     return 1 if fallos else 0
 

@@ -282,6 +282,31 @@ entero cada vuelta y lo que se caia se arreglaba solo. Subiendo a 37 ciclos
 -un 1,3 % de la vuelta- el cotejo pasa de 1.544 bytes a **cero**
 (`make verifica_batalla`).
 
+Y **se ha recuperado toda la RAM muerta que se ha podido**, medida y no
+supuesta: cinco partidas grabadas con puntos de observacion -una de cinta y
+cuatro del cartucho, tres con batallas- dicen que bytes no toca nadie, y
+`tools/mapa_ram.py` los cuenta del plan y de esa medicion. Tres cosas:
+
+- **ZX0 descomprime en el sitio.** Las pantallas finales y el mapa general se
+  copiaban de la ROM a un bufer de 4.096 bytes y de ahi a la pantalla; ZX0
+  esta hecho para que el comprimido pueda ir pegado al final del destino -con
+  los 2 bytes de margen que el propio compresor dice- y la salida nunca lo
+  alcance. El bufer sobra entero.
+- **Los 128 dibujos del mapa se leen de la ROM.** Su unico lector del juego
+  murio con la vista por tabla de nombres, y la rutina que los sube a la VRAM
+  es nuestra: los lee por la ventana de 0x8000, como las finales. Sus 1.152
+  bytes de 0x9E00 quedan libres.
+- **Dieciseis huecos del juego, declarados y vigilados**: los pintores del
+  terreno, la lista de nombres mudada, la expansion a bitmap de la vista, el
+  estampado del guante, el buzon de POKEs... 1.314 bytes a los que ya no
+  llega nadie. El plan los lleva, `mapa_ram.py` los suma y los tests exigen
+  que ningun parche los pise y que ninguna instruccion viva salte dentro.
+
+Con la rutina de la vista pegada a la de las finales, lo libre de la pagina 0
+es un solo bloque. En total, **de 8.946 a 15.387 bytes** para lo que venga; lo
+que no se ha tocado -los sprites de la batalla, la pila, grabar en cinta- y
+por que, en [INVESTIGACION.md](INVESTIGACION.md).
+
 La ROM que se juega es `war_unificada.rom` (`make rom_unificada`): la cinta
 parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
 

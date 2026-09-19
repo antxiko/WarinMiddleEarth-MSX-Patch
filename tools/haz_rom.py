@@ -184,18 +184,45 @@ PINTA_LA_FINAL = 0x83E7
 
 # LA RAM QUE LIBERARON LAS PANTALLAS FINALES: 0x094F-0x3F4E, 13.824 bytes
 # seguidos y enteros en la pagina 0, que es la que nunca hay que conmutar.
-# Ahi viven la rutina de las finales y los dos bufers que ZX0 necesita.
+# Como se reparte, de abajo arriba:
 #
-# Es lo que hace posible ZX0: sus dos bufers piden ~9.800 bytes contiguos en el
-# momento de repintar la imagen de carga, y antes de sacar las finales de la RAM
-# ahi no habia sitio.
+#   ZONA_LIBRE   la rutina de las finales (finales.asm), 256 B reservados
+#   NOMBRES_RAM  la vista por tabla de nombres (nombres.asm), pegada detras
+#   ...          LIBRE con el juego corriendo: un solo bloque hasta 0x3F4E
+#   BUFER_Z/D    los dos bufers de ZX0, al FINAL de la zona y SOLO durante la
+#                carga: la pantalla de carga se descomprime en ellos y despues
+#                nadie los mira. Van al final para que lo libre quede seguido.
+#
+# Es lo que hace posible ZX0 en el cargador: sus dos bufers piden ~10 KB
+# contiguos al repintar la imagen de carga, y antes de sacar las finales de la
+# RAM ahi no habia sitio. En tiempo de juego la rutina de las finales NO usa
+# bufer ninguno: descomprime EN EL SITIO (ver DESTINO_PANTALLA).
 ZONA_LIBRE = 0x0950         # redondeado, justo detras del bloque bajo recortado
 SITIO_RUTINA = 256          # lo que se le reserva a finales.asm; sobra
-BUFER_Z = ZONA_LIBRE + SITIO_RUTINA     # el bloque comprimido, tal cual sale de la ROM
+NOMBRES_RAM = ZONA_LIBRE + SITIO_RUTINA # 0x0A50: la vista, pegada a la rutina
 TAM_BUFER_Z = 4096
-BUFER_D = BUFER_Z + TAM_BUFER_Z         # y el descomprimido, camino de la VRAM
 TAM_BUFER_D = 6144                      # lo mayor que va a la VRAM: media pantalla
+BUFER_D = CARGA_MEDIO - TAM_BUFER_D     # el descomprimido, camino de la VRAM: 0x274F
+BUFER_Z = BUFER_D - TAM_BUFER_Z         # y delante, el comprimido tal cual sale de la ROM: 0x174F
 PINTA_LA_FINAL_ORIG = bytes.fromhex("110040 01001b edb0")
+# ZX0 EN EL SITIO. Las dos pantallas finales y el lienzo del mapa general se
+# descomprimen sobre la pantalla del ZX (0x4000), y el bloque comprimido se
+# copia ANTES al final de ese mismo destino: ZX0 esta hecho para que la salida
+# nunca alcance a la entrada si la entrada acaba `delta` bytes despues de donde
+# acaba la salida, y ese `delta` lo imprime el propio compresor (2 en los tres
+# bloques de aqui; mete_z lo apunta en la disposicion). Asi la rutina no
+# necesita los 4.096 B de bufer que tenia en la pagina 0. Los `delta` bytes que
+# sobresalen caen en los atributos (mapa: los repinta PINTA_TODOS_LOS_ATRIBUTOS
+# tres instrucciones despues) o en el fondo de la pila (finales: el juego ha
+# acabado); los tests lo comprueban.
+DESTINO_PANTALLA = 0x4000
+
+
+def en_el_sitio(d):
+    """Donde hay que copiar el bloque comprimido `d` para descomprimirlo en el
+    sitio sobre DESTINO_PANTALLA: pegado al final del destino, `delta` mas alla."""
+    assert d.get("zx0") and "delta" in d, "el bloque no esta comprimido con ZX0 o no trae su delta"
+    return DESTINO_PANTALLA + d["crudo"] - d["bytes"] + d["delta"]
 
 # LA VISTA DE CERCA POR TABLA DE NOMBRES (--vista). Dos sitios del juego:
 #
@@ -207,13 +234,23 @@ PINTA_LA_FINAL_ORIG = bytes.fromhex("110040 01001b edb0")
 #     direccion de VRAM, y ahi se devuelve la tabla de nombres a la identidad
 #     antes de que nadie pinte en bitmap.
 #
-# La rutina corre detras de los dos bufers de ZX0, que solo se usan mientras
-# carga: la direccion sale de la cuenta de arriba, no se escribe a mano.
+# La rutina corre pegada a la de las finales (NOMBRES_RAM, arriba): la
+# direccion sale de la cuenta, no se escribe a mano.
+#
+# Y LOS 128 DIBUJOS DEL MAPA (0x9E00, 9 bytes cada uno: 1.152 B) ya no se leen
+# de la RAM: el unico que los miraba era la expansion a bitmap de 0x75C7, que
+# esta muerta desde que la vista va por tabla de nombres, y PONE_LOS_PATRONES
+# -la rutina nuestra que los sube a la VRAM al entrar en la vista- los lee de
+# la ROM por la ventana de 0x8000, con la pagina 2 conmutada al cartucho como
+# hace TRAE_Y_DESCOMPRIME. Viajan en el hueco del ultimo banco, delante del
+# bloque de nombres, y el cargador le escribe la ranura a su `or` (P_RANURA).
+# Los 1.152 B de 0x9E00 quedan libres en cuanto arranca el juego.
 PANTALLA_A_ZX = 0x75A5
 PANTALLA_A_ZX_ORIG = bytes.fromhex("210040")
 VRAM_A_ESCRIBIR = 0x044B
 VRAM_A_ESCRIBIR_ORIG = bytes.fromhex("f37dd399")
-NOMBRES_RAM = BUFER_D + TAM_BUFER_D
+DIBUJOS_RAM = ORG_ALTO      # donde caen los 128 dibujos con el bloque alto recolocado
+DIBUJOS_BYTES = 128 * 9
 #
 # Y EL CURSOR COMO SPRITE, que va con la vista: un tercer sitio.
 #
@@ -337,20 +374,25 @@ R1_SPRITES_16 = 0x02
 #     `call REFRESCA_EL_CURSOR` (0x07C3) -que subia un recuadro de 4x3 celdas a
 #     la VRAM en CADA vuelta, 4.135 ciclos- pasa a llamar a MI_GUANTE, que sube
 #     ocho bytes de atributos de sprite.
-#   0x6575, dentro de MUEVE_EL_CURSOR: el `push hl` con el que empieza el
-#     estampado del sprite por software pasa a ser un `ret`. Lo de antes se
-#     queda -la cuenta de la direccion de pantalla, que 0x7F8B lee de 0x64DA
-#     para saber si el disparo cae en un panel-; lo que se va es meter el
-#     dibujo en el lienzo, guardar los 24 bytes de fondo en 0x62FF y armar el
-#     borrado de 0x64D9, que asi se queda en `ret` para siempre.
+#   0x656F, dentro de MUEVE_EL_CURSOR: los siete bytes `ld (0659fh),a /
+#     ld (064dah),hl / push hl` pasan a ser `ld (064dah),hl / ret / nop nop
+#     nop`. Lo de antes se queda -la cuenta de la direccion de pantalla, que
+#     0x7F8B lee de 0x64DA para saber si el disparo cae en un panel, y A sale
+#     con lo mismo que salia-; lo que se va es meter el dibujo en el lienzo,
+#     guardar los 24 bytes de fondo en 0x62FF y armar el borrado de 0x64D9,
+#     que asi se queda en `ret` para siempre. El `ld (0659fh),a` se quita
+#     porque escribia el desplazamiento del pixel en un operando del estampado
+#     muerto: sin el, 0x6573-0x65F8 queda sin un solo escritor y se puede
+#     declarar hueco (ver HUECOS_DEL_JUEGO).
 GUANTE_COL = 0x6543         # la columna del cursor del mapa, en pixeles
 GUANTE_FILA = 0x6544        # y su fila: las dos las mueve MUEVE_EL_CURSOR (0x650D)
 GUANTE_PAT_A = 24           # los dos planos, detras de los seis del cursor de la vista
 GUANTE_PAT_B = 28
 REFRESCA_EL_GUANTE = 0x7F57
 REFRESCA_EL_GUANTE_ORIG = bytes.fromhex("cdc307")
-ESTAMPA_EL_GUANTE = 0x6575
-ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("e5")
+ESTAMPA_EL_GUANTE = 0x656F
+ESTAMPA_EL_GUANTE_ORIG = bytes.fromhex("329f65 22da64 e5")
+ESTAMPA_EL_GUANTE_NUEVO = bytes.fromhex("22da64 c9 000000")
 GUANTE_PNG = os.path.join(SRC, "guante.png")
 MARCA_PNG = os.path.join(SRC, "marca.png")   # la marca de unidad del mapa general
 MAX_MARCAS = 118            # el tope de la tabla: unidades 0x00..0x77 menos la 0x16 y la 0x17,
@@ -492,6 +534,63 @@ MARCA_ORIG = 0x70
 # dos instrucciones mas alla-, por un `jp MAPA`.
 DIBUJA_EL_MAPA = 0x816B
 DIBUJA_EL_MAPA_ORIG = bytes.fromhex("210040")
+
+# LOS HUECOS DEL JUEGO: codigo y datos del juego a los que, con los parches del
+# cartucho puestos, ya no llega nadie. Se declaran aqui -y van al plan- para que
+# cuenten como RAM libre en tools/mapa_ram.py y para que quien quiera usarlos
+# tenga la lista y la prueba. Cada uno lleva que parche lo mato (`requiere`) y
+# de donde sale la prueba: "medido" son los puntos de observacion de
+# tools/omsx_ram_libre.tcl sobre las partidas del cartucho (2026-09-19),
+# "listado" el analisis de llamadores en src/*.asm y "estatico" que sus lectores
+# estan todos parcheados. Los tests comprueban que ningun parche ni el IPS los
+# pisa y que ninguna instruccion viva salta dentro.
+#
+# Fuera de la lista, a proposito: el motor de sonido del ZX (0x6600-0x6713),
+# que el listado da por muerto pero el parche de la cinta ya ocupa (tools/parchea.py:
+# MUESTRA_LOS_VALORES, el Ojo, el plazo y los textos, hasta 0x66FA), y las
+# rutinas de cargar y grabar la partida en cinta, que son una funcion del
+# juego y no codigo muerto.
+HUECOS_DEL_JUEGO = (
+    dict(ini=0x012C, fin=0x0190, requiere="siempre", prueba="listado",
+         que="el buzon de POKEs: 0x01AA lo lee UNA vez al arrancar y nadie mas"),
+    dict(ini=0x0190, fin=0x01FF, requiere="siempre", prueba="listado",
+         que="ARRANQUE_DEL_JUEGO, que corre una vez, y 58 B de restos sin lector"),
+    dict(ini=0x045A, fin=0x0467, requiere="siempre", prueba="listado",
+         que="VRAM_A_LEER: nadie la llama"),
+    dict(ini=0x04F2, fin=0x04FE, requiere="siempre", prueba="listado",
+         que="ESCRIBE_PSG: nadie la llama"),
+    dict(ini=0x07C3, fin=0x07F9, requiere="vista", prueba="medido",
+         que="REFRESCA_EL_CURSOR: su unico llamador, 0x7F57, es ahora MI_GUANTE"),
+    dict(ini=0x6300, fin=0x6317, requiere="vista", prueba="medido",
+         que="el fondo del guante por software (0x62FF no: lo pisa el borrado del tablero)"),
+    dict(ini=0x6576, fin=0x65F9, requiere="vista", prueba="medido",
+         que="el estampado del guante por software, detras del ret del parche de 0x656F"),
+    dict(ini=0x66FB, fin=0x6714, requiere="siempre", prueba="listado",
+         que="lo que le sobra al parche de la cinta en el motor de sonido muerto"),
+    dict(ini=0x6B46, fin=0x6BFB, requiere="heroes", prueba="estatico",
+         que="la lista de 24 nombres, mudada a nombres.asm: sus cinco lectores estan parcheados"),
+    dict(ini=0x75A8, fin=0x763E, requiere="vista", prueba="medido",
+         que="la expansion de la pantalla de caracteres a bitmap, que sustituye CARACTERES_A_NOMBRES"),
+    dict(ini=0x7E4F, fin=0x7E86, requiere="mapa", prueba="estatico",
+         que="PUNTO_A_DIRECCION, CORRE_LA_MASCARA y ELIGE_EL_RELLENO: los llamaban los pintores del terreno "
+             "y MAPA, que desde el 2026-09-19 ya no elige trama (solo la leia PINTA_EL_PUNTO)"),
+    dict(ini=0x7E86, fin=0x7EFA, requiere="mapa", prueba="medido",
+         que="PINTA_EL_PUNTO y su familia: el mapa ya viene dibujado de la ROM"),
+    dict(ini=0x8030, fin=0x8108, requiere="mapa", prueba="medido",
+         que="los pintores del terreno: la tabla de despacho, PINTA_TERRENO_BAJO y ALTO"),
+    dict(ini=0x816E, fin=0x81C1, requiere="mapa", prueba="medido",
+         que="el borrado y las dos pasadas de terreno de DIBUJA_EL_MAPA, saltadas por el jp MAPA"),
+    dict(ini=0x83FC, fin=0x8400, requiere="siempre", prueba="listado",
+         que="las cuatro tramas de PINTA_EL_PUNTO, que 0x7E92 pisa antes de usarlas"),
+    dict(ini=0x846F, fin=0x8497, requiere="mapa", prueba="medido",
+         que="los cinco dibujos del terreno alto de PINTA_TERRENO_ALTO"),
+)
+
+
+def huecos_aplicables(vista, mapa, heroes):
+    """Los huecos que esta ROM deja de verdad, segun los parches que lleva."""
+    puestos = {"siempre": True, "vista": vista, "mapa": mapa, "heroes": vista and heroes}
+    return [dict(h, bytes=h["fin"] - h["ini"]) for h in HUECOS_DEL_JUEGO if puestos[h["requiere"]]]
 
 
 class Plan:
@@ -674,6 +773,12 @@ def escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom, hueco,
     a.append("NOMBRES_FIN_ROM:")
     a.append("NOMBRES_LEN:    equ NOMBRES_FIN_ROM-NOMBRES_INI")
     a.append("")
+    a.append("; En la RAM el bloque corre en 0%04Xh y tiene que acabar antes de 0%04Xh," % (NOMBRES_RAM, BUFER_Z))
+    a.append("; donde empieza el bufer del cargador, que se usa DESPUES de copiarlo. Si se")
+    a.append("; pasa, la division de abajo es por cero y pasmo se para: es el aviso.")
+    a.append("NOMBRES_MAX:    equ 0%04Xh" % (BUFER_Z - NOMBRES_RAM))
+    a.append("NOMBRES_CABE:   equ 1/(NOMBRES_LEN <= NOMBRES_MAX)")
+    a.append("")
     a.append("; Y la ROM se rellena hasta los 64 KB, como la deja Python.")
     a.append("                defs 0%04Xh-$,0FFh" % TAM_ROM)
     a.append("")
@@ -751,7 +856,10 @@ def escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom, hueco,
     sha = hashlib.sha256(bytes(rom)).hexdigest()
     escribe(os.path.join(bin_kit, "referencia.sha256"), "%s  %s\n" % (sha, rom_kit))
 
-    libre_ram = CARGA_MEDIO - NOMBRES_RAM - len(bloque_nombres)
+    # Lo que la rutina puede crecer: hasta el primer bufer del cargador, que
+    # se usa despues de copiarla. El maestro lo vigila con un `equ` que
+    # divide por cero si se pasa (pasmo no tiene directiva de error).
+    libre_ram = BUFER_Z - NOMBRES_RAM - len(bloque_nombres)
     libre_rom = TAM_ROM - nombres_rom_pos - len(bloque_nombres)
     escribe(os.path.join(kit, "LEEME.txt"), "\n".join([
         "WAR IN MIDDLE EARTH - EL CARTUCHO, SIN PYTHON",
@@ -786,16 +894,16 @@ def escribe_kit(kit, salidas, salida, rom, arranque, stub, plan_pos_rom, hueco,
         "",
         "Todo lo que hay en bin/ viene cocido: los tres bloques del juego sacados de",
         "la cinta y ya parcheados, la pantalla de carga y el mapa comprimidos con",
-        "ZX0, el reproductor PT3 con su modulo, el puente de la interrupcion, la",
-        "rutina de las pantallas finales, y el cargador con su plan de 66",
-        "operaciones. Cambiar cualquiera de esas cosas mueve la disposicion de la",
+        "ZX0, el reproductor WYZ con su cancion, el puente de la interrupcion, la",
+        "rutina de las pantallas finales, los dibujos del mapa y el cargador con su",
+        "plan. Cambiar cualquiera de esas cosas mueve la disposicion de la",
         "ROM entera, y eso lo calcula tools/haz_rom.py en el repo.",
         "",
         "COMO ESTA MONTADA LA ROM",
         "",
         "    0x0000  cabecera AB, arranque y stub con el plan   (bin/cabeza.bin)",
         "    0x%04X  los datos, de corrido                       (bin/datos.bin)" % INICIO_DATOS,
-        "    0x%04X  el hueco: PT3, modulo, puente y finales     (bin/hueco.bin)" % hueco,
+        "    0x%04X  el hueco: WYZ, cancion, puente, finales y dibujos (bin/hueco.bin)" % hueco,
         "    0x%04X  el parche                                   (nombres.bin)" % nombres_rom_pos,
         "            relleno de 0xFF hasta los 64 KB",
         "",
@@ -919,11 +1027,13 @@ def main(argv):
         necesita y los tests lo usan para comprobar la ida y vuelta. Si el
         resultado fuera mas grande que el original -comprimir no siempre
         encoge- se mete crudo y se dice."""
-        z = zx0.comprime(cuerpo)
+        z, delta = zx0.comprime(cuerpo, con_delta=True)
         if len(z) >= len(cuerpo):
             mete(nombre, cuerpo, crudo=len(cuerpo), zx0=False, que=que)
             return False
-        mete(nombre, z, crudo=len(cuerpo), zx0=True, que=que)
+        # `delta` es lo que el compresor dice que hay que dejar detras del
+        # destino para descomprimir en el sitio: lo usa en_el_sitio().
+        mete(nombre, z, crudo=len(cuerpo), zx0=True, delta=delta, que=que)
         return True
 
     if comprimir:
@@ -1020,23 +1130,28 @@ def main(argv):
     # misma libera, donde hay 13.824 y nadie la va a pisar en toda la partida.
     finales_ram = ZONA_LIBRE
     if finales_rom:
+        # Cada bloque lleva, ademas de donde esta en la ROM, DONDE HAY QUE
+        # COPIARLO en la RAM para descomprimirlo en el sitio (en_el_sitio):
+        # al final de la pantalla, `delta` bytes mas alla. Sin bufer.
         equs = [("FINALES_ORG", finales_ram),
                 ("BANCO_VUELVE", banco_musica if musica else 0),
-                ("BUFER_ZX0", BUFER_Z),
+                ("DESTINO_PANTALLA", DESTINO_PANTALLA),
                 ("HAY_MAPA", 1 if mapa else 0)]
         if mapa:
             d = disposicion["mapa"]
             assert d.get("zx0"), "el lienzo del mapa no esta comprimido"
             equs += [("M_BANCO", d["rom"] // TAM_BANCO),
                      ("M_SRC", VENTANA_8000 + d["rom"] % TAM_BANCO),
-                     ("M_TAM", d["bytes"])]
+                     ("M_TAM", d["bytes"]),
+                     ("M_DST", en_el_sitio(d))]
         for n, (dir_, _tam, _que) in enumerate(FINALES):
             d = disposicion["final%d" % n]
             assert d.get("zx0"), "la pantalla final %d no esta comprimida" % n
             equs += [("F%d_DIR" % n, dir_),
                      ("F%d_BANCO" % n, d["rom"] // TAM_BANCO),
                      ("F%d_SRC" % n, VENTANA_8000 + d["rom"] % TAM_BANCO),
-                     ("F%d_TAM" % n, d["bytes"])]
+                     ("F%d_TAM" % n, d["bytes"]),
+                     ("F%d_DST" % n, en_el_sitio(d))]
         bloque_finales = pasmo(os.path.join(SRC, "finales.asm"),
                                os.path.join(salidas, "finales.bin"),
                                os.path.join(salidas, "finales.sym"), equs=equs)
@@ -1073,9 +1188,22 @@ def main(argv):
         assert os.path.exists(MARCA_PNG), \
             "falta %s: `python3 tools/marca.py saca work %s` saca el Anillo de la fuente" % (MARCA_PNG, MARCA_PNG)
         marca_bytes = dibujo_marca.escribe_inc(MARCA_PNG, os.path.join(salidas, "marca.inc"))
+        # LOS 128 DIBUJOS DEL MAPA, a la ROM: van en el hueco delante del bloque
+        # de nombres -que tiene que ir el ultimo, por el kit- y nombres.asm los
+        # lee por la ventana de 0x8000. Salen del bloque alto tal como va a la
+        # ROM, o sea con el Ojo de Sauron del parche si la cinta lo lleva.
+        bloque_tiles = alto[DIBUJOS_RAM - ORG_ALTO:DIBUJOS_RAM - ORG_ALTO + DIBUJOS_BYTES]
+        assert len(bloque_tiles) == DIBUJOS_BYTES
+        tiles_rom_pos = hueco + (len(bloque_musica) if bloque_musica else 0)
+        tiles_src = VENTANA_8000 + tiles_rom_pos % TAM_BANCO
+        assert tiles_rom_pos // TAM_BANCO == banco_musica and \
+            (tiles_rom_pos + DIBUJOS_BYTES - 1) // TAM_BANCO == banco_musica, \
+            "los dibujos del mapa no caen enteros en el banco de la ventana de 0x8000"
+        bloque_musica = (bloque_musica or b"") + bloque_tiles
         equs_nombres = [("NOMBRES_ORG", NOMBRES_RAM), ("SOMBRA", 1 if sombra else 0),
                         ("CUADROS", sim_puente["CUADROS"]),
-                        ("PINTA_CADA", PINTA_CADA)]
+                        ("PINTA_CADA", PINTA_CADA),
+                        ("DIBUJOS_ROM", tiles_src)]
         bloque_nombres = pasmo(os.path.join(SRC, "nombres.asm"),
                                os.path.join(salidas, "nombres.bin"),
                                os.path.join(salidas, "nombres.sym"),
@@ -1085,20 +1213,27 @@ def main(argv):
         bloque_musica = (bloque_musica or b"") + bloque_nombres
         assert len(bloque_musica) <= libre_hueco, \
             "con la vista, el hueco necesita %d B y tiene %d" % (len(bloque_musica), libre_hueco)
-        assert NOMBRES_RAM + len(bloque_nombres) <= CARGA_MEDIO, (
-            "la rutina de la vista llega a 0x%04X y pisa el bloque medio de 0x%04X"
-            % (NOMBRES_RAM + len(bloque_nombres), CARGA_MEDIO))
+        # El tope de la rutina NO es el bloque medio sino el primer bufer del
+        # cargador: los bufers se usan DESPUES de copiarla, al repintar la
+        # imagen de carga, y la pisarian sin que nada se quejara.
+        assert NOMBRES_RAM + len(bloque_nombres) <= BUFER_Z, (
+            "la rutina de la vista llega a 0x%04X y pisaria el bufer del cargador de 0x%04X"
+            % (NOMBRES_RAM + len(bloque_nombres), BUFER_Z))
         assert sim_nombres["NOMBRES_FIN"] - sim_nombres["CARACTERES_A_NOMBRES"] == len(bloque_nombres)
 
     # Los dos bufers de ZX0, comprobados contra lo que de verdad va a caer en
     # ellos: si un bloque creciera, aqui se ve, y no en una pantalla con basura.
+    # Por ellos solo pasa lo que el CARGADOR descomprime -la pantalla de carga-;
+    # las finales y el mapa los descomprime el juego en el sitio, sin bufer.
     if comprimir:
-        mayor = max((d["bytes"] for d in disposicion.values() if d.get("zx0")), default=0)
+        mayor = max((disposicion[n]["bytes"] for n in ("patrones", "colores")
+                     if disposicion[n].get("zx0")), default=0)
         assert mayor <= TAM_BUFER_Z, (
             "el mayor bloque comprimido son %d B y el bufer tiene %d" % (mayor, TAM_BUFER_Z))
         assert BUFER_D + TAM_BUFER_D <= CARGA_MEDIO, (
             "el bufer de ZX0 llega a 0x%04X y pisa el bloque medio de 0x%04X"
             % (BUFER_D + TAM_BUFER_D, CARGA_MEDIO))
+        assert BUFER_Z >= NOMBRES_RAM, "los bufers del cargador empiezan antes que la rutina de la vista"
         assert ZONA_LIBRE >= FINALES[0][0], "la zona libre empieza dentro del bloque bajo"
 
     # El bloque medio, cargado en 0x3F4F, cruza a la pagina 1 en 0x4000
@@ -1181,10 +1316,13 @@ def main(argv):
         p.op("RANURA_PAG1", 0, 0, sim_finales["F_RANURA1"] + 1, 0,
              "... y para la pagina 1, que conmuta al escribir el registro")
     if vista:
-        # La rutina de la vista, a su sitio. No conmuta nada: no pide ranuras.
+        # La rutina de la vista, a su sitio, y la ranura del cartucho en el
+        # `or` con el que PONE_LOS_PATRONES asoma la ROM para leer los dibujos.
         p.copia_rom("ROM_RAM", nombres_rom_pos, NOMBRES_RAM, len(bloque_nombres),
                     "la vista por tabla de nombres a 0x%04X" % NOMBRES_RAM,
                     sim_n="NOMBRES_LEN")
+        p.op("RANURA_PAG2", 0, 0, sim_nombres["P_RANURA"] + 1, 0,
+             "la ranura del cartucho para que PONE_LOS_PATRONES lea los dibujos del mapa de la ROM")
     p.copia_rom("ROM_RAM", disposicion["alto"]["rom"], CARGA_ALTO, len(alto), "bloque alto a 0x88B8, como cae de la cinta")
     # y la pagina 1
     p.op("PAG1_RAM", nota="fuera el cartucho de la pagina 1")
@@ -1426,11 +1564,13 @@ def main(argv):
             REFRESCA_EL_GUANTE, REFRESCA_EL_GUANTE_ORIG,
             bytes([0xCD]) + sim_nombres["MI_GUANTE"].to_bytes(2, "little"),
             "el bucle de partida sube ocho bytes de sprite en vez de un recuadro de 4x3 celdas"))
-        # Y el `push hl` con el que empezaba el estampado del guante en el
-        # lienzo, por un `ret`: el guante ya no se dibuja, se pone.
+        # Y el arranque del estampado del guante en el lienzo: se queda el
+        # `ld (064dah),hl` que 0x7F8B necesita, se vuelve con `ret` y se cae
+        # el `ld (0659fh),a`, que escribia en el estampado muerto.
         parches_vista.append(parchea(
-            ESTAMPA_EL_GUANTE, ESTAMPA_EL_GUANTE_ORIG, bytes([0xC9]),
-            "MUEVE_EL_CURSOR deja de estampar el guante por software: ahora son dos sprites"))
+            ESTAMPA_EL_GUANTE, ESTAMPA_EL_GUANTE_ORIG, ESTAMPA_EL_GUANTE_NUEVO,
+            "MUEVE_EL_CURSOR deja de estampar el guante por software (ahora son dos "
+            "sprites) y deja de escribir en el estampado muerto"))
     if vista and heroes:
         # LOS NOMBRES de los dos heroes nuevos. La lista se muda entera a
         # nombres.asm porque en 0x6B46 no cabe ni un byte mas: detras empieza
@@ -1550,7 +1690,8 @@ def main(argv):
         # puente. Si ademas van las finales o la vista, sus rutinas viajan
         # detras y se cuentan aparte, en resumen["finales"] y resumen["vista"].
         musica_bytes = (len(bloque_musica) - (len(bloque_finales) if bloque_finales else 0)
-                        - (len(bloque_nombres) if bloque_nombres else 0))
+                        - (len(bloque_nombres) if bloque_nombres else 0)
+                        - (len(bloque_tiles) if bloque_nombres else 0))
         disposicion["musica"] = dict(rom=hueco, bytes=musica_bytes,
                                      banco=banco_musica, org=musica_org,
                                      cancion=os.path.basename(musica),
@@ -1579,12 +1720,22 @@ def main(argv):
         resumen["zona_libre"] = dict(
             ini=ZONA_LIBRE, fin=CARGA_MEDIO - 1,
             rutina=dict(ram=finales_ram, bytes=len(bloque_finales) if bloque_finales else 0),
-            bufer_z=dict(ram=BUFER_Z, bytes=TAM_BUFER_Z, que="el bloque comprimido, tal cual sale de la ROM"),
-            bufer_d=dict(ram=BUFER_D, bytes=TAM_BUFER_D, que="y el descomprimido, camino de la VRAM"))
+            bufer_z=dict(ram=BUFER_Z, bytes=TAM_BUFER_Z,
+                         que="el bloque comprimido, tal cual sale de la ROM (solo durante la carga)"),
+            bufer_d=dict(ram=BUFER_D, bytes=TAM_BUFER_D,
+                         que="y el descomprimido, camino de la VRAM (solo durante la carga)"))
         if vista:
             resumen["zona_libre"]["nombres"] = dict(
                 ram=NOMBRES_RAM, bytes=len(bloque_nombres),
-                que="la vista de cerca por tabla de nombres, detras de los bufers")
+                que="la vista de cerca por tabla de nombres, pegada a la rutina de las finales")
+    # Los huecos que el juego deja con estos parches: RAM libre a todos los
+    # efectos, declarada para que mapa_ram.py la cuente y los tests la vigilen.
+    resumen["huecos"] = huecos_aplicables(vista, mapa, heroes)
+    for h in resumen["huecos"]:
+        for q in parches:
+            n = len(bytes.fromhex(q["nuevo"]))
+            assert q["dir"] + n <= h["ini"] or h["fin"] <= q["dir"], \
+                "el parche de 0x%04X pisa el hueco 0x%04X-0x%04X" % (q["dir"], h["ini"], h["fin"] - 1)
     if vista:
         # Donde viaja, donde corre, sus entradas y los dos parches. Las
         # direcciones salen del .sym, no de contarlas.
@@ -1593,6 +1744,11 @@ def main(argv):
             entrada=sim_nombres["CARACTERES_A_NOMBRES"],
             guardian=sim_nombres["GUARDIAN"],
             patrones=sim_nombres["PONE_LOS_PATRONES"],
+            # Los dibujos del mapa, que PONE_LOS_PATRONES lee de la ROM: donde
+            # viajan, por donde se ven y el `or` que lleva la ranura.
+            ranura=sim_nombres["P_RANURA"] + 1,
+            tiles=dict(rom=tiles_rom_pos, bytes=DIBUJOS_BYTES, ventana=tiles_src,
+                       ram=DIBUJOS_RAM, que="los 128 dibujos del mapa: ya no se leen de la RAM"),
             identidad=sim_nombres["TABLA_IDENTIDAD"],
             modo=sim_nombres["MODO_NOMBRES"],
             sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
@@ -1688,7 +1844,8 @@ def main(argv):
         resumen["mapa"] = dict(
             rom=d["rom"], bytes=d["bytes"], crudo=d["crudo"], zx0=d["zx0"],
             banco=d["rom"] // TAM_BANCO, src=VENTANA_8000 + d["rom"] % TAM_BANCO,
-            destino=0x4000, entrada=sim_finales["MAPA"],
+            destino=DESTINO_PANTALLA, delta=d["delta"], sitio=en_el_sitio(d),
+            entrada=sim_finales["MAPA"],
             trae=sim_finales["TRAE_Y_DESCOMPRIME"],
             sigue=0x81C1, parche=parche_mapa)
     if finales_rom:
@@ -1700,12 +1857,15 @@ def main(argv):
             entrada=sim_finales["FINALES"], parche=parche_finales,
             banco_vuelve=banco_musica if musica else 0,
             ranuras=dict(pag1=sim_finales["F_RANURA1"] + 1, pag2=sim_finales["F_RANURA2"] + 1),
+            destino=DESTINO_PANTALLA,
             pantallas=[dict(dir=dir_, crudo=tam, que=que,
                             rom=disposicion["final%d" % n]["rom"],
                             bytes=disposicion["final%d" % n]["bytes"],
                             banco=disposicion["final%d" % n]["rom"] // TAM_BANCO,
                             src=VENTANA_8000 + disposicion["final%d" % n]["rom"] % TAM_BANCO,
-                            zx0=disposicion["final%d" % n]["zx0"])
+                            zx0=disposicion["final%d" % n]["zx0"],
+                            delta=disposicion["final%d" % n]["delta"],
+                            sitio=en_el_sitio(disposicion["final%d" % n]))
                        for n, (dir_, tam, que) in enumerate(FINALES)])
     with open(os.path.join(salidas, "plan.json"), "w") as f:
         json.dump(resumen, f, indent=1)

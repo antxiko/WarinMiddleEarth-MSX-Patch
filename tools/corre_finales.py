@@ -203,6 +203,9 @@ class Z80:
             self.h = self.n()
         elif op == 0x21:                                # ld hl,nn
             self.hl = self.nn()
+        elif op == 0x2A:                                # ld hl,(nn)
+            a = self.nn()
+            self.hl = self.m.lee(a) | (self.m.lee(a + 1) << 8)
         elif op == 0x11:                                # ld de,nn
             self.de = self.nn()
         elif op == 0x7E:                                # ld a,(hl)
@@ -322,6 +325,10 @@ class Z80:
                     self.hl = (self.hl + 1) & 0xFFFF
                     self.de = (self.de + 1) & 0xFFFF
                     self.bc = (self.bc - 1) & 0xFFFF
+            elif sub == 0x53:                           # ld (nn),de
+                a = self.nn()
+                self.m.escribe(a, self.e)
+                self.m.escribe(a + 1, self.d)
             else:
                 raise NotImplementedError("ED %02X en 0x%04X" % (sub, self.pc - 2))
         elif op == 0xCB:

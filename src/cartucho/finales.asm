@@ -39,11 +39,14 @@
 ;
 ; Y para el mapa, DIBUJA_EL_MAPA: sus tres bytes de 0x816B -el `ld hl,04000h`
 ; del `ldir` que ponia el lienzo a cero- pasan a ser `jp MAPA`. MAPA hace lo
-; mismo que hacian 0x816B-0x81C0 -borrar la pantalla y dejar elegida la trama
-; de arranque, que es lo unico de ahi que se nota fuera- descomprime el lienzo
-; y sigue en 0x81C1, que es donde el juego lo sube al VDP. El `ldir` de 0x816B
-; sobraba: BORRA_PANTALLA, dos instrucciones mas alla, vuelve a poner a cero
-; ese mismo tramo.
+; unico de 0x816B-0x81C0 que se nota fuera -borrar la pantalla-, descomprime
+; el lienzo y sigue en 0x81C1, que es donde el juego lo sube al VDP. El `ldir`
+; de 0x816B sobraba: BORRA_PANTALLA, dos instrucciones mas alla, vuelve a poner
+; a cero ese mismo tramo. Y la trama de arranque que 0x817B dejaba en el
+; operando de 0x7E75 (ELIGE_EL_RELLENO) tampoco hace falta: solo la leia
+; PINTA_EL_PUNTO, que con el mapa ya dibujado no corre nunca. Hasta el
+; 2026-09-19 MAPA la seguia eligiendo por fidelidad; se quito para que todo
+; 0x7E4F-0x7EF9 quede sin un solo escritor y cuente como hueco.
 ;
 ; POR QUE EN DOS PASOS Y NO EN UNO
 ;
@@ -57,9 +60,21 @@
 ;      poder escribir el registro del mapper de 0x7000.
 ;   2. **ZX0 lee el origen de corrido** y no sabe cruzar de banco.
 ;
-; Asi que primero se COPIA el bloque comprimido a un bufer en RAM -ahi si se
-; cruza de banco, con un bucle que no toca la pila- y despues se llama a ZX0
-; con las cuatro paginas en RAM, sin cartucho a la vista.
+; Asi que primero se COPIA el bloque comprimido a la RAM -ahi si se cruza de
+; banco, con un bucle que no toca la pila- y despues se llama a ZX0 con las
+; cuatro paginas en RAM, sin cartucho a la vista.
+;
+; Y LA COPIA VA EN EL SITIO, SIN BUFER. Hasta el 2026-09-19 el comprimido se
+; dejaba en un bufer de 4.096 B de la pagina 0 y de ahi se descomprimia a
+; 0x4000. ZX0 esta hecho para no necesitarlo: si el comprimido se coloca
+; PEGADO AL FINAL del destino -acabando `delta` bytes mas alla de donde acaba
+; la salida-, la salida nunca alcanza a la entrada. Ese `delta` lo imprime el
+; compresor y vale 2 en los tres bloques de aqui; tools/haz_rom.py lo apunta y
+; calcula el sitio de cada uno (F0_DST, F1_DST y M_DST), que entra en DE. Los
+; dos bytes que sobresalen caen en los atributos (el mapa: los repinta
+; PINTA_TODOS_LOS_ATRIBUTOS tres instrucciones despues de volver) o en el
+; fondo de la pila (las finales: el juego ha acabado y no vuelve). El bufer
+; son 4.096 B de RAM que quedan libres.
 ;
 ; DONDE VIVE
 ;
@@ -78,16 +93,16 @@
 
                 org FINALES_ORG
 
-DESTINO         equ 04000h      ; donde el juego copiaba la pantalla y donde la lee 0x05BD
+DESTINO         equ DESTINO_PANTALLA    ; 0x4000: donde el juego copiaba la pantalla y donde la lee 0x05BD (lo pasa haz_rom.py)
 
-; Las tres direcciones del juego que usa MAPA
+; Las dos direcciones del juego que usa MAPA
 BORRA_PANTALLA  equ 07F12h      ; A = atributo ZX: bitmap a cero y los 768 atributos a A, en RAM y en VRAM
-ELIGE_EL_RELLENO equ 07E7Ah     ; A y 3: deja uno de los cuatro rellenos de 0x83F8 en el operando de 0x7E75
 SIGUE_EL_MAPA   equ 081C1h      ; el `call 005bdh` que sube el lienzo al VDP: por ahi sigue DIBUJA_EL_MAPA
 
 ; --------------------------------------------------------------------------
 ; Las dos pantallas finales. HL trae 0x094F o 0x244F, que es donde el juego
-; iba a buscarlas.
+; iba a buscarlas. DE y BC estan libres: el `ld de,04000h / ld bc,01b00h` que
+; el parche sustituye los iba a cargar justo aqui.
 ; --------------------------------------------------------------------------
 FINALES:
                 ld a,h
@@ -96,11 +111,13 @@ FINALES:
                 ld a,F0_BANCO
                 ld hl,F0_SRC
                 ld bc,F0_TAM
+                ld de,F0_DST            ; pegado al final de la pantalla: en el sitio
                 jp TRAE_Y_DESCOMPRIME
 F_DERROTA:
                 ld a,F1_BANCO
                 ld hl,F1_SRC
                 ld bc,F1_TAM
+                ld de,F1_DST
                 jp TRAE_Y_DESCOMPRIME
 
                 IF HAY_MAPA
@@ -109,32 +126,33 @@ F_DERROTA:
 ; 0x816B y sale por 0x81C1, o sea que ocupa el sitio de 0x816B-0x81C0: el
 ; borrado del lienzo, la trama de arranque y las dos pasadas de terreno.
 ;
-; De todo eso solo se nota fuera lo que se hace aqui: BORRA_PANTALLA -que deja
-; la VRAM y el lienzo a cero y, de paso, pasa por el guardian de 0x044B, que
-; devuelve la tabla de nombres a la identidad si se venia de la vista- y la
-; trama de arranque, que se queda en el operando de 0x7E75 y la usaria quien
-; pintara despues sin elegir la suya. El `ldir` de 0x816B no hace falta:
-; BORRA_PANTALLA borra ese mismo tramo dos instrucciones mas alla.
+; De todo eso solo se nota fuera BORRA_PANTALLA, que deja la VRAM y el lienzo
+; a cero y, de paso, pasa por el guardian de 0x044B, que devuelve la tabla de
+; nombres a la identidad si se venia de la vista. El `ldir` de 0x816B no hace
+; falta: BORRA_PANTALLA borra ese mismo tramo dos instrucciones mas alla. Y la
+; trama de arranque (`ld a,3 / call ELIGE_EL_RELLENO`, como 0x817B) tampoco:
+; solo la leia PINTA_EL_PUNTO, que ya no corre.
 ; --------------------------------------------------------------------------
 MAPA:
                 xor a                   ; como 0x8177: pantalla en negro
                 call BORRA_PANTALLA
-                ld a,3                  ; como 0x817B: trama 3 y 3 = 3, 0x55
-                call ELIGE_EL_RELLENO
                 ld a,M_BANCO
                 ld hl,M_SRC
                 ld bc,M_TAM
+                ld de,M_DST             ; pegado al final del lienzo: en el sitio
                 call TRAE_Y_DESCOMPRIME
                 jp SIGUE_EL_MAPA
                 ENDIF
 
 ; --------------------------------------------------------------------------
 ; A = banco, HL = donde se ve el bloque en la ventana de 0x8000, BC = lo que
-; ocupa comprimido. Lo trae a la RAM y lo descomprime en 0x4000.
+; ocupa comprimido, DE = donde copiarlo en la RAM: al final de la pantalla,
+; `delta` bytes mas alla de donde acaba lo descomprimido (ver arriba). Lo trae
+; ahi y lo descomprime en el sitio, sobre 0x4000.
 ; --------------------------------------------------------------------------
 TRAE_Y_DESCOMPRIME:
                 ld (F_BANCO),a
-                ld de,BUFER_ZX0
+                ld (F_DST),de           ; de aqui leera ZX0 cuando el bloque este en la RAM
                 di
 
                 ; --- los tres valores de 0xA8 que hacen falta, calculados una
@@ -199,8 +217,10 @@ F_COPIADO:
                 ld a,(F_A8_RAM)
                 out (0A8h),a
 
-                ; --- y ahora si: ZX0, con las cuatro paginas en RAM
-                ld hl,BUFER_ZX0
+                ; --- y ahora si: ZX0, con las cuatro paginas en RAM, en el
+                ; sitio: lee el comprimido de donde se acaba de dejar y va
+                ; escribiendo desde 0x4000 sin alcanzarlo nunca.
+                ld hl,(F_DST)
                 ld de,DESTINO
                 call dzx0_standard
                 ei
@@ -210,6 +230,7 @@ F_A8_RAM:       defb 0                  ; 0xA8 tal y como lo dejo el juego
 F_A8_CART2:     defb 0                  ; ... con la ROM en la pagina 2
 F_A8_CART12:    defb 0                  ; ... y en la 1 tambien, para el registro
 F_BANCO:        defb 0                  ; el banco que se esta leyendo
+F_DST:          defw 0                  ; donde se deja el comprimido: al final de la pantalla
 
                 include "dzx0.asm"
 

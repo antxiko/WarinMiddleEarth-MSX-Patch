@@ -21,10 +21,14 @@
 # 0x0038 (jp 0x0400), que es la firma de que el juego corre.
 #
 #   WAR_OUT=<dir> WAR_T_INI=<s> [WAR_T_FIN=<s>] [WAR_BANDA=256] [WAR_NOMBRE=x] \
-#       openmsx -script tools/omsx_ram_libre.tcl
+#       [WAR_REPLAY=<otro.omr>] openmsx -script tools/omsx_ram_libre.tcl
 #
-# Sin -machine: el replay trae la suya dentro.
+# Sin -machine: el replay trae la suya dentro. WAR_REPLAY sirve para medir
+# sobre otra partida -la de Ruben, work/replay_ruben.omr, que si llega a la
+# batalla y corre sobre el cartucho-: la de Araubi no pisa ni una y dejaba los
+# sprites de la batalla (0xA2E8-0xB8E7) como si fueran RAM libre.
 set OUT   $::env(WAR_OUT)
+set REPLAY [expr {[info exists ::env(WAR_REPLAY)] ? $::env(WAR_REPLAY) : ""}]
 set T_INI $::env(WAR_T_INI)
 set T_FIN [expr {[info exists ::env(WAR_T_FIN)] ? $::env(WAR_T_FIN) : 0}]
 set BANDA [expr {[info exists ::env(WAR_BANDA)] ? $::env(WAR_BANDA) : 256}]
@@ -37,7 +41,8 @@ proc say {m} { global L; puts $L "[clock seconds] [format %9.2f [machine_info ti
 
 catch {set renderer none}
 say "arranque, maquina [machine_info config_name]"
-set r [catch {reverse loadreplay -viewonly $W/work/replay/war_replay.omr} msg]
+if {$REPLAY eq ""} { set REPLAY $W/work/replay/war_replay.omr }
+set r [catch {reverse loadreplay -viewonly $REPLAY} msg]
 say "loadreplay rc=$r: $msg"
 if {$r} { say ABORTADO; exit 1 }
 array set st [reverse status]

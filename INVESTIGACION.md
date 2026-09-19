@@ -733,11 +733,13 @@ cualquier push, pop, call o ret leeria o escribiria la ROM. Por eso el bucle de
 copia no la toca. Ademas corre con `di`, porque mientras dura la pagina 2 es la
 ROM y la interrupcion del juego usa datos que viven ahi.
 
-**Y por eso va en dos pasos.** Primero se COPIA el bloque comprimido a un bufer
-en RAM -ahi si se cruza de banco- y despues se llama a ZX0, ya con las cuatro
-paginas en RAM. ZX0 usa la pila a fondo (`push bc`, `ex (sp),hl`) y lee el
-origen de corrido, asi que no puede correr ni con la pagina de la pila
-conmutada ni a caballo de dos bancos.
+**Y por eso va en dos pasos.** Primero se COPIA el bloque comprimido a la RAM
+-ahi si se cruza de banco- y despues se llama a ZX0, ya con las cuatro paginas
+en RAM. ZX0 usa la pila a fondo (`push bc`, `ex (sp),hl`) y lee el origen de
+corrido, asi que no puede correr ni con la pagina de la pila conmutada ni a
+caballo de dos bancos. Hasta el 2026-09-19 esa copia iba a un bufer de 4.096 B
+de la pagina 0; desde entonces va **al final del propio destino**, que es lo
+que ZX0 permite (ver la seccion 14): el bufer ya no existe.
 
 **La RAM, antes y despues** (`tools/mapa_ram.py`, que la calcula del plan y de
 lo medido con openMSX, sin cifras escritas a mano):
@@ -747,10 +749,12 @@ lo medido con openMSX, sin cifras escritas a mano):
     menos el puente (75), la rutina (200) y el area del PT3 (382)
     LIBRE ..................... 15.792 B
 
-Esas son las cifras del dia. Hoy el reproductor es otro y encima esta la vista
-por tabla de nombres, asi que la cuenta la da la herramienta y no este parrafo:
-el puente son 65 B, la rutina de las finales 227, la de la vista 2.848 y el area
-del reproductor WYZ 233, y **quedan 13.076 B**.
+Esas son las cifras del dia. Hoy el reproductor es otro, encima esta la vista
+por tabla de nombres y la herramienta ha cambiado dos veces de cuenta (la
+seccion 14 explica por que decia 13.076 B y no era verdad), asi que la cuenta
+la da ella y no este parrafo: el puente son 65 B, la rutina de las finales 234,
+la de la vista 2.862 y el area del reproductor WYZ 233, y **quedan 15.387 B**
+contando los huecos que el juego deja con los parches puestos.
 
 **Quien mas usaba ese tramo: nadie.** Barrido de los cinco listados buscando el
 rango 0x094F-0x3F4E: 41 apariciones, y todas son constantes -tamanos, contadores
@@ -823,8 +827,10 @@ tenia:
 
 Los dos bufers piden ~9.800 bytes contiguos justo cuando se repinta la imagen de
 carga, y **eso solo cabe desde que las pantallas finales dejaron de viajar a la
-RAM**: van en 0x0A50-0x324F, dentro de los 13.824 que ellas liberaron. Los dos
-cambios se sostienen el uno al otro.
+RAM**: van dentro de los 13.824 que ellas liberaron -hoy al FINAL de esa zona,
+0x174F-0x3F4E, para que lo libre quede seguido-, y solo mientras carga: en
+tiempo de juego nadie los usa (las finales y el mapa se descomprimen en el
+sitio, seccion 14). Los dos cambios se sostienen el uno al otro.
 
 Y una cosa que NO se ha hecho: **comprimir la cancion**. Habria que tenerla
 descomprimida en RAM y tocar el puente, o sea cambiar unos bytes de ROM por la
@@ -861,8 +867,9 @@ a 0 uno de los 128 caracteres de la fuente de 0xC800, siempre con el atributo
 0x78. 128 + 128 = 256 patrones justos, y el color es funcion del codigo. O sea:
 el byte de 0x5E00 ES el indice de patron del SCREEN 2, sin traducir.
 
-`src/cartucho/nombres.asm` (218 bytes en 0x3250, detras de los bufers de ZX0)
-hace tres cosas:
+`src/cartucho/nombres.asm` (218 bytes en 0x3250 aquel dia, detras de los
+bufers de ZX0; hoy 2.862 en 0x0A50, pegada a la rutina de las finales, con todo
+lo que se le ha ido sumando) hace tres cosas:
 
 - **`CARACTERES_A_NOMBRES`** sustituye a 0x75A5 entera -sus tres primeros bytes
   pasan a ser un `jp`, y asi cubre a sus tres llamadores- y sube a 0x1800 los
@@ -873,6 +880,8 @@ hace tres cosas:
   patrones y sus colores **replicados en los tres tercios** (0x0000/0x0800/0x1000
   y 0x2000/0x2800/0x3000). Asi no se toca ni R3 ni R4 y cualquier tercio con el
   nombre *n* ensena el mismo dibujo. Cuesta una vuelta de las de antes, una vez.
+  Desde el 2026-09-19 los 128 dibujos los lee **de la ROM**, por la ventana de
+  0x8000 (seccion 14): su copia de 0x9E00 no la mira ya nadie.
 - **El guardian**, en `VRAM_A_ESCRIBIR` (0x044B, bloque bajo): es la UNICA
   rutina del juego que pone una direccion de VRAM (las `out (099h)` de 0x044D y
   0x0454; los bloques medio y alto no tocan el puerto), y por ahi pasan el mapa,
@@ -1157,22 +1166,25 @@ por eso los tipos 11, 12 y 13 aciertan. El acarreo, que es lo que mira el
 
 El lienzo viaja comprimido con ZX0 -**6.144 -> 3.034 bytes**- y lo descomprime
 la misma rutina que las pantallas finales (`src/cartucho/finales.asm`), que
-ahora tiene dos entradas y un cuerpo comun: traer el bloque de la ROM a un
-bufer de RAM cruzando de banco, y llamar a ZX0 con las cuatro paginas en RAM.
+ahora tiene dos entradas y un cuerpo comun: traer el bloque de la ROM a la RAM
+cruzando de banco -aquel dia a un bufer; hoy al final del propio lienzo, en el
+sitio (seccion 14)- y llamar a ZX0 con las cuatro paginas en RAM.
 
 El parche del juego son **tres bytes en 0x816B**: el `ld hl,04000h` del `ldir`
 que ponia el lienzo a cero, por un `jp MAPA`. `MAPA` hace lo unico de
-0x816B-0x81C0 que se nota fuera -`BORRA_PANTALLA` con atributo 0 y la trama de
-arranque en el operando de 0x7E75-, descomprime y sigue en 0x81C1, que es donde
-el juego sube el lienzo al VDP. El `ldir` sobraba: `BORRA_PANTALLA`, dos
-instrucciones mas alla, borra ese mismo tramo.
+0x816B-0x81C0 que se nota fuera -`BORRA_PANTALLA` con atributo 0-, descomprime
+y sigue en 0x81C1, que es donde el juego sube el lienzo al VDP. El `ldir`
+sobraba: `BORRA_PANTALLA`, dos instrucciones mas alla, borra ese mismo tramo.
+Y la trama de arranque que 0x817B dejaba en el operando de 0x7E75 se eligio
+por fidelidad hasta el 2026-09-19: solo la leia `PINTA_EL_PUNTO`, que ya no
+corre, asi que se quito.
 
     DIBUJA_EL_MAPA   13.950.631 -> 2.496.488 ciclos   (3,897 s -> 0,697 s)
 
 y de esos 2,5 millones, la mitad es el borrado de la pantalla que ya estaba:
 
     BORRA_PANTALLA     853.964      la VRAM y el lienzo a cero, como antes
-    copia del banco    236.944      los 3.034 bytes de la ROM al bufer
+    copia del banco    236.944      los 3.034 bytes de la ROM a la RAM (entonces a un bufer)
     dzx0               591.874      los 6.144 del lienzo
     0x81C1 a 0x81E7    813.525      subir el bitmap, los atributos y los paneles
 
@@ -1780,6 +1792,153 @@ instante: lo que se frena es MANTENER pulsado.
 Y en esa misma medida el bucle llego a dar **2.554 vueltas por segundo** y los
 cambios siguieron siendo 5,33: van **al reloj y no al bucle**, que es
 exactamente lo que hacia falta.
+
+## 14) Recuperar todo el espacio muerto
+
+El usuario (2026-09-19): *"mira a ver cuanta ram podemos recuperar [...]
+me presentas el plan y yo decido"*, y despues *"recupera todo el espacio
+muerto"*. Primero se midio; luego se hizo lo que la medida dijo que se podia.
+
+### Como se midio, y lo que la medida destapo
+
+`tools/omsx_ram_libre.tcl` pone un punto de observacion de lectura y otro de
+escritura por cada banda de 16 bytes de los 64 KB, que se quitan solos al
+primer toque, y corre una partida grabada. Una banda sin toque al acabar es
+RAM que nadie mira. Se corrio sobre **cinco partidas**: la de Araubi en cinta
+(224 s) y cuatro de Ruben en el cartucho (`work/replay_ruben.omr`, 462 s;
+`work/aragorn.omr`, 1.544 s; `work/desaparece.omr` y `desaparece02.omr`, 1.324
+s). La sonda acepta ahora `WAR_REPLAY` para elegir cual.
+
+Cuatro cosas que no se sabian:
+
+- **La herramienta mentia en 4 KB.** `mapa_ram.py` leia el plan de
+  `work/musica` -la ROM que se juega es la unificada- y contaba el bufer de
+  ZX0 de 0x0A50 como "solo durante la carga", cuando lo usaba
+  `TRAE_Y_DESCOMPRIME` en cada dibujo del mapa general y en las finales
+  (medido: el PC 0x0992 lo escribe a los 445 s de la partida de Ruben). Decia
+  13.076 B libres; eran **8.946**.
+- **La partida de cinta daba por libres 8,7 KB de la batalla** -los 5.632 B
+  de sprites de 0xA2E8, el codigo de 0x8572 y la tabla de 0x0300- porque no
+  llega a ninguna. `replay_ruben.omr` tampoco: acaba en derrota a los 434 s
+  sin pelear; las otras tres si (la primera batalla a los 98 y 121 s).
+- **El parche de la cinta vive sobre el motor de sonido muerto**: 0x6600-0x66FA
+  son MUESTRA_LOS_VALORES, el Ojo, el plazo, LIMPIA_Y_EMPAQUETA, los adjetivos
+  y los textos (`tools/parchea.py`). El listado dice "nadie lo llama" y era
+  verdad en 1988. En la partida grabada, 0x6600 se ejecuta -llamado desde
+  0x708A- y COPIA_TEXTO lee "Virtuoso" y "Aliado a la Comunidad" de 0x6685.
+  Todo candidato a hueco se cruza ahora con los registros del IPS.
+- **La vista escribe 34 bytes por debajo de 0x5E00**: `ld (iy-022h),a` en
+  0x7411 y 0x7420, la fila de encima de su pantalla de caracteres, cuando la
+  ventana esta en el borde de arriba del mapa. 0x5DDE-0x5DFF no vale para nada.
+
+Y una trampa de medir en el cartucho: **las lecturas de 0x8000-0xBFFF se
+contaminan con la ROM asomada** por esa ventana -el reproductor ejecutando
+desde ella durante el menu, y el bucle de copia de `finales.asm` leyendo el
+bloque comprimido-. Una banda "leida" de la pagina 2 no prueba nada; una sin
+tocar, si. Para esa pagina manda el listado o una partida de cinta.
+
+### Lo que se hizo
+
+**1. ZX0 descomprime en el sitio: +4.096 B.** El compresor de Einar Saukas
+imprime un `delta` con cada bloque: si el comprimido se coloca acabando
+`delta` bytes mas alla de donde acaba la salida, la salida nunca lo alcanza.
+En los tres bloques (mapa, victoria, derrota) el delta es 2 (`tools/zx0.py` lo
+recoge y `haz_rom.py` lo apunta en el plan). `TRAE_Y_DESCOMPRIME` recibe en DE
+el sitio -`0x4000 + crudo - comprimido + delta`, calculado, no escrito- y ZX0
+lee de ahi mientras escribe desde 0x4000. Los dos bytes que sobresalen caen en
+los dos primeros atributos (el mapa: los repinta `PINTA_TODOS_LOS_ATRIBUTOS`
+tres instrucciones despues de volver, y hay un test que exige que 0x81C1 siga
+siendo eso) o en 0x5B00 (las finales: el juego ha acabado y no vuelve). El
+interprete de `corre_finales.py` -que ahora conoce `ld (nn),de` y `ld hl,(nn)`-
+sigue dejando en 0x4000 los 6.912 bytes de la cinta y los 6.144 del lienzo,
+byte a byte, sin tocar la pila con el cartucho puesto. Los bufers del cargador
+siguen existiendo, pero SOLO mientras carga y al final de la zona.
+
+**2. Los 128 dibujos del mapa, leidos de la ROM: +1.152 B.** Viajan en el
+hueco del banco 3, delante del bloque de nombres (que tiene que ir el ultimo
+por el kit), y `PONE_LOS_PATRONES` los lee por la ventana de 0x8000 con la
+pagina 2 conmutada al cartucho -`di`, `in a,(0A8h)`, `or` con la primaria que
+el cargador escribe en `P_RANURA`, y la RAM de vuelta al acabar-. Corre en la
+pagina 0 y todo lo demas que toca esta fuera de la pagina 2 (fuente, tabla de
+color, atributo del texto, patrones del cursor). El test que lo decide pone la
+copia de 0x9E00 A CERO antes de ejecutar la rutina en el interprete: si leyera
+la RAM, los patrones 128 a 255 saldrian vacios. Pasa con el cartucho en las
+cuatro ranuras.
+
+**3. La pagina 0, en un solo bloque.** La rutina de la vista pasa de 0x3250 a
+0x0A50, pegada a la de las finales, y los bufers del cargador al final de la
+zona (0x174F-0x3F4E). Lo libre con el juego corriendo va seguido desde
+0x157E hasta 0x3F4E: 10.705 bytes. El kit sin Python vigila que `nombres.asm`
+no crezca hasta el bufer con un `equ` que divide por cero si se pasa (pasmo no
+tiene directiva de error). Y `MAPA` dejo de elegir la trama de arranque
+(`ELIGE_EL_RELLENO`): solo la leia `PINTA_EL_PUNTO`, que ya no corre.
+
+**4. Dieciseis huecos del juego, declarados: 1.314 B.** `haz_rom.py` lleva la
+tabla (`HUECOS_DEL_JUEGO`), con que parche mata cada uno y de donde sale la
+prueba, y la escribe en el plan segun las opciones. Los tests exigen que ningun
+parche del cartucho ni ningun registro del IPS los pise, que ninguna instruccion
+viva del listado salte dentro ni los apunte con un `ld` de 16 bits -viva es la
+que no esta en un hueco ni en un tramo sustituido por un parche, contando el
+operando: 0x6981 es `ld hl,06b46h` y el parche va en 0x6982-, y que las cinco
+tablas de despacho no apunten a ninguno. Para que el estampado del guante
+quedara sin un solo escritor, el parche de 0x6575 crecio a siete bytes desde
+0x656F: se queda el `ld (064dah),hl` que 0x7F8B necesita y se cae el `ld
+(0659fh),a`, que escribia un operando del codigo muerto.
+
+    012C-018F   100   el buzon de POKEs: 0x01AA lo lee una vez al arrancar
+    0190-01FE   111   ARRANQUE_DEL_JUEGO y 58 B de restos sin lector
+    045A-0466    13   VRAM_A_LEER, sin llamador
+    04F2-04FD    12   ESCRIBE_PSG, sin llamador
+    07C3-07F8    54   REFRESCA_EL_CURSOR: su unico llamador es ahora MI_GUANTE
+    6300-6316    23   el fondo del guante por software
+    6576-65F8   131   el estampado del guante por software
+    66FB-6713    25   lo que le sobra al parche de la cinta en el motor de sonido
+    6B46-6BFA   181   la lista de 24 nombres, mudada a nombres.asm
+    75A8-763D   150   la expansion a bitmap de la vista (0x763F se queda: lo lee el cartucho)
+    7E4F-7E85    55   PUNTO_A_DIRECCION, CORRE_LA_MASCARA y ELIGE_EL_RELLENO
+    7E86-7EF9   116   PINTA_EL_PUNTO y su familia
+    8030-8107   216   los pintores del terreno
+    816E-81C0    83   las pasadas de terreno de DIBUJA_EL_MAPA, saltadas por el jp
+    83FC-83FF     4   las tramas de PINTA_EL_PUNTO, pisadas antes de usarse
+    846F-8496    40   los cinco dibujos del terreno alto
+
+Diez estan medidos en las partidas del cartucho; la lista de nombres, el buzon
+y ELIGE_EL_RELLENO, solo por analisis estatico, porque ninguna partida grabada
+corre la ROM de hoy.
+
+### La cuenta, con `tools/mapa_ram.py work`
+
+    RAM ajena a la cinta ............... 16.449 B
+    puesto: puente 65, finales 234, vista 2.862, WYZ 233, pisado por la vista 34
+    queda de la ajena .................. 13.021 B
+    huecos del juego (sin contar dos veces el buzon) 1.214 + dibujos 1.152
+    PARA LO QUE VENGA .................. 15.387 B     (antes, de verdad: 8.946)
+
+### Lo que NO se ha tocado, y por que
+
+- **Los sprites de la batalla (5.632 B)**: solo se leen en batalla, pero los
+  lee codigo de la misma pagina 2, que no se puede conmutar. Traerlos de la
+  ROM al empezar cada batalla libera la pagina 2 a costa de prestar lo mismo
+  de la pagina 0 mientras dura: neto cero.
+- **El fondo de la pila (191 B)**: en tres partidas con batallas SP nunca bajo
+  de 0x5BC0, y por debajo solo escribe un `ldir` que se pasa un byte (0x5B00,
+  `PINTA_TODOS_LOS_ATRIBUTOS`). Libre de hecho, pero un desbordamiento raro lo
+  pisaria.
+- **Grabar y cargar la partida en cinta (544 B)**: nadie lo uso en cinco
+  partidas, pero es una funcion del juego y funciona desde el cartucho.
+- **Solapar por fases lo de la batalla con lo del mapa** (5-8 KB): obra
+  grande sobre codigo de 1988 lleno de operandos automodificados. Sin una
+  necesidad concreta, no.
+
+### Verificado
+
+    make test                   230 tests, OK
+    corre_finales.py            6.144 + 6.912 + 6.912 bytes en 0x4000, pila NUNCA con el cartucho
+    corre_nombres.py            patrones y colores OK, leidos de la ROM
+    make verifica_finales       exit 0        make verifica_musica       exit 0
+    make verifica_comprimido    exit 0        make verifica_mapa_parche  53 comprobaciones, 0 fallos
+    make verifica_vista_parche  exit 0        make verifica_marcas       exit 0
+    make verifica_batalla       exit 0        make kit                   la misma ROM byte a byte
 
 ## Lo que queda abierto
 

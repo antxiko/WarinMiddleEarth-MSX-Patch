@@ -141,7 +141,8 @@
 
 TABLA_COLOR     equ 00200h      ; atributo ZX -> byte de color del MSX: la llena 0x5E15 y la usa 0x074E
 FUENTE          equ 0C800h      ; los 128 caracteres de la fuente, 8 bytes cada uno
-DIBUJOS         equ 09E00h      ; los 128 dibujos del mapa, 9 bytes: 8 de patron y el atributo
+DIBUJOS         equ DIBUJOS_ROM ; los 128 dibujos del mapa, 9 bytes: 8 de patron y el atributo. YA NO en la RAM
+                                ; de 0x9E00: en la ROM, por la ventana de 0x8000 (lo pasa haz_rom.py; ver PONE_LOS_PATRONES)
 PANTALLA        equ 05E00h      ; la pantalla de caracteres: 25 filas de 34 bytes; se ven 24 de 32
 ATRIBUTO_TEXTO  equ 0763Fh      ; el OPERANDO del `ld a,078h` de 0x763E: el atributo de todo caracter de la fuente.
                                 ; Se lee de ahi y no se copia: el parche de Araubi lo cambia a 0x70 (amarillo claro)
@@ -297,21 +298,42 @@ SC_BYTE:        ld a,(hl)               ; 7
 ; --------------------------------------------------------------------------
 ; Los 256 patrones y sus colores, replicados en los tres tercios. Una vez
 ; por entrada a la vista (o por vuelta de un menu, que borra la VRAM).
+;
+; LOS DIBUJOS SE LEEN DE LA ROM. Los 128 dibujos de 9 bytes ya no viven en
+; 0x9E00 -su unico lector del juego, la expansion a bitmap de 0x75C7, esta
+; muerto desde que la vista va por aqui-: viajan en el hueco del ultimo
+; banco, el que el cargador dejo fijo en la ventana de 0x8000, y esta rutina,
+; que corre en la pagina 0, asoma el cartucho por la pagina 2 mientras dura la
+; subida, igual que TRAE_Y_DESCOMPRIME. Todo lo demas que toca esta fuera de
+; esa pagina: la fuente (0xC800, pagina 3), el atributo del texto (0x763F,
+; pagina 1), la tabla de color (0x0200) y los patrones del cursor (aqui). Va
+; entera con las interrupciones cerradas, para que ningun manejador pueda
+; encontrarse la pagina 2 cambiada; el `push af` es legal porque la pila esta
+; en la pagina 1, que no se toca. DIBUJOS_ROM lo pasa tools/haz_rom.py de la
+; disposicion; el operando de P_RANURA lo rellena el cargador con la primaria
+; del cartucho, como los `or` del puente y de las finales. Con eso, los 1.152
+; bytes de 0x9E00 son RAM libre desde que arranca el juego.
 ; --------------------------------------------------------------------------
 PONE_LOS_PATRONES:
+                di
+                in a,(0A8h)
+                push af                 ; la pagina 2 como estaba: la RAM del juego
+                and 0CFh                ; fuera los bits 4-5, que son los suyos
+P_RANURA:       or 000h                 ; <- el cargador escribe aqui la primaria<<4
+                out (0A8h),a            ; ya se ven los dibujos en 0x8000-0xBFFF
                 ld hl,VRAM_PATRONES
-                call DIRECCION_VRAM
+                call PON_DIRECCION
                 call UN_TERCIO_DE_PATRONES
                 call UN_TERCIO_DE_PATRONES
                 call UN_TERCIO_DE_PATRONES
                 ld hl,VRAM_COLORES
-                call DIRECCION_VRAM
+                call PON_DIRECCION
                 call UN_TERCIO_DE_COLORES
                 call UN_TERCIO_DE_COLORES
                 call UN_TERCIO_DE_COLORES
                 ; y los seis planos del cursor: dos por modo, 32 bytes cada uno
                 ld hl,VRAM_SPRITES_PAT
-                call DIRECCION_VRAM
+                call PON_DIRECCION
                 ld hl,CURSOR_PATRONES
                 ld b,CURSOR_COLORES-CURSOR_PATRONES     ; 192
 P_CURSOR:       ld a,(hl)
@@ -320,6 +342,9 @@ P_CURSOR:       ld a,(hl)
                 djnz P_CURSOR           ; 37 ciclos por byte
                 ld a,1
                 ld (MODO_NOMBRES),a
+                pop af
+                out (0A8h),a            ; y la RAM del juego otra vez en la pagina 2
+                ei
                 ret
 
 UN_TERCIO_DE_PATRONES:          ; 2 KB: 0..127 la fuente tal cual, 128..255 los dibujos sin su noveno byte

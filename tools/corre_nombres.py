@@ -125,8 +125,10 @@ class Z80(corre_finales.Z80):
                 self.vdp.out98(self.a)
             elif puerto == 0x99:
                 self.vdp.out99(self.a)
+            elif puerto == 0xA8:                        # las ranuras: PONE_LOS_PATRONES asoma la ROM
+                self.m.a8 = self.a
             else:
-                raise AssertionError("out (0x%02X): la rutina solo escribe 0x98 y 0x99" % puerto)
+                raise AssertionError("out (0x%02X): la rutina solo escribe 0x98, 0x99 y 0xA8" % puerto)
         elif op == 0x06:                                # ld b,n
             self.n(); self.b = self.n()
         elif op == 0x0D:                                # dec c (toca Z, no C)
@@ -191,20 +193,26 @@ def tabla_de_color(bajo):
     return bytes(tabla)
 
 
-def patrones_esperados(ram):
-    """Un tercio: la fuente tal cual y los 128 dibujos sin su noveno byte. Tres."""
+def patrones_esperados(ram, dibujos=None):
+    """Un tercio: la fuente tal cual y los 128 dibujos sin su noveno byte. Tres.
+    Los dibujos, de `dibujos` (los 1.152 B tal como van en la ROM) o, si no se
+    dan, de la copia que el bloque alto deja en 0x9E00."""
     fuente = bytes(ram[FUENTE:FUENTE + 1024])
-    dibujos = b"".join(bytes(ram[DIBUJOS + i * 9:DIBUJOS + i * 9 + 8]) for i in range(128))
-    return (fuente + dibujos) * 3
+    if dibujos is None:
+        dibujos = bytes(ram[DIBUJOS:DIBUJOS + 128 * 9])
+    patrones = b"".join(bytes(dibujos[i * 9:i * 9 + 8]) for i in range(128))
+    return (fuente + patrones) * 3
 
 
-def colores_esperados(ram):
+def colores_esperados(ram, dibujos=None):
     """Un tercio: el color del atributo 0x78 para los 128 caracteres, y el del
     noveno byte de cada dibujo, ocho veces cada uno. Tres."""
     t = ram[TABLA_COLOR:TABLA_COLOR + 256]
+    if dibujos is None:
+        dibujos = bytes(ram[DIBUJOS:DIBUJOS + 128 * 9])
     texto = bytes([t[ram[ATRIBUTO_TEXTO]]]) * 1024
-    dibujos = b"".join(bytes([t[ram[DIBUJOS + i * 9 + 8]]]) * 8 for i in range(128))
-    return (texto + dibujos) * 3
+    colores = b"".join(bytes([t[dibujos[i * 9 + 8]]]) * 8 for i in range(128))
+    return (texto + colores) * 3
 
 
 def filas_de_nombres(pantalla):
@@ -231,6 +239,15 @@ def monta(rom, plan, bajo, alto, ranura_cart=1, ranura_ram=3, medio=None):
     for q in v["parches"]:
         nuevo = bytes.fromhex(q["nuevo"])
         m.ram[q["dir"]:q["dir"] + len(nuevo)] = nuevo
+    # Lo que deja el cargador para que PONE_LOS_PATRONES lea los dibujos de la
+    # ROM: el banco de la musica en la ventana de 0x8000 y la ranura del
+    # cartucho en el `or` de P_RANURA.
+    if "musica" in plan["datos"]:
+        m.banco_8000 = plan["datos"]["musica"]["banco"]
+    elif plan.get("finales"):
+        m.banco_8000 = plan["finales"]["banco_vuelve"]
+    if "ranura" in v:
+        m.ram[v["ranura"]] = ranura_cart << 4
     return m
 
 

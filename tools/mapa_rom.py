@@ -9,13 +9,22 @@ cada vez por cada una de las dos ventanas -0x4000 la manda el registro de
 0x6000 y 0x8000 la de 0x7000-, asi que aqui se dibuja la ROM ENTERA, de
 0x00000 a 0x0FFFF, que es como esta en el fichero.
 
-Uso:  mapa_rom.py [plan.json]        (por defecto, work/musica/plan.json)
+Uso:  mapa_rom.py [plan.json]        (por defecto, work/unificada/plan.json
+                                      si existe; si no, work/musica/plan.json)
 """
 import json
 import os
 import sys
 
 TAM_BANCO = 0x4000
+
+
+def plan_por_defecto():
+    for cual in ("unificada", "musica"):
+        r = os.path.join("work", cual, "plan.json")
+        if os.path.exists(r):
+            return r
+    return os.path.join("work", "musica", "plan.json")
 
 
 def filas_de(plan):
@@ -47,11 +56,19 @@ def filas_de(plan):
     if f:
         filas.append((f["rom"], f["rom"] + f["bytes"], "FINALES",
                       "la rutina de las pantallas finales, que corre en 0x%04X" % f["ram"]))
+    v = plan.get("vista")
+    if v:
+        t = v.get("tiles")
+        if t:
+            filas.append((t["rom"], t["rom"] + t["bytes"], "DATOS",
+                          "los 128 dibujos del mapa, que la vista lee por la ventana en 0x%04X" % t["ventana"]))
+        filas.append((v["rom"], v["rom"] + v["bytes"], "VISTA",
+                      "la rutina de la vista, los sprites y la batalla, que corre en 0x%04X" % v["ram"]))
     return sorted(filas)
 
 
 def main(argv):
-    ruta = argv[1] if len(argv) > 1 else os.path.join("work", "musica", "plan.json")
+    ruta = argv[1] if len(argv) > 1 else plan_por_defecto()
     if not os.path.exists(ruta):
         print("no encuentro %s: hace falta `make rom_musica` con tu cinta" % ruta)
         return 2
@@ -73,7 +90,7 @@ def main(argv):
             print("  --- banco %d (0x%05X-0x%05X) %s"
                   % (banco, banco * TAM_BANCO, (banco + 1) * TAM_BANCO - 1, "-" * 28))
         barra = {"ARRANQUE": "#", "STUB": "#", "DATOS": "*", "MUSICA": "+",
-                 "FINALES": "+", "relleno": "."}[tipo]
+                 "FINALES": "+", "VISTA": "+", "relleno": "."}[tipo]
         tam = fin - ini
         n = max(1, min(8, round(tam / 2048)))
         print("  %05X-%05X %6d B  %-8s %-8s %s"
