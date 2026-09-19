@@ -33,11 +33,12 @@
 ; es el caso normal, esto no aplica.
 ; ==========================================================================
 
-; PT3_SETUP y el resto del area de trabajo. Las cuatro rutinas del reproductor
-; -PT3_INIT, PT3_PLAY, PT3_ROUT- y la direccion del MODULO no se escriben aqui:
-; las pasa tools/haz_rom.py leyendolas del .sym con el que se acaba de
-; ensamblar musica.asm, que es la unica forma de que no se queden viejas.
-                include "pt3_trabajo.inc"
+; WYZ_FLAGS y el resto del area de trabajo. Las cuatro rutinas del reproductor
+; -WYZ_PLAYER_INIT, WYZ_CARGA_CANCION_HL, WYZ_REPRODUCE_FRAME y WYZ_PLAYER_OFF-
+; y la direccion del MODULO no se escriben aqui: las pasa tools/haz_rom.py
+; leyendolas del .sym con el que se acaba de ensamblar musica.asm, que es la
+; unica forma de que no se queden viejas.
+                include "wyz_trabajo.inc"
 
                 org PUENTE_ORG
 
@@ -61,7 +62,9 @@ PUENTE_RANURA:
                 ; Se acabo: el PSG a cero y el gancho de vuelta al `ret` de
                 ; siempre, que es lo que deja la partida exactamente como
                 ; estaba, sin gastar un ciclo por cuadro en mirar una variable.
-                call PT3_MUTE
+                ; WYZ_PLAYER_OFF apaga los interruptores, borra el bufer de
+                ; registros y lo vuelca: el PSG se queda mudo de verdad.
+                call WYZ_PLAYER_OFF
                 ld hl,CUENTA_CUADROS    ; desde aqui el gancho solo cuenta cuadros: el paso del cursor
                 ld (GANCHO),hl
                 jr PUENTE_SALE
@@ -72,23 +75,22 @@ PUENTE_ARRANCA:
                 ; la conmutacion en el stub.
                 dec a                   ; A = 0xFF: sonando
                 ld (PUENTE_SONANDO),a
-                xor a
-                ld (PT3_SETUP),a        ; bit 0 a cero: la cancion se repite
-                ld hl,MODULO-100        ; PT3_INIT quiere el modulo MENOS 100
-                call PT3_INIT
+                ; WYZ_PLAYER_INIT deja el area de trabajo en su sitio -en RAM,
+                ; donde el juego no ha puesto nada- y ademas calla el PSG; sin
+                ; el, la cancion arrancaria sobre los bufers sin estrenar.
+                call WYZ_PLAYER_INIT
+                ld hl,MODULO
+                call WYZ_CARGA_CANCION_HL
+                ; Que la cancion se repita NO se decide aqui: va en el bit 0
+                ; del segundo byte de su cabecera, y WYZ_CARGA_CANCION_HL lo
+                ; lee y arma WYZ_BIT_LOOP solo.
 
 PUENTE_CUADRO:
-                ; Primero al PSG lo que se calculo en la interrupcion anterior,
-                ; que es lo que mantiene el ritmo parejo, y luego se prepara el
-                ; cuadro siguiente. Es el orden de msx-msxlib.
-                call PT3_ROUT
-                ld a,(PT3_SETUP)
-                bit 7,a                 ; lo pone el reproductor al pasar el bucle
-                jr z,PUENTE_PLAY
-                res 7,a                 ; y se rearma, que aqui se toca en bucle
-                ld (PT3_SETUP),a
-PUENTE_PLAY:
-                call PT3_PLAY
+                ; Una sola llamada: WYZ_REPRODUCE_FRAME vuelca primero al PSG
+                ; lo que se calculo en la interrupcion anterior -que es lo que
+                ; mantiene el ritmo parejo- y luego prepara el cuadro
+                ; siguiente.
+                call WYZ_REPRODUCE_FRAME
 
 PUENTE_SALE:
                 pop af
@@ -115,7 +117,7 @@ CUADROS:        defb 0
 ; `call` aqui. Por eso lo ultimo que hace es ese mismo `ld`: lo que se llevo
 ; por delante hay que devolverlo.
 ;
-; No se calla aqui mismo porque PT3_MUTE vive en la ROM, que en este momento no
+; No se calla aqui mismo porque WYZ_PLAYER_OFF vive en la ROM, que ahora no
 ; se ve: solo se deja el aviso, y el puente lo recoge en la interrupcion
 ; siguiente, que es donde la ROM si esta asomada.
 ; --------------------------------------------------------------------------

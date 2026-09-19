@@ -35,12 +35,13 @@ translation of his assembly to pasmo syntax and nothing else. **The compressor
 is not copied here**: it is the `zx0.exe` that ships with
 [MSXgl](https://github.com/aoineko-fr/MSXgl), and you pass its path.
 
-**The music replayer is not ours either.** `PT3-ROM.ASM` is by Bulba, Dioniso,
-msxKun and SapphiRe, ships inside [msx-msxlib](https://github.com/theNestruo/msx-msxlib)
-by Néstor Sancho and **carries no written licence**: only a *"hope you find
-useful this code"*. So all that lives here is `tools/convierte_pt3.py`, which
-translates it from asMSX to pasmo, and everyone supplies their own copy. **The
-`.pt3` module is not distributed either**: it belongs to its author.
+**The music replayer is not ours either.** It is the **WYZ PSG proPLAYER
+v0.47d**, by Wyz, which ships inside [msx-msxlib](https://github.com/theNestruo/msx-msxlib)
+by Néstor Sancho —split in two, the code and its variables, which is what lets
+it live in a cartridge ROM— and **carries no written licence**. So all that
+lives here is `tools/convierte_wyz.py`, which translates it from tniASM to
+pasmo, and everyone supplies their own copy. **The song is not distributed
+either**: it belongs to its author.
 
 The images produced by `tools/render_graficos.py` are not illustrations brought in
 from outside: they are the game's own video memory, rebuilt by replaying the

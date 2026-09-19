@@ -18,7 +18,7 @@ distancia. Medido sobre los cuatro bloques de este cartucho:
 EL COMPRESOR NO ESTA AQUI
 
 Es el `zx0.exe` de Einar Saukas, que viaja en MSXgl. Su codigo esta bajo BSD-3
-y no se copia a este repositorio: se le pasa la ruta, como al reproductor PT3.
+y no se copia a este repositorio: se le pasa la ruta, como al reproductor WYZ.
 El DESCOMPRESOR si esta (src/cartucho/dzx0.asm): su licencia lo permite
 explicitamente a cambio de decir en la documentacion que se usa ZX0, y esta
 dicho en el README, en AVISO-LEGAL.md y en el propio fichero.

@@ -747,6 +747,11 @@ lo medido con openMSX, sin cifras escritas a mano):
     menos el puente (75), la rutina (200) y el area del PT3 (382)
     LIBRE ..................... 15.792 B
 
+Esas son las cifras del dia. Hoy el reproductor es otro y encima esta la vista
+por tabla de nombres, asi que la cuenta la da la herramienta y no este parrafo:
+el puente son 65 B, la rutina de las finales 227, la de la vista 2.848 y el area
+del reproductor WYZ 233, y **quedan 13.076 B**.
+
 **Quien mas usaba ese tramo: nadie.** Barrido de los cinco listados buscando el
 rango 0x094F-0x3F4E: 41 apariciones, y todas son constantes -tamanos, contadores
 y direcciones de VRAM- salvo dos, que son `ld hl,0094fh` (0x83DC) y
@@ -821,10 +826,9 @@ carga, y **eso solo cabe desde que las pantallas finales dejaron de viajar a la
 RAM**: van en 0x0A50-0x324F, dentro de los 13.824 que ellas liberaron. Los dos
 cambios se sostienen el uno al otro.
 
-Y una cosa que NO se ha hecho: **comprimir el modulo `.pt3`**. ZX0 lo dejaria en
-220 bytes en vez de 426, pero habria que tenerlo descomprimido en RAM y tocar el
-puente. Cambiar 206 bytes de ROM por 426 de RAM no sale a cuenta cuando lo que
-sobra es ROM.
+Y una cosa que NO se ha hecho: **comprimir la cancion**. Habria que tenerla
+descomprimida en RAM y tocar el puente, o sea cambiar unos bytes de ROM por la
+cancion entera en RAM, permanente. No sale a cuenta cuando lo que sobra es ROM.
 
 #### De paso: EL JUEGO PIERDE BYTES AL ESCRIBIR LA VRAM
 

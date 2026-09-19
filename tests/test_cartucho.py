@@ -623,7 +623,7 @@ class TestLaMusica(unittest.TestCase):
         sitio. Aqui se comprueba la correspondencia y que las direcciones que
         el plan publica caen dentro de la ventana."""
         self.assertEqual(self.m["org"], 0x8000 + self.m["rom"] - self.m["banco"] * 0x4000)
-        for rutina in ("init", "play", "rout", "mute", "modulo"):
+        for rutina in ("init", "carga", "cuadro", "para_el_psg", "modulo"):
             d = self.m[rutina]
             self.assertTrue(self.m["org"] <= d < self.m["org"] + self.m["bytes"],
                             "%s cae en 0x%04X, fuera del bloque" % (rutina, d))
@@ -632,18 +632,28 @@ class TestLaMusica(unittest.TestCase):
         self.assertEqual(self.rom[self.m["rom"]:self.m["rom"] + len(bloque)], bloque,
                          "lo que hay en la ROM no es el reproductor ensamblado")
 
-    def test_el_modulo_va_sin_sus_cien_bytes_de_cabecera(self):
-        """A PT3_INIT se le pasa MODULO-100 porque el modulo viaja sin la
-        cabecera de texto. Si se metiera entero, el reproductor leeria el
-        titulo como si fueran punteros."""
-        with open(os.path.join(WORK_MUSICA, "modulo.bin"), "rb") as f:
-            modulo = f.read()
+    def test_la_cancion_va_entera_y_empieza_donde_dice(self):
+        """La cancion viaja TAL CUAL, sin quitarle nada: el primer byte del
+        `.mus` es el tempo y a WYZ_CARGA_CANCION_HL se le pasa esa direccion.
+
+        Lo que esto caza es que MODULO apunte a otro sitio o que la copia se
+        quede corta: entonces el reproductor leeria como cabecera unos bytes
+        que son notas, y los cuatro punteros de canal saldrian a cualquier
+        parte de la ROM."""
+        with open(os.path.join(WORK_MUSICA, "cancion.bin"), "rb") as f:
+            cancion = f.read()
         ini = self.m["rom"] + self.m["modulo"] - self.m["org"]
-        self.assertEqual(self.rom[ini:ini + len(modulo)], modulo)
-        # El byte 0 del modulo recortado es el que el reproductor lee como
-        # Delay, o sea el byte 100 del fichero: si alguien quitara el recorte,
-        # aqui saldria una letra del titulo.
-        self.assertLess(modulo[0], 0x20, "el primer byte no parece el Delay del PT3 sino texto")
+        self.assertEqual(self.rom[ini:ini + len(cancion)], cancion,
+                         "la cancion que hay en la ROM no es la que se compilo")
+        # El tempo son los siete bits bajos del byte 0 (el 7 es el tempo
+        # hibrido, que aqui no se compila). A cero, el reproductor no avanzaria
+        # de nota nunca.
+        self.assertTrue(0 < (cancion[0] & 0x7F) < 128,
+                        "el primer byte no parece un tempo: 0x%02X" % cancion[0])
+        # Y detras de las notas van las tablas del tracker -instrumentos,
+        # efectos y frecuencias-, que son parte del bloque y no del reproductor.
+        self.assertLess(self.m["modulo"] + len(cancion), self.m["org"] + self.m["bytes"],
+                        "detras de la cancion no queda sitio para sus tablas")
 
     def test_el_puente_cabe_donde_dice_y_no_pisa_el_buzon_de_pokes(self):
         p = self.m["puente"]

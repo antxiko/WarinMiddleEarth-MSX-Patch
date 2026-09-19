@@ -217,19 +217,27 @@ OPENMSX  := /c/Program\ Files/openMSX/openmsx.exe
 MAQUINA  := Philips_VG_8020
 ESPERA   := 150
 
-# LA MUSICA. El .pt3 NO va en el repositorio: es de su autor, y war_musica.rom
-# tampoco se distribuye. Por defecto se coge el de RUN23, de KNM
-# (twitter.com/DGrijando), que viaja en msx-msxlib (BSD 3-Clause, de Nestor
-# Sancho); con otro modulo basta cambiar esta variable:
-#   make verifica_musica MUSICA=/ruta/a/lo_que_sea.pt3
+# LA MUSICA. La cancion NO va en el repositorio: es de su autor, y
+# war_musica.rom tampoco se distribuye. Son DOS ficheros que el tracker saca
+# juntos -el `.mus` con las notas y, al lado, el `.mus.asm` con los
+# instrumentos y la tabla de frecuencias-, y aqui se nombra el primero: el
+# segundo se busca solo, anadiendole `.asm`. Por defecto, la cancion de prueba
+# que trae msx-msxlib (BSD 3-Clause, de Nestor Sancho), que es una demo de
+# WYZTracker. Con otra basta cambiar esta variable:
+#   make verifica_musica MUSICA=/ruta/a/lo_que_sea.mus
 # (la ruta va relativa al repositorio y no por $(HOME), que en el make de msys
 # es /home/usuario y no el del usuario de Windows)
-MUSICA   := ../../msx-msxlib/games/examples/pt3music/RUN23_ShuffleOne.pt3
+MUSICA   := ../../msx-msxlib/games/examples/wyzmusic/maryjane2.mus
 # El reproductor TAMPOCO va en el repositorio, por lo mismo que no va la cinta:
-# es de sus autores -Bulba / Dioniso / msxKun / SapphiRe- y viaja en msx-msxlib
-# sin una licencia escrita, solo un "hope you find useful this code". Aqui va la
-# herramienta que lo traduce de asMSX a pasmo; el fuente lo pone cada cual.
-PT3SRC   := ../../msx-msxlib/libext/pt3/PT3-ROM.ASM
+# es el WYZ PSG proPLAYER v0.47d, de Wyz, y viaja en msx-msxlib sin licencia
+# escrita. Aqui va la herramienta que lo traduce de tniASM a pasmo; el fuente
+# lo pone cada cual. Son dos ficheros, el codigo y sus variables, y el segundo
+# se busca solo al lado del primero.
+WYZSRC   := ../../msx-msxlib/libext/wyzplayer047d/wyzplayer-ROM.tniasm.asm
+WYZRAM   := ../../msx-msxlib/libext/wyzplayer047d/wyzplayer-RAM.tniasm.asm
+# Donde vive el area de trabajo del reproductor: la RAM libre de 0x5C00, 512 B
+# medidos libres en todas las fases. El WYZ pide 233.
+WYZRAMORG := 0x5C00
 # EL COMPRESOR. Las imagenes del cartucho van comprimidas con ZX0, de Einar
 # Saukas. El descompresor SI esta aqui (src/cartucho/dzx0.asm, 68 bytes: su
 # licencia lo permite a cambio de decir que se usa ZX0, y esta dicho en el
@@ -246,36 +254,42 @@ rom: war.rom
 war.rom: extract $(CARTUCHO) tools/haz_rom.py
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA)
 
-# La misma ROM con el reproductor PT3 y un modulo metidos en el hueco que queda
+# La misma ROM con el reproductor WYZ y una cancion metidos en el hueco que queda
 # al final del ultimo banco, sonando en el MENU, y con las dos pantallas
 # finales quedandose en la ROM en vez de ocupar 13.824 bytes de RAM toda la
 # partida. Cambia trece bytes del bloque medio -el gancho por cuadro, la
 # lectura del nivel y el `ldir` de 0x83E7-, y por eso es un fichero aparte:
 # war.rom se queda intacta y cotejada.
 rom_musica: war_musica.rom
-war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
-	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
+war_musica.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
+	@test -f "$(MUSICA)" || { echo "no encuentro la cancion: $(MUSICA)"; echo "pasa otra con: make $@ MUSICA=/ruta/a.mus"; exit 1; }
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel
 
 # La misma ROM SIN la vista por tabla de nombres: es la referencia contra la
 # que se coteja y se mide. Va a work/sin_vista para no pisar el plan de la otra.
-work/war_sin_vista.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
+work/war_sin_vista.rom: extract $(CARTUCHO) tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --salidas work/sin_vista
 
-# El reproductor, traducido de la sintaxis de asMSX a la de pasmo. La traduccion
-# es mecanica -241 corchetes de indireccion, 46 desplazamientos de IX que hay que
-# calcular, un modulo que pasmo no entiende- y por eso la hace una herramienta:
-# lo que la comprueba no es leerla, es que pasmo la ensamble.
-src/cartucho/pt3_player.asm: tools/convierte_pt3.py
-	@test -f "$(PT3SRC)" || { echo ""; \
-	  echo "  Falta el reproductor PT3: $(PT3SRC)"; \
+# El reproductor, traducido de la sintaxis de tniASM a la de pasmo. La
+# traduccion es mecanica -228 corchetes de indireccion, 34 desplazamientos de
+# IX que hay que calcular, 28 numeros binarios- y por eso la hace una
+# herramienta: lo que la comprueba no es leerla, es que pasmo la ensamble.
+#
+# De la misma pasada sale el .inc con las variables del reproductor, que NO se
+# escribe a mano: el orden es fijo -el reproductor llega a los canales B y C
+# sumandole a IX la distancia desde los del A- y una variable nueva correria
+# todas las demas.
+src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc &: tools/convierte_wyz.py
+	@test -f "$(WYZSRC)" -a -f "$(WYZRAM)" || { echo ""; \
+	  echo "  Falta el reproductor WYZ: $(WYZSRC)"; \
 	  echo ""; \
-	  echo "  No se distribuye aqui (ver AVISO-LEGAL.md): es de Bulba, Dioniso,"; \
-	  echo "  msxKun y SapphiRe, y viaja en msx-msxlib, de Nestor Sancho:"; \
+	  echo "  No se distribuye aqui (ver AVISO-LEGAL.md): es el WYZ PSG"; \
+	  echo "  proPLAYER v0.47d, de Wyz, y viaja en msx-msxlib, de Nestor Sancho:"; \
 	  echo "      https://github.com/theNestruo/msx-msxlib"; \
-	  echo "  Pon la ruta con: make $@ PT3SRC=/ruta/a/PT3-ROM.ASM"; \
+	  echo "  Pon la ruta con: make $@ WYZSRC=/ruta/a/wyzplayer-ROM.tniasm.asm"; \
 	  echo ""; exit 1; }
-	python3 tools/convierte_pt3.py "$(PT3SRC)" $@
+	python3 tools/convierte_wyz.py "$(WYZSRC)" "$(WYZRAM)" \
+	  src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc --ram $(WYZRAMORG)
 
 # Los cuerpos de la cinta parcheada salen de war_parche.tsx con las mismas dos
 # herramientas que los de la original: asi la ROM parcheada se monta de la
@@ -298,7 +312,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 #   el mapa por la derecha).
 #
 # Del cartucho (tools/haz_rom.py):
-#   musica PT3 en el menu, las tres imagenes y el mapa general comprimidos con
+#   musica en el menu, las tres imagenes y el mapa general comprimidos con
 #   ZX0, las dos pantallas finales quedandose en la ROM en vez de comer 13.824
 #   bytes de RAM, el mapa general ya dibujado, la vista de cerca por tabla de
 #   nombres con el cursor y el guante como sprites de hardware, el panel con el
@@ -308,8 +322,8 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 # (comprobado), y cursor.png sale de los cuerpos PARCHEADOS, que el parche
 # repinta el cursor de batalla.
 rom_unificada: war_unificada.rom
-war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
-	@test -f "$(MUSICA)" || { echo "no encuentro el modulo: $(MUSICA)"; echo "pasa otro con: make $@ MUSICA=/ruta/al.pt3"; exit 1; }
+war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
+	@test -f "$(MUSICA)" || { echo "no encuentro la cancion: $(MUSICA)"; echo "pasa otra con: make $@ MUSICA=/ruta/a.mus"; exit 1; }
 	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --heroes --salidas work/unificada --kit work/kit
 
 # EL KIT PARA COMPILAR EL PARCHE SIN PYTHON. Lo deja `--kit` de ahi arriba, al
@@ -327,7 +341,7 @@ kit_zip: kit
 	@echo "work/WarInMiddleEarth-kit.zip listo"
 
 # Su referencia SIN la vista, para el cotejo y la medida.
-work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm
+work/war_parche_sin_vista.rom: war_parche.rom tools/haz_rom.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm
 	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --heroes --salidas work/parche_sin_vista
 
 # El cursor de fabrica, de los tiles de la cinta PARCHEADA. Se niega a pisar
@@ -404,8 +418,13 @@ verifica_musica: war_musica.rom
 # El cotejo que decide es el primero: los 6.912 bytes contra los de la cinta.
 # El de la VRAM cierra el circulo, pero un cotejo entre dos ROMs no diria nada
 # si las dos estuvieran mal igual.
+# La referencia va SIN musica, y no por gusto: sin --comprime el hueco del
+# ultimo banco son 2.264 bytes y el reproductor con su cancion piden 4.845. La
+# musica no pinta nada en lo que se coteja aqui -las dos pantallas finales-,
+# asi que sobra; lo que la referencia tiene que conservar, y conserva, es el
+# `ldir` original de 0x83E7 y las pantallas en la RAM.
 verifica_finales: war_musica.rom
-	python3 tools/haz_rom.py work work/war_ref.rom --espera $(ESPERA) --musica "$(MUSICA)" --salidas work/ref
+	python3 tools/haz_rom.py work work/war_ref.rom --espera $(ESPERA) --salidas work/ref
 	@rm -rf work/finales_ref work/finales_$(MAQUINA)
 	WAR_ROM="$(abspath work/war_ref.rom)" WAR_OUT="$(abspath work/finales_ref)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath work/war_ref.rom)" -romtype ascii16 -script tools/omsx_finales.tcl
 	WAR_ROM="$(abspath war_musica.rom)" WAR_OUT="$(abspath work/finales_$(MAQUINA))" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_musica.rom)" -romtype ascii16 -script tools/omsx_finales.tcl
@@ -555,7 +574,7 @@ mide_vista: war_musica.rom work/war_sin_vista.rom
 # parpadea el cursor- y MOVIENDO el cursor -cambia el trozo entero-. Y el cotejo
 # por pixel de la de sombra contra la referencia, que ahorrar no vale si pinta
 # otra cosa.
-work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/pt3_player.asm src/cartucho/pt3_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
+work/war_sombra.rom: extract $(CARTUCHO) tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
 	python3 tools/haz_rom.py work $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista-sombra --salidas work/sombra
 
 .PHONY: mide_sombra

@@ -7,10 +7,9 @@
 ;
 ;       0x8000 + (donde empieza el hueco - 0xC000)
 ;
-; que hoy son 2264 bytes desde 0xF728, o sea 0xB728. Ese numero NO se escribe
-; aqui a mano: lo calcula tools/haz_rom.py de la disposicion real de la ROM y
-; lo pasa como MUSICA_ORG, para que no pueda quedarse viejo si lo que va
-; delante cambia de tamano.
+; Ese numero NO se escribe aqui a mano: lo calcula tools/haz_rom.py de la
+; disposicion real de la ROM y lo pasa como MUSICA_ORG, para que no pueda
+; quedarse viejo si lo que va delante cambia de tamano.
 ;
 ; y solo se ve mientras la pagina 2 este conmutada a la ranura del cartucho.
 ; El juego corre con las cuatro paginas en RAM -el bloque alto vive en 0x88B8,
@@ -19,37 +18,52 @@
 ;
 ; Dentro van dos cosas:
 ;
-;   - el reproductor PT3, que es `libext/pt3/PT3-ROM.ASM` de msx-msxlib
-;     (Bulba / Dioniso / msxKun / SapphiRe), traducido de la sintaxis de asMSX
-;     a la de pasmo por tools/convierte_pt3.py. Su area de trabajo -382 bytes-
-;     no esta aqui sino en la RAM libre de 0x5C00: ver pt3_trabajo.inc.
+;   - el reproductor, que es el WYZ PSG proPLAYER v0.47d de Wyz, tal como lo
+;     trae msx-msxlib en `libext/wyzplayer047d/` ya partido en dos: el codigo
+;     en `wyzplayer-ROM.tniasm.asm` y sus variables en `wyzplayer-RAM...`.
+;     Esa particion es la que permite que el reproductor viva en la ROM de un
+;     cartucho. tools/convierte_wyz.py lo traduce de tniASM a pasmo y saca de
+;     paso el `wyz_trabajo.inc` con las variables, que aqui no ocupan sitio:
+;     son 233 bytes de la RAM libre de 0x5C00.
 ;
-;   - el modulo .pt3, SIN sus 100 primeros bytes, que son la cabecera de texto
-;     con el titulo y el autor. Por eso a PT3_INIT se le pasa MODULO-100, que
-;     es lo mismo que hace msx-msxlib cuando compila con CFG_PT3_HEADERLESS.
+;   - la cancion, que son DOS ficheros y no uno: el `.mus` con las notas, tal
+;     cual, y su `.mus.asm` con los instrumentos, los efectos de ritmo y la
+;     tabla de frecuencias de las notas. Los dos los deja tools/haz_rom.py en
+;     el directorio de trabajo como `cancion.bin` y `cancion.asm`.
 ;
-; El fichero del modulo lo deja tools/haz_rom.py en el directorio de trabajo
-; como `modulo.bin`, ya recortado, y lo pasa por -I. La musica NO va en el
-; repositorio: es del autor que se elija y se acredita aparte.
+; Ni el reproductor ni la cancion van en el repositorio: son de sus autores y
+; se acreditan aparte. Aqui viaja lo que los enchufa, que es esto.
 ; ==========================================================================
 
-                include "pt3_trabajo.inc"
+                include "wyz_trabajo.inc"
 
                 org MUSICA_ORG
 
 ; --------------------------------------------------------------------------
-; El reproductor. Deja publicas PT3_INIT, PT3_PLAY, PT3_ROUT y PT3_MUTE, que
-; son las cuatro que llama el puente; sus direcciones salen del .sym.
+; El reproductor. Deja publicas las cuatro rutinas que llama el puente:
+; WYZ_PLAYER_INIT, WYZ_CARGA_CANCION_HL, WYZ_REPRODUCE_FRAME y WYZ_PLAYER_OFF.
+; Sus direcciones salen del .sym, no de aqui.
 ; --------------------------------------------------------------------------
 MUSICA_PRINCIPIO:
-                include "pt3_player.asm"
+                include "wyz_player.asm"
 MUSICA_REPRODUCTOR_FIN:
 
 ; --------------------------------------------------------------------------
-; El modulo, ya sin cabecera.
+; La tabla de canciones. El reproductor trae dos maneras de arrancar una:
+; WYZ_CARGA_CANCION, que busca la numero A en esta tabla, y
+; WYZ_CARGA_CANCION_HL, que se la come de HL. El puente usa la segunda -aqui
+; solo hay una cancion-, pero la tabla se queda porque la primera sigue
+; estando en el binario y la nombra.
 ; --------------------------------------------------------------------------
-MODULO:
-                incbin "modulo.bin"
+TABLA_SONG:     defw MODULO
+
+; --------------------------------------------------------------------------
+; La cancion: las notas y, detras, sus instrumentos y la tabla de frecuencias.
+; Va entera, sin quitarle nada: el primer byte del .mus es el tempo y el
+; reproductor lo quiere.
+; --------------------------------------------------------------------------
+MODULO:         incbin "cancion.bin"
 MODULO_FIN:
+                include "cancion.asm"
 
 MUSICA_FIN:

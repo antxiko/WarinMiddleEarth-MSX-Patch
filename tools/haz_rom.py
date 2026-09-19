@@ -143,7 +143,8 @@ OP = dict(FIN=0, ROM_RAM=1, ROM_VRAM=2, VRAM_RAM=3, LLENA_RAM=4, LLENA_VRAM=5,
 # juego corra con las cuatro paginas en RAM y la ROM se asome solo durante la
 # interrupcion.
 VENTANA_8000 = 0x8000       # donde se ve el banco elegido con el registro 0x7000
-CABECERA_PT3 = 100          # los 100 bytes de texto (titulo y autor) no se meten
+CABECERA_MUS = 8            # tempo, canal de efectos y los cuatro desplazamientos
+                            # del bucle: la cabecera del .mus, que SI se mete
 PUENTE_RAM = 0x003B         # detras del `jp 0x0400` de 0x0038, en tierra de nadie
 # El gancho por cuadro que el juego deja vacio: 0x5E0F es `ld hl,00428h` y
 # 0x5E12 lo guarda en 0x0415. Cambiando su operando -dos bytes del bloque
@@ -967,14 +968,23 @@ def main(argv):
     if musica:
         assert banco_musica == (TAM_ROM - 1) // TAM_BANCO, \
             "el hueco empieza en el banco %d y no en el ultimo" % banco_musica
+        # La cancion son DOS ficheros: el `.mus` con las notas -que va tal
+        # cual, sin quitarle nada: su primer byte es el tempo y el reproductor
+        # lo quiere- y, al lado, el `.mus.asm` que saca el tracker con los
+        # instrumentos, los efectos de ritmo y la tabla de frecuencias. El
+        # segundo se traduce de tniASM a pasmo aqui mismo.
         with open(musica, "rb") as f:
-            pt3 = f.read()
-        assert len(pt3) > CABECERA_PT3, "%s no llega ni a la cabecera" % musica
-        # PT3_INIT quiere la direccion del modulo MENOS 100, que es justo lo que
-        # queda al quitarle la cabecera de texto: la misma cuenta que hace
-        # msx-msxlib con CFG_PT3_HEADERLESS.
-        with open(os.path.join(salidas, "modulo.bin"), "wb") as f:
-            f.write(pt3[CABECERA_PT3:])
+            cancion = f.read()
+        assert len(cancion) > CABECERA_MUS, "%s no llega ni a la cabecera" % musica
+        with open(os.path.join(salidas, "cancion.bin"), "wb") as f:
+            f.write(cancion)
+        tablas = musica + ".asm"
+        assert os.path.exists(tablas), \
+            ("falta %s, que es donde vienen los instrumentos y la tabla de notas\n"
+             "(el tracker saca los dos ficheros juntos)" % tablas)
+        subprocess.run([sys.executable, os.path.join(AQUI, "convierte_wyz.py"),
+                        "--cancion", tablas, os.path.join(salidas, "cancion.asm")],
+                       check=True, capture_output=True)
         bloque_musica = pasmo(os.path.join(SRC, "musica.asm"),
                               os.path.join(salidas, "musica.bin"),
                               os.path.join(salidas, "musica.sym"),
@@ -988,8 +998,9 @@ def main(argv):
                        os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
                        equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
                              ("MENU_NIVEL", MENU_NIVEL)]
-                             + [(k, sim[k]) for k in ("PT3_INIT", "PT3_PLAY", "PT3_ROUT",
-                                                      "PT3_MUTE", "MODULO")])
+                             + [(k, sim[k]) for k in ("WYZ_PLAYER_INIT", "WYZ_CARGA_CANCION_HL",
+                                                      "WYZ_REPRODUCE_FRAME", "WYZ_PLAYER_OFF",
+                                                      "MODULO")])
         sim_puente = lee_simbolos(os.path.join(salidas, "puente.sym"))
         puente_rom = hueco + len(bloque_musica)
         bloque_musica += puente
@@ -1542,11 +1553,13 @@ def main(argv):
                         - (len(bloque_nombres) if bloque_nombres else 0))
         disposicion["musica"] = dict(rom=hueco, bytes=musica_bytes,
                                      banco=banco_musica, org=musica_org,
-                                     pt3=os.path.basename(musica),
+                                     cancion=os.path.basename(musica),
                                      reproductor=musica_bytes - len(puente),
-                                     modulo=sim["MODULO"], init=sim["PT3_INIT"],
-                                     play=sim["PT3_PLAY"], rout=sim["PT3_ROUT"],
-                                     mute=sim["PT3_MUTE"],
+                                     modulo=sim["MODULO"],
+                                     init=sim["WYZ_PLAYER_INIT"],
+                                     carga=sim["WYZ_CARGA_CANCION_HL"],
+                                     cuadro=sim["WYZ_REPRODUCE_FRAME"],
+                                     para_el_psg=sim["WYZ_PLAYER_OFF"],
                                      puente=dict(rom=puente_rom, ram=PUENTE_RAM,
                                                  bytes=len(puente),
                                                  para=sim_puente["PARA_LA_MUSICA"]),
@@ -1710,8 +1723,8 @@ def main(argv):
                          ("PARA_LA_MUSICA", sim_puente["PARA_LA_MUSICA"]),
                          ("GANCHO", GANCHO_RAM), ("GANCHO_VACIO", GANCHO_VACIO),
                          ("CUENTA_CUADROS", sim_puente["CUENTA_CUADROS"]), ("CUADROS", sim_puente["CUADROS"]),
-                         ("PT3_SETUP", sim_puente["PT3_SETUP"]),
-                         ("AYREGS", sim_puente["AYREGS"])):
+                         ("WYZ_FLAGS", sim_puente["WYZ_FLAGS"]),
+                         ("PSG_REG", sim_puente["PSG_REG"])):
                 f.write("set ::%-15s 0x%04X\n" % (k, v))
     if vista:
         with open(os.path.join(salidas, "vista.tcl"), "w") as f:
@@ -1734,9 +1747,9 @@ def main(argv):
     if musica:
         m = disposicion["musica"]
         print("  la musica es %s: banco %d, se ve en 0x%04X-0x%04X por la ventana de 0x8000"
-              % (m["pt3"], m["banco"], m["org"], m["org"] + m["bytes"] - 1))
-        print("     PT3_INIT 0x%04X  PT3_PLAY 0x%04X  PT3_ROUT 0x%04X  modulo 0x%04X (a INIT se le pasa 0x%04X)"
-              % (m["init"], m["play"], m["rout"], m["modulo"], m["modulo"] - CABECERA_PT3))
+              % (m["cancion"], m["banco"], m["org"], m["org"] + m["bytes"] - 1))
+        print("     WYZ_PLAYER_INIT 0x%04X  CARGA_CANCION_HL 0x%04X  REPRODUCE_FRAME 0x%04X  PLAYER_OFF 0x%04X  cancion 0x%04X"
+              % (m["init"], m["carga"], m["cuadro"], m["para_el_psg"], m["modulo"]))
         print("     el puente: %d B de ROM 0x%05X a RAM 0x%04X; PARA_LA_MUSICA en 0x%04X"
               % (m["puente"]["bytes"], m["puente"]["rom"], m["puente"]["ram"], m["puente"]["para"]))
         for q in m["parches"]:

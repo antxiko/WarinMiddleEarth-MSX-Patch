@@ -16,12 +16,16 @@ work/*
 # -----------------------------------------------------------------------------
 # El reproductor PT3
 # -----------------------------------------------------------------------------
-# Tampoco se distribuye: es de Bulba / Dioniso / msxKun / SapphiRe y viaja en
-# msx-msxlib sin licencia escrita. Lo que si va aqui es tools/convierte_pt3.py,
-# que lo traduce de asMSX a pasmo, y `make src/cartucho/pt3_player.asm` lo
-# genera de tu copia. La musica (.pt3) es de su autor y tampoco viaja.
-src/cartucho/pt3_player.asm
-*.pt3
+# Tampoco se distribuye: el reproductor es el WYZ PSG proPLAYER v0.47d, de Wyz,
+# y viaja en msx-msxlib sin licencia escrita. Lo que si va aqui es
+# tools/convierte_wyz.py, que lo traduce de tniASM a pasmo, y
+# `make src/cartucho/wyz_player.asm` genera de tu copia el reproductor y el
+# .inc con sus variables. La cancion (.mus y su .mus.asm) es de su autor y
+# tampoco viaja.
+src/cartucho/wyz_player.asm
+src/cartucho/wyz_trabajo.inc
+*.mus
+*.mus.asm
 
 # -----------------------------------------------------------------------------
 # La cinta original

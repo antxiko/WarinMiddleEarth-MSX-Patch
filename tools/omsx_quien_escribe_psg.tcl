@@ -5,8 +5,8 @@
 # MIXER, el que dice que canales suenan-, lo LEE, le hace `or 0C0h` y lo vuelve
 # a escribir. Dos problemas:
 #
-#   - el reproductor deja ese registro con el bit 6 a CERO (`res 6,(hl)` en
-#     PT3_ROUT) y el juego se lo pone a UNO;
+#   - el reproductor deja ese registro con el bit 6 a CERO y el juego se lo
+#     pone a UNO;
 #   - y reescribe el mixer ENTERO con lo que leyo antes, asi que si entre medias
 #     el reproductor lo cambio, se pierde.
 #

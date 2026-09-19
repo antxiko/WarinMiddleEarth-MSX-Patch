@@ -33,6 +33,23 @@ MONTADO = [(0x0000, 0x0190, "vectores y buzon de POKEs: 0x0038 = jp 0x0400"),
 FINALES = [(0x094F, 0x244F, "pantalla final: VICTORIA (Gandalf), 6912 B"),
            (0x244F, 0x3F4F, "pantalla final: DERROTA (Sauron), 6912 B")]
 
+TRABAJO_INC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "src", "cartucho", "wyz_trabajo.inc")
+
+
+def area_de_trabajo():
+    """De donde a donde llegan las variables del reproductor, leidas del .inc
+    que las reparte. La primera etiqueta y WYZ_TRABAJO_FIN."""
+    import re
+    dirs = []
+    with open(TRABAJO_INC) as f:
+        for linea in f:
+            m = re.match(r"\s*\S+\s+equ\s+0([0-9A-Fa-f]{4})h", linea)
+            if m:
+                dirs.append(int(m.group(1), 16))
+    assert dirs, "%s no trae ni una direccion" % TRABAJO_INC
+    return dirs[0], dirs[-1]
+
 
 def lee_libres(work):
     """Los tramos que nadie leyo ni escribio, tal y como los funde
@@ -93,8 +110,13 @@ def lee_musica(work):
     if not m:
         return []
     p = m["puente"]
+    # Lo que ocupa el area de trabajo del reproductor NO se escribe aqui: sale
+    # del .inc que genera tools/convierte_wyz.py, que es quien reparte las
+    # variables. A mano se quedaria vieja en cuanto el reproductor cambie.
+    trabajo = area_de_trabajo()
     ocupa = [(p["ram"], p["ram"] + p["bytes"], "EL PUENTE de la musica (%d B)" % p["bytes"]),
-             (0x5C00, 0x5C00 + 382, "area de trabajo del reproductor PT3 (382 B)")]
+             (trabajo[0], trabajo[1],
+              "area de trabajo del reproductor WYZ (%d B)" % (trabajo[1] - trabajo[0]))]
     # La rutina de las pantallas finales vive justo detras del puente, en la
     # misma tierra de nadie de la pagina 0.
     f_ = d.get("finales")

@@ -33,7 +33,7 @@ def filas_de(plan):
             m = d
             fin_repro = d["rom"] + d["reproductor"]
             filas.append((d["rom"], fin_repro, "MUSICA",
-                          "reproductor PT3 y el modulo %s" % d["pt3"]))
+                          "reproductor WYZ y la cancion %s" % d["cancion"]))
             p = d["puente"]
             filas.append((p["rom"], p["rom"] + p["bytes"], "MUSICA",
                           "el puente, que viaja aqui y corre en 0x%04X" % p["ram"]))
@@ -93,8 +93,9 @@ def main(argv):
               % (crudo, comp, crudo - comp, 100.0 * (crudo - comp) / crudo))
     print("  Hueco libre: %d bytes." % libre)
     if libre and "musica" in plan["datos"]:
-        print("  Un modulo PT3 mas grande cabe mientras no pase de ahi;"
-              " el de ahora ocupa %d B." % plan["datos"]["musica"]["bytes"])
+        print("  Una cancion mas grande cabe mientras no pase de ahi;"
+              " la de ahora, con el reproductor y el puente, ocupa %d B."
+              % plan["datos"]["musica"]["bytes"])
     return 0
 
 

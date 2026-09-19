@@ -92,8 +92,8 @@ debug set_bp $::VUELVE {} {
             # En que tramo del cuadro cae. Sin esto la medida no sirve para
             # decidir nada: una media del 7,8% con una maxima del 47,9% puede
             # ser un juego que se atasca a menudo o un unico pico al arrancar,
-            # que es lo que resulta ser -la vuelta que lleva PT3_INIT dentro,
-            # montando la tabla de volumenes entera, y no se repite-.
+            # que es lo que resulta ser -la vuelta que lleva la carga de la
+            # cancion dentro, descodificando los cuatro canales, y no se repite-.
             set pc [expr {100.0 * $d * $::Z80 / $::CUADRO}]
             set i 0
             foreach tope $::TRAMOS {
@@ -128,8 +128,8 @@ proc informe {} {
         }
     }
     say "4. PSG: [psg]"
-    say "   area de trabajo [hex $::PT3_SETUP 4] = [lee_bloque $::PT3_SETUP 16]..."
-    say "   AYREGS [hex $::AYREGS 4] = [lee_bloque $::AYREGS 14]"
+    say "   area de trabajo [hex $::WYZ_FLAGS 4] = [lee_bloque $::WYZ_FLAGS 16]..."
+    say "   PSG_REG [hex $::PSG_REG 4] = [lee_bloque $::PSG_REG 14]"
 }
 
 # ------------------------------------------------------------------ la traza
