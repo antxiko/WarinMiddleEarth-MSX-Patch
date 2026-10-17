@@ -46,7 +46,7 @@
 #
 # Los parametros van en un fichero, no en el entorno ni en argumentos:
 #   source work/replay/cfg.tcl   define NOMBRE T_INI T_FIN VENTANA FULL_CADA MAX_REAL
-set W C:/Users/Antxiko/Documents/DES_ASM/WARINMIDDLEEARTH_DISAM
+set W C:/Users/Antxiko/Documents/DES_ASM/desensamblados/WARINMIDDLEEARTH_DISAM
 source $W/work/replay/cfg.tcl
 set OUT $W/work/replay/$NOMBRE
 file mkdir $OUT
