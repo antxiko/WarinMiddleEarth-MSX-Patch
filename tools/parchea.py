@@ -327,6 +327,17 @@ PARCHES = [
          codigo=True,
          motivo="0x7079: se escribe desde la columna 0 (0x7CEF), no desde la 10"),
 
+    # El aviso de cuando el Anillo cambia de manos (0x6AA4 lo deja en el buzon
+    # del panel Memo, 0x8242). Lo pidio el usuario el 2026-11-14: "queda
+    # mejor". CABE EN SU SITIO: la cinta lo trae con cinco espacios de relleno
+    # antes del 0x00 que lo acaba, o sea 29 bytes, y la frase nueva tiene 29
+    # con su punto. El panel lo hace rodar hasta el 0x00, asi que el relleno no
+    # pintaba nada.
+    dict(grupo="textos", bloque="medio", dir=0x6AF5,
+         orig="456c20416e696c6c6f207365206861207065726469646f2e2020202020",
+         nuevo="456c20416e696c6c6f2063616d62696120646520706f727461646f722e",
+         motivo="0x6AF5: 'El Anillo se ha perdido.' -> 'El Anillo cambia de portador.', en sus 29 bytes"),
+
     #
     # (5a) La tabla de sitios de 0x7A5E. Cada registro es
     #      [x][y][2+ancho*filas][ancho<<4 | filas][texto], y el texto se pinta en

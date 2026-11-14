@@ -160,6 +160,14 @@ ORG_ALTO = 0x9E00           # y donde corre el alto, tambien recolocado por 0x01
 # hace luego la carga que se llevo por delante.
 MENU_LEE_NIVEL = 0x5E86     # `3A 70 5E`, tres bytes
 MENU_NIVEL = 0x5E70         # el operando del `ld a,nn` de 0x5E6F, que guarda el nivel
+# CON LAS TRES CANCIONES (--canciones) la musica no calla: el menu pide la
+# taberna, y la batalla se pide y se devuelve en dos `call` del bloque medio,
+# que pasan a llamar al puente (PIDE_BATALLA y PIDE_TABERNA) y este sigue
+# a donde iban.
+LLAMA_A_LA_PREBATALLA = 0x9021      # `call PANTALLA_DE_BATALLA`: empieza la batalla
+PANTALLA_DE_BATALLA = 0x752C
+LLAMA_A_DESCOMPRIMIR = 0x91FC       # `call DESCOMPRIME_EL_MAPA`: tras "La Batalla ha finalizado"
+DESCOMPRIME_EL_MAPA = 0x9366
 
 # LAS TRES IMAGENES (--comprime). Son lo unico del juego que se puede encoger
 # de verdad, y no se pierde ninguna: viajan comprimidas y el cargador las
@@ -198,9 +206,12 @@ PINTA_LA_FINAL = 0x83E7
 # RAM ahi no habia sitio. En tiempo de juego la rutina de las finales NO usa
 # bufer ninguno: descomprime EN EL SITIO (ver DESTINO_PANTALLA).
 ZONA_LIBRE = 0x0950         # redondeado, justo detras del bloque bajo recortado
-SITIO_RUTINA = 256          # lo que se le reserva a finales.asm; sobra
+SITIO_RUTINA = 384          # lo que se le reserva a finales.asm (con las pantallas de
+                            # SCREEN 2 dentro pasa de 256: 2026-11-14)
 NOMBRES_RAM = ZONA_LIBRE + SITIO_RUTINA # 0x0A50: la vista, pegada a la rutina
-TAM_BUFER_Z = 4096
+TAM_BUFER_Z = 3712          # lo mayor que pasa por el: los patrones de la imagen de carga
+                            # (3.663 B los de la cinta, 3.606 los de Ruben). Era 4.096;
+                            # se recorto para dejarle sitio a SITIO_RUTINA
 TAM_BUFER_D = 6144                      # lo mayor que va a la VRAM: media pantalla
 BUFER_D = CARGA_MEDIO - TAM_BUFER_D     # el descomprimido, camino de la VRAM: 0x274F
 BUFER_Z = BUFER_D - TAM_BUFER_Z         # y delante, el comprimido tal cual sale de la ROM: 0x174F
@@ -490,6 +501,24 @@ TOPE_PERSEGUIDO_ORIG = bytes.fromhex("17")
 TOPE_FICHA = 0x6F2D             # el operando del `cp 018h` de 0x6F2C
 TOPE_FICHA_ORIG = bytes.fromhex("18")
 TOPE_NUEVO = 0x1A               # las dos ranuras nuevas tienen nombre
+
+# LOS TOPONIMOS ENTEROS. La tabla de sitios del mapa (0x7A5E) lleva los
+# nombres recortados a lo que cabia en la cinta -"Ptos Grises", "Ga. Hierro",
+# "Puerta N", "LosGamos", "Quebradas" y "Abism/Helm"- y no se pueden alargar
+# en su sitio: los registros van pegados, BUSCA_EL_SITIO (0x6E50) los recorre
+# sumando el largo de cada uno y en 0x7BD6 empieza el texto de "Hecho por".
+# Son 32 bytes de mas y en el bloque medio no hay ni una racha de 24 libres.
+#
+# Pero SOLO UN SITIO la mira -el operando del `ld hl,07a5eh` de 0x6E52; no hay
+# ningun otro operando de los listados entre 0x7A5E y 0x7BD6-, asi que la
+# tabla se muda entera a nombres.asm y alli crece. Como los dos heroes, pide
+# --vista: es donde viaja nombres.asm. El formato y lo que cambia cada
+# toponimo estan explicados en src/cartucho/nombres.asm (MI_SITIOS).
+#
+# Los 376 B de 0x7A5E-0x7BD6 se quedan muertos, pero NO se declaran hueco: el
+# IPS de la cinta escribe ahi y es justo lo que vigilan los tests de huecos.
+SITIOS_PUNTERO = 0x6E53         # el operando del `ld hl,07a5eh` de BUSCA_EL_SITIO
+SITIOS_PUNTERO_ORIG = bytes.fromhex("5e7a")
 
 # EL PANEL FILE/MEMO/TIME, CON EL COLOR DE LA VISTA (--panel). En la cinta
 # parcheada de Araubi el texto de la vista de cerca se escribe con el atributo
@@ -921,6 +950,8 @@ def main(argv):
     espera = 150
     con_pantalla = True
     musica = None
+    pantallas = None
+    canciones = None
     comprimir = False
     finales_rom = False
     vista = False
@@ -938,6 +969,15 @@ def main(argv):
             con_pantalla = False; i += 1
         elif argv[i] == "--musica":
             musica = argv[i + 1]; i += 2
+        elif argv[i] == "--pantallas":
+            # Las pantallas de Ruben (2026-11-14): PORTADA, VICTORIA y DERROTA
+            # .SC2 de ese directorio, en SCREEN 2, en vez de la imagen de carga
+            # y las dos finales del Spectrum.
+            pantallas = argv[i + 1]; i += 2
+        elif argv[i] == "--canciones":
+            # Las tres canciones de Ruben (niebla, taberna y batalla .mus) con
+            # sus instrumentos (medieval.mus.asm): suenan TODA la partida.
+            canciones = argv[i + 1]; i += 2
         elif argv[i] == "--comprime":
             comprimir = True; i += 1
         elif argv[i] == "--finales-rom":
@@ -967,6 +1007,12 @@ def main(argv):
         else:
             print("argumento desconocido:", argv[i]); return 2
     assert 0 < espera < 256
+    if canciones:
+        assert not musica, "--canciones y --musica no van juntos"
+        musica = canciones
+    assert not pantallas or comprimir, "--pantallas necesita --comprime: las finales viajan con ZX0"
+    assert not canciones or (comprimir and con_pantalla), \
+        "--canciones necesita --comprime y la imagen de carga: las descomprime el cargador detras de ella"
     # Los dos van juntos, y no es por comodidad: los bufers que ZX0 necesita
     # caen justo en la RAM que liberan las pantallas finales. Comprimiendo sin
     # sacarlas, el bufer y el destino de las propias pantallas se pisarian.
@@ -1009,6 +1055,20 @@ def main(argv):
     # 6144 de colores (src/war_pantalla.asm). El codigo no hace falta.
     patrones = pantalla[100:100 + 6144]
     colores = pantalla[100 + 6144:100 + 12288]
+    sc2 = {}
+    if pantallas:
+        # Las de Ruben: BSAVE de SCREEN 2 (cabecera FE 0000 37FF 0000 y la VRAM
+        # de 0x0000 a 0x36FF), con la tabla de nombres de siempre, 0..255 tres
+        # veces. De cada una valen los patrones (0x0000) y los colores (0x2000).
+        for nombre in ("PORTADA", "VICTORIA", "DERROTA"):
+            with open(os.path.join(pantallas, nombre + ".SC2"), "rb") as f:
+                d = f.read()
+            assert d[:7] == bytes.fromhex("fe0000ff370000"), "%s.SC2 no es un BSAVE de 0x0000-0x37FF" % nombre
+            v = d[7:]
+            assert v[0x1800:0x1B00] == bytes(range(256)) * 3, (
+                "%s.SC2 no lleva la tabla de nombres 0..255: el juego no la cambia" % nombre)
+            sc2[nombre] = (v[0x0000:0x1800], v[0x2000:0x3800])
+        patrones, colores = sc2["PORTADA"]
 
 
     # ------------------------------------------------------------ disposicion
@@ -1047,9 +1107,18 @@ def main(argv):
             "las dos pantallas finales no acaban donde acaba el bloque bajo"
         mete("bajo", bajo[:corte], crudo=corte, zx0=False,
              que="bloque bajo: el codigo, hasta donde empiezan las pantallas finales")
-        for n, (dir_, tam, que) in enumerate(FINALES):
-            o = dir_ - CARGA_BAJO
-            mete_z("final%d" % n, bajo[o:o + tam], que)
+        if pantallas:
+            # Las finales de Ruben: patrones y colores, cada mitad por su lado
+            # (la rutina las descomprime de una en una en 0x4000). Las dos del
+            # Spectrum ya no viajan.
+            for n, nombre in enumerate(("VICTORIA", "DERROTA")):
+                pat, col = sc2[nombre]
+                mete_z("final%dp" % n, pat, "%s.SC2 de Ruben: los patrones" % nombre)
+                mete_z("final%dc" % n, col, "%s.SC2 de Ruben: los colores" % nombre)
+        else:
+            for n, (dir_, tam, que) in enumerate(FINALES):
+                o = dir_ - CARGA_BAJO
+                mete_z("final%d" % n, bajo[o:o + tam], que)
     else:
         mete("patrones", patrones, crudo=len(patrones), zx0=False)
         mete("colores", colores, crudo=len(colores), zx0=False)
@@ -1064,6 +1133,27 @@ def main(argv):
         # byte de lo demas.
         mete_z("mapa", mapa_general.dibuja_el_mapa(work, medio=medio, alto=alto),
                "el mapa general ya dibujado: los 6.144 bytes del lienzo de 0x4000")
+    canciones_ram = None
+    if canciones:
+        # LAS TRES CANCIONES Y SUS INSTRUMENTOS, que van a la RAM de la pagina 0
+        # (canciones.asm) pegados al final de la zona libre, y viajan aqui con
+        # ZX0. Dos pasadas de pasmo: la primera solo mide, para saber el `org`.
+        for n in ("niebla", "taberna", "batalla"):
+            shutil.copy(os.path.join(canciones, n + ".mus"), os.path.join(salidas, n + ".mus"))
+        subprocess.run([sys.executable, os.path.join(AQUI, "convierte_wyz.py"),
+                        "--cancion", os.path.join(canciones, "medieval.mus.asm"),
+                        os.path.join(salidas, "cancion.asm")],
+                       check=True, capture_output=True)
+        medida = pasmo(os.path.join(SRC, "canciones.asm"), os.path.join(salidas, "canciones.bin"),
+                       os.path.join(salidas, "canciones.sym"), equs=[("CANCIONES_ORG", 0)])
+        canciones_ram = CARGA_MEDIO - len(medida)
+        bloque_canciones = pasmo(os.path.join(SRC, "canciones.asm"), os.path.join(salidas, "canciones.bin"),
+                                 os.path.join(salidas, "canciones.sym"),
+                                 equs=[("CANCIONES_ORG", canciones_ram)])
+        sim_canciones = lee_simbolos(os.path.join(salidas, "canciones.sym"))
+        assert sim_canciones["CANCIONES_FIN"] == CARGA_MEDIO
+        mete_z("canciones", bloque_canciones,
+               "las tres canciones de Ruben y sus instrumentos, para la RAM de 0x%04X" % canciones_ram)
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
     # ---------------------------------------------------------------- musica
@@ -1096,13 +1186,44 @@ def main(argv):
         puente = pasmo(os.path.join(mudo, "puente.asm"),
                        os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
                        equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
-                             ("MENU_NIVEL", MENU_NIVEL)]
+                             ("MENU_NIVEL", MENU_NIVEL), ("TRES_CANCIONES", 0)]
                              + [(k, sim[k]) for k in ("WYZ_PLAYER_INIT", "WYZ_CARGA_CANCION_HL",
                                                       "WYZ_REPRODUCE_FRAME", "WYZ_PLAYER_OFF",
                                                       "MODULO")])
         sim_puente = lee_simbolos(os.path.join(salidas, "puente.sym"))
         puente_rom = hueco + len(bloque_musica)
         bloque_musica += puente
+        assert PUENTE_RAM + len(puente) <= BUZON_POKES[0], \
+            "el puente llega a 0x%04X y pisaria el buzon de POKEs" % (PUENTE_RAM + len(puente))
+    elif canciones:
+        assert banco_musica == (TAM_ROM - 1) // TAM_BANCO, \
+            "el hueco empieza en el banco %d y no en el ultimo" % banco_musica
+        # LAS TRES CANCIONES: aqui solo el reproductor y su TABLA_SONG; las
+        # canciones y los instrumentos ya estan medidos y viajan comprimidos a la
+        # RAM (arriba). Sus direcciones salen del .sym de canciones.asm.
+        bloque_musica = pasmo(os.path.join(SRC, "musica_tres.asm"),
+                              os.path.join(salidas, "musica.bin"),
+                              os.path.join(salidas, "musica.sym"),
+                              equs=[("MUSICA_ORG", musica_org)]
+                                   + [(k, sim_canciones[k]) for k in (
+                                       "TABLA_PAUTAS", "TABLA_SONIDOS", "DATOS_NOTAS",
+                                       "CANCION_0", "CANCION_1", "CANCION_2")])
+        sim = lee_simbolos(os.path.join(salidas, "musica.sym"))
+        puente = pasmo(os.path.join(SRC, "puente.asm"),
+                       os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
+                       equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
+                             ("MENU_NIVEL", MENU_NIVEL), ("TRES_CANCIONES", 1),
+                             ("PANTALLA_DE_BATALLA", PANTALLA_DE_BATALLA),
+                             ("DESCOMPRIME_EL_MAPA", DESCOMPRIME_EL_MAPA)]
+                             + [(k, sim[k]) for k in ("WYZ_PLAYER_INIT", "WYZ_CARGA_CANCION",
+                                                      "WYZ_CARGA_CANCION_HL",
+                                                      "WYZ_REPRODUCE_FRAME", "WYZ_PLAYER_OFF",
+                                                      "MODULO")])
+        sim_puente = lee_simbolos(os.path.join(salidas, "puente.sym"))
+        puente_rom = hueco + len(bloque_musica)
+        bloque_musica += puente
+        assert len(bloque_musica) <= libre_hueco, \
+            "la musica ocupa %d B y en el hueco caben %d" % (len(bloque_musica), libre_hueco)
         assert PUENTE_RAM + len(puente) <= BUZON_POKES[0], \
             "el puente llega a 0x%04X y pisaria el buzon de POKEs" % (PUENTE_RAM + len(puente))
     elif musica:
@@ -1137,7 +1258,7 @@ def main(argv):
         puente = pasmo(os.path.join(SRC, "puente.asm"),
                        os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
                        equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
-                             ("MENU_NIVEL", MENU_NIVEL)]
+                             ("MENU_NIVEL", MENU_NIVEL), ("TRES_CANCIONES", 0)]
                              + [(k, sim[k]) for k in ("WYZ_PLAYER_INIT", "WYZ_CARGA_CANCION_HL",
                                                       "WYZ_REPRODUCE_FRAME", "WYZ_PLAYER_OFF",
                                                       "MODULO")])
@@ -1174,14 +1295,18 @@ def main(argv):
                      ("M_SRC", VENTANA_8000 + d["rom"] % TAM_BANCO),
                      ("M_TAM", d["bytes"]),
                      ("M_DST", en_el_sitio(d))]
+        equs += [("SC2", 1 if pantallas else 0),
+                 ("R1_ENCENDIDA", VDP_REGS[1] | (R1_SPRITES_16 if vista else 0))]
         for n, (dir_, _tam, _que) in enumerate(FINALES):
-            d = disposicion["final%d" % n]
-            assert d.get("zx0"), "la pantalla final %d no esta comprimida" % n
-            equs += [("F%d_DIR" % n, dir_),
-                     ("F%d_BANCO" % n, d["rom"] // TAM_BANCO),
-                     ("F%d_SRC" % n, VENTANA_8000 + d["rom"] % TAM_BANCO),
-                     ("F%d_TAM" % n, d["bytes"]),
-                     ("F%d_DST" % n, en_el_sitio(d))]
+            equs += [("F%d_DIR" % n, dir_)]
+            mitades = (("P", "final%dp" % n), ("C", "final%dc" % n)) if pantallas else (("", "final%d" % n),)
+            for letra, nombre in mitades:
+                d = disposicion[nombre]
+                assert d.get("zx0"), "la pantalla %s no esta comprimida" % nombre
+                equs += [("F%d%s_BANCO" % (n, letra), d["rom"] // TAM_BANCO),
+                         ("F%d%s_SRC" % (n, letra), VENTANA_8000 + d["rom"] % TAM_BANCO),
+                         ("F%d%s_TAM" % (n, letra), d["bytes"]),
+                         ("F%d%s_DST" % (n, letra), en_el_sitio(d))]
         bloque_finales = pasmo(os.path.join(SRC, "finales.asm"),
                                os.path.join(salidas, "finales.bin"),
                                os.path.join(salidas, "finales.sym"), equs=equs)
@@ -1256,8 +1381,11 @@ def main(argv):
     # Por ellos solo pasa lo que el CARGADOR descomprime -la pantalla de carga-;
     # las finales y el mapa los descomprime el juego en el sitio, sin bufer.
     if comprimir:
-        mayor = max((disposicion[n]["bytes"] for n in ("patrones", "colores")
-                     if disposicion[n].get("zx0")), default=0)
+        mayor = max((disposicion[n]["bytes"] for n in ("patrones", "colores", "canciones")
+                     if n in disposicion and disposicion[n].get("zx0")), default=0)
+        if canciones:
+            assert BUFER_Z + disposicion["canciones"]["bytes"] <= canciones_ram, \
+                "las canciones comprimidas, en el bufer, pisarian a donde se descomprimen"
         assert mayor <= TAM_BUFER_Z, (
             "el mayor bloque comprimido son %d B y el bufer tiene %d" % (mayor, TAM_BUFER_Z))
         assert BUFER_D + TAM_BUFER_D <= CARGA_MEDIO, (
@@ -1361,6 +1489,10 @@ def main(argv):
         p.op("PAG1_CART", nota="el cartucho otra vez, para repintar la imagen")
         bloque("patrones", 0x0000, a_vram=True, nota="imagen de carga otra vez: patrones")
         bloque("colores", 0x2000, a_vram=True, nota="imagen de carga otra vez: colores")
+        if canciones:
+            # Despues de la imagen, que es lo ultimo que pasa por los bufers: las
+            # canciones caen dentro del segundo, que ya no se va a usar.
+            bloque("canciones", canciones_ram)
         tablas_del_screen_2(" (otra vez: el bufer las piso)")
         p.op("PAG1_RAM", nota="y fuera del todo: el juego quiere las cuatro paginas en RAM")
     else:
@@ -1444,6 +1576,15 @@ def main(argv):
             MENU_LEE_NIVEL, bytes([0x3A]) + MENU_NIVEL.to_bytes(2, "little"),
             bytes([0xCD]) + sim_puente["PARA_LA_MUSICA"].to_bytes(2, "little"),
             "al pulsar 0 el menu avisa al puente antes de leer el nivel"))
+    if canciones:
+        parches_musica.append(parchea(
+            LLAMA_A_LA_PREBATALLA, bytes([0xCD]) + PANTALLA_DE_BATALLA.to_bytes(2, "little"),
+            bytes([0xCD]) + sim_puente["PIDE_BATALLA"].to_bytes(2, "little"),
+            "al empezar la batalla se pide su cancion (PIDE_BATALLA)"))
+        parches_musica.append(parchea(
+            LLAMA_A_DESCOMPRIMIR, bytes([0xCD]) + DESCOMPRIME_EL_MAPA.to_bytes(2, "little"),
+            bytes([0xCD]) + sim_puente["PIDE_TABERNA"].to_bytes(2, "little"),
+            "al acabar la batalla vuelve la de la partida (PIDE_TABERNA)"))
     parche_finales = None
     if finales_rom:
         # El `ld de,04000h / ld bc,01b00h / ldir` de PINTA_LA_PANTALLA_FINAL,
@@ -1601,6 +1742,12 @@ def main(argv):
             ESTAMPA_EL_GUANTE, ESTAMPA_EL_GUANTE_ORIG, ESTAMPA_EL_GUANTE_NUEVO,
             "MUEVE_EL_CURSOR deja de estampar el guante por software (ahora son dos "
             "sprites) y deja de escribir en el estampado muerto"))
+        # LOS TOPONIMOS ENTEROS: la tabla de sitios, mudada a nombres.asm.
+        parches_vista.append(parchea(
+            SITIOS_PUNTERO, SITIOS_PUNTERO_ORIG,
+            sim_nombres["MI_SITIOS"].to_bytes(2, "little"),
+            "BUSCA_EL_SITIO lee la tabla de sitios mudada, con los toponimos "
+            "enteros en dos renglones (MI_SITIOS)"))
     if vista and heroes:
         # LOS NOMBRES de los dos heroes nuevos. La lista se muda entera a
         # nombres.asm porque en 0x6B46 no cabe ni un byte mas: detras empieza
@@ -1743,6 +1890,9 @@ def main(argv):
                    carga=dict(bajo=CARGA_BAJO, medio=CARGA_MEDIO, alto=CARGA_ALTO, salto=SALTO, pila=PILA),
                    pantalla_de_carga=con_pantalla, espera_cuadros=espera,
                    vdp_regs=vdp_regs, psg_regs=PSG_REGS, plan=p.json())
+    if pantallas:
+        # de donde salen la imagen de carga y las finales: los tests las cotejan
+        resumen["pantallas"] = os.path.relpath(pantallas, os.path.join(AQUI, ".."))
     if comprimir:
         # LA ZONA LIBERADA, declarada: quien puede escribir en 0x094F-0x3F4E y
         # que. Sin esto, los tests tendrian que reconocer los bufers por su
@@ -1781,6 +1931,12 @@ def main(argv):
                        ram=DIBUJOS_RAM, que="los 128 dibujos del mapa: ya no se leen de la RAM"),
             identidad=sim_nombres["TABLA_IDENTIDAD"],
             modo=sim_nombres["MODO_NOMBRES"],
+            # La tabla de sitios del mapa, mudada aqui para que los toponimos
+            # quepan enteros (ver MI_SITIOS en src/cartucho/nombres.asm).
+            sitios=dict(ram=sim_nombres["MI_SITIOS"],
+                        bytes=sim_nombres["MI_SITIOS_FIN"] - sim_nombres["MI_SITIOS"],
+                        origen=0x7A5E,
+                        que="los carteles de los sitios, con los nombres sin recortar"),
             sombra=sim_nombres.get("SOMBRA_BUF") if sombra else None,
             parches=parches_vista,
             # La tecla F: donde vive la rutina y sus tres bytes de estado, para
@@ -1887,16 +2043,29 @@ def main(argv):
             entrada=sim_finales["FINALES"], parche=parche_finales,
             banco_vuelve=banco_musica if musica else 0,
             ranuras=dict(pag1=sim_finales["F_RANURA1"] + 1, pag2=sim_finales["F_RANURA2"] + 1),
-            destino=DESTINO_PANTALLA,
-            pantallas=[dict(dir=dir_, crudo=tam, que=que,
-                            rom=disposicion["final%d" % n]["rom"],
-                            bytes=disposicion["final%d" % n]["bytes"],
-                            banco=disposicion["final%d" % n]["rom"] // TAM_BANCO,
-                            src=VENTANA_8000 + disposicion["final%d" % n]["rom"] % TAM_BANCO,
-                            zx0=disposicion["final%d" % n]["zx0"],
-                            delta=disposicion["final%d" % n]["delta"],
-                            sitio=en_el_sitio(disposicion["final%d" % n]))
-                       for n, (dir_, tam, que) in enumerate(FINALES)])
+            destino=DESTINO_PANTALLA, sc2=bool(pantallas),
+            # Con --pantallas cada final son DOS bloques (patrones y colores,
+            # en ese orden, con la direccion de VRAM a la que van).
+            pantallas=[dict(dir=dir_, crudo=disposicion[nombre]["crudo"], que=disposicion[nombre]["que"],
+                            rom=disposicion[nombre]["rom"],
+                            bytes=disposicion[nombre]["bytes"],
+                            banco=disposicion[nombre]["rom"] // TAM_BANCO,
+                            src=VENTANA_8000 + disposicion[nombre]["rom"] % TAM_BANCO,
+                            zx0=disposicion[nombre]["zx0"],
+                            delta=disposicion[nombre]["delta"],
+                            sitio=en_el_sitio(disposicion[nombre]),
+                            **(dict(vram=vram) if pantallas else {}))
+                       for n, (dir_, tam, que) in enumerate(FINALES)
+                       for nombre, vram in ((("final%dp" % n, 0x0000), ("final%dc" % n, 0x2000))
+                                            if pantallas else (("final%d" % n, None),))])
+    if canciones:
+        resumen["canciones"] = dict(
+            ram=canciones_ram, bytes=len(bloque_canciones), rom=disposicion["canciones"]["rom"],
+            comprimidas=disposicion["canciones"]["bytes"],
+            cancion=[sim_canciones["CANCION_%d" % k] for k in range(3)],
+            nombres=["niebla", "taberna", "batalla"],
+            pedida=sim_puente["PEDIDA"], sonando=sim_puente["PUENTE_SONANDO"],
+            pide_batalla=sim_puente["PIDE_BATALLA"], pide_taberna=sim_puente["PIDE_TABERNA"])
     with open(os.path.join(salidas, "plan.json"), "w") as f:
         json.dump(resumen, f, indent=1)
 
@@ -1916,6 +2085,17 @@ def main(argv):
                          ("WYZ_FLAGS", sim_puente["WYZ_FLAGS"]),
                          ("PSG_REG", sim_puente["PSG_REG"])):
                 f.write("set ::%-15s 0x%04X\n" % (k, v))
+            if canciones:
+                # Para tools/omsx_ruben.tcl: que cancion pide el juego, donde
+                # viven en la RAM y por donde lo para la rutina de las finales.
+                for k, v in (("PEDIDA", sim_puente["PEDIDA"]),
+                             ("CANCIONES_INI", canciones_ram), ("CANCIONES_FIN", CARGA_MEDIO - 1),
+                             ("MUSICA_INI", musica_org), ("MUSICA_FIN", sim["MUSICA_FIN"] - 1),
+                             ("WYZ_AREA_INI", sim_puente["WYZ_FLAGS"]),
+                             ("WYZ_AREA_FIN", sim_puente["WYZ_TRABAJO_FIN"] - 1)):
+                    f.write("set ::%-15s 0x%04X\n" % (k, v))
+            if finales_rom and pantallas:
+                f.write("set ::%-15s 0x%04X\n" % ("F_PARADO", sim_finales["F_PARADO"]))
     if vista:
         with open(os.path.join(salidas, "vista.tcl"), "w") as f:
             f.write("# generado por tools/haz_rom.py: no editar\n")
@@ -1955,7 +2135,7 @@ def main(argv):
         q = f["parche"]
         print("     0x%04X del bloque medio: %s -> %s, %s"
               % (q["dir"], q["orig"], q["nuevo"], q["que"]))
-        print("     RAM liberada: %d bytes" % sum(q["crudo"] for q in f["pantallas"]))
+        print("     RAM liberada: %d bytes" % sum(tam for _dir, tam, _que in FINALES))
     if panel:
         q = resumen["panel"]
         print("  el panel del mapa toma el atributo de la vista (0x%04X): 0x%02X -> 0x%02X; la marca de unidad, 0x%02X -> 0x%02X"

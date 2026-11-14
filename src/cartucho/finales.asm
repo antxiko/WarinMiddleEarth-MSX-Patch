@@ -104,6 +104,112 @@ SIGUE_EL_MAPA   equ 081C1h      ; el `call 005bdh` que sube el lienzo al VDP: po
 ; iba a buscarlas. DE y BC estan libres: el `ld de,04000h / ld bc,01b00h` que
 ; el parche sustituye los iba a cargar justo aqui.
 ; --------------------------------------------------------------------------
+                IF SC2
+; --------------------------------------------------------------------------
+; LAS PANTALLAS DE RUBEN (--pantallas, 2026-11-14). Ya no son pantallas del
+; Spectrum que el juego traduce: son de SCREEN 2, patrones y colores, cada
+; una con su color por linea. Asi que esta rutina NO VUELVE: descomprime
+; cada mitad en 0x4000, la sube ella misma a la VRAM y se queda parada, que
+; es lo que hacia el juego despues de `call 005bdh / call 00604h / di`.
+;
+; Antes, la musica fuera: el gancho por cuadro, de vuelta al `ret` vacio de
+; 0x0428 -la interrupcion ya no llama al puente- y el PSG mudo. Y los sprites
+; fuera: el guardian de 0x044B (por VRAM_A_ESCRIBIR) devuelve la tabla de
+; nombres a la identidad y esconde el cursor y el guante, y un Y=208 en el
+; primer atributo apaga ese sprite y todos los de detras.
+; --------------------------------------------------------------------------
+GANCHO_RAM      equ 00415h      ; el operando del `call` de la interrupcion
+GANCHO_VACIO    equ 00428h      ; ... y el `ret` al que apuntaba de fabrica
+VRAM_A_ESCRIBIR equ 0044Bh      ; HL = direccion de escritura; pasa por el guardian
+
+FINALES:
+                di
+                push hl
+                ld hl,GANCHO_VACIO
+                ld (GANCHO_RAM),hl      ; se acabo la musica
+                call F_MUDO
+                ld hl,01B00h            ; los atributos de los sprites
+                call VRAM_A_ESCRIBIR    ; (y de paso el guardian; vuelve con ei)
+                ld a,0D0h               ; Y=208: fin de la lista de sprites
+                out (098h),a
+                pop hl
+                ld a,h
+                ld ix,F_TABLA_0
+                cp F1_DIR / 256
+                jr c,F_ESA
+                ld ix,F_TABLA_1
+F_ESA:
+                di
+                ld a,R1_ENCENDIDA and 0BFh
+                out (099h),a            ; pantalla apagada mientras se sube
+                ld a,081h
+                out (099h),a
+                ld b,2                  ; dos mitades: patrones y colores
+F_MITAD:
+                push bc
+                ld a,(ix+0)             ; banco
+                ld l,(ix+1)
+                ld h,(ix+2)             ; donde se ve en la ventana de 0x8000
+                ld c,(ix+3)
+                ld b,(ix+4)             ; lo que ocupa comprimida
+                ld e,(ix+5)
+                ld d,(ix+6)             ; donde copiarla: en el sitio
+                call TRAE_Y_DESCOMPRIME ; 6.144 B en 0x4000 (vuelve con ei)
+                di
+                ld a,(ix+7)
+                out (099h),a
+                ld a,(ix+8)
+                or 040h                 ; escritura
+                out (099h),a
+                ld hl,DESTINO
+                ld bc,6144
+F_SUBE:
+                ld a,(hl)               ; 50 ciclos por byte: el VDP pide 29
+                out (098h),a
+                inc hl
+                dec bc
+                ld a,b
+                or c
+                jr nz,F_SUBE
+                ld de,9
+                add ix,de
+                pop bc
+                djnz F_MITAD
+                call F_MUDO             ; por si la interrupcion colo un cuadro
+                ld a,R1_ENCENDIDA
+                out (099h),a            ; y se enciende
+                ld a,081h
+                out (099h),a
+F_PARADO:
+                jr F_PARADO             ; como FIN_DEL_JUEGO: de aqui no se sale
+
+; El volumen de los tres canales a cero (R8, R9 y R10).
+F_MUDO:
+                ld a,8
+F_MUDO_UNO:
+                out (0A0h),a
+                ld c,a
+                xor a
+                out (0A1h),a
+                ld a,c
+                inc a
+                cp 11
+                jr nz,F_MUDO_UNO
+                ret
+
+; banco, origen en la ventana, tamano, destino en el sitio, direccion de VRAM
+F_TABLA_0:
+                defb F0P_BANCO
+                defw F0P_SRC,F0P_TAM,F0P_DST,00000h
+                defb F0C_BANCO
+                defw F0C_SRC,F0C_TAM,F0C_DST,02000h
+F_TABLA_1:
+                defb F1P_BANCO
+                defw F1P_SRC,F1P_TAM,F1P_DST,00000h
+                defb F1C_BANCO
+                defw F1C_SRC,F1C_TAM,F1C_DST,02000h
+
+                ELSE
 FINALES:
                 ld a,h
                 cp F1_DIR / 256
@@ -119,6 +225,7 @@ F_DERROTA:
                 ld bc,F1_TAM
                 ld de,F1_DST
                 jp TRAE_Y_DESCOMPRIME
+                ENDIF
 
                 IF HAY_MAPA
 ; --------------------------------------------------------------------------

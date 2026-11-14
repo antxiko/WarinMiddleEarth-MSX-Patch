@@ -1609,4 +1609,125 @@ MI_NOMBRES_CORTE:                      ; el 0xB7 que el menu de entrega pisa con
 MI_NOMBRES_FIN:
 MI_NOMBRES_LARGO: equ MI_NOMBRES_FIN-MI_NOMBRES
 
+; ==========================================================================
+; LA TABLA DE SITIOS DEL MAPA, MUDADA Y CON LOS TOPONIMOS ENTEROS
+;
+; QUE PROBLEMA RESUELVE
+;
+; Los carteles de los sitios del mapa salen de la tabla de 0x7A5E, y ahi los
+; toponimos largos iban recortados a lo que cabia en la cinta: "Ptos Grises",
+; "Ga. Hierro", "Puerta N", "LosGamos", "Quebradas" y "Abism/Helm". No se
+; pueden alargar EN SU SITIO porque los registros van pegados, el juego los
+; recorre sumando el largo de cada uno y justo detras de la tabla -en
+; 0x7BD6- empieza el texto de "Hecho por: C.J.Pink".
+;
+; EL FORMATO. Cada registro es
+;
+;     [x][y][2 + ancho*filas][ancho<<4 | filas][texto]
+;
+; BUSCA_EL_SITIO (0x6E50) los recorre desde el tercer byte y avanza sumandole
+; su valor, asi que un registro ocupa 4 + ancho*filas; un tercer byte a CERO
+; acaba la tabla. El texto mide EXACTAMENTE ancho*filas y se reparte renglon
+; a renglon, rellenando con espacios ("Minas " + "Tirith" se lee "Minas
+; Tirith" en un cartel de 6x2). El cartel lo dibuja VENTANA_DEL_SITIO
+; (0x6E2D) pegado al borde derecho: 0x5E1E - ancho, o sea que uno mas ancho
+; crece hacia la IZQUIERDA y nunca se sale.
+;
+; SOLO UN SITIO LA MIRA: el `ld hl,07a5eh` de 0x6E52. Por eso se puede mudar
+; entera aqui y crecer lo que haga falta -comprobado en los listados: no hay
+; ningun otro operando que caiga entre 0x7A5E y 0x7BD6-. tools/haz_rom.py
+; cambia ese operando por MI_SITIOS.
+;
+; LO QUE CAMBIA, Y LO QUE NO. Los seis toponimos que pidio el usuario pasan a
+; dos renglones (o a uno mas ancho, Los Gamos); los otros 23 registros van
+; byte a byte como los deja el parche de la cinta. La tabla pasa de 376 a 408
+; bytes. El cartel mas ancho ADELGAZA -de 10 ("Ga. Hierro") a 9- y el mas
+; alto sigue siendo de dos renglones, asi que ninguna ventana crece respecto
+; a las que ya se veian.
+;
+; POR QUE AQUI Y NO EN EL IPS DE LA CINTA. Porque son 32 bytes de mas y en la
+; cinta no los hay: en el bloque medio no queda ni una racha de 24 bytes
+; libres seguidos, y los huecos que valen para las dos -el motor de sonido
+; muerto- ya los gasta el parche. Como los dos heroes, la musica o el mapa
+; dibujado: es cosa del CARTUCHO.
+;
+; LOS 376 BYTES DE 0x7A5E-0x7BD6 se quedan muertos en el bloque medio. NO van
+; declarados como hueco en HUECOS_DEL_JUEGO porque el IPS de la cinta si
+; escribe ahi, que es lo que esos tests vigilan.
+; ==========================================================================
+
+MI_SITIOS:
+                defb  65, 54, 2+7*1, 7*16+1
+                defb "Orthanc"
+                defb 104, 63, 2+8*1, 8*16+1
+                defb "Orodruin"
+                defb  96, 55, 2+6*2, 6*16+2   ; 6x2  antes 8x1 "Puerta N"
+                defb "Puerta"
+                defb "Negra "
+                defb  86, 63, 2+6*2, 6*16+2
+                defb "Minas "
+                defb "Tirith"
+                defb  95, 64, 2+6*2, 6*16+2
+                defb "Minas "
+                defb "Morgul"
+                defb  69, 23, 2+8*1, 8*16+1
+                defb "Rivendel"
+                defb 100, 58, 2+9*2, 9*16+2   ; 9x2  antes 10x1 "Ga. Hierro"
+                defb "Garganta "
+                defb "de Hierro"
+                defb 111, 64, 2+9*1, 9*16+1
+                defb "Barad-Dur"
+                defb  99, 65, 2+6*2, 6*16+2
+                defb "Cirith"
+                defb "Ungol "
+                defb  97, 60, 2+8*1, 8*16+1
+                defb "Durthang"
+                defb  84, 39, 2+6*2, 6*16+2
+                defb "Dol   "
+                defb "Guldur"
+                defb  68, 99, 2+5*1, 5*16+1
+                defb "Umbar"
+                defb  20, 30, 2+7*1, 7*16+1
+                defb "Harlond"
+                defb 100, 15, 2+5*1, 5*16+1
+                defb "Valle"
+                defb  53, 25, 2+4*1, 4*16+1
+                defb "Bree"
+                defb  51, 16, 2+7*1, 7*16+1
+                defb "Fornost"
+                defb  48, 27, 2+9*1, 9*16+1   ; 9x1  antes 8x1 "LosGamos"
+                defb "Los Gamos"
+                defb  40, 22, 2+7*1, 7*16+1
+                defb "Delagua"
+                defb  37, 27, 2+8*1, 8*16+1
+                defb "Hobbiton"
+                defb  34, 23, 2+7*2, 7*16+2
+                defb "Cavada "
+                defb "Grande "
+                defb  31, 23, 2+9*2, 9*16+2   ; 9x2  antes 9x1 "Quebradas"
+                defb "Quebradas"
+                defb "Lejanas  "
+                defb  53, 40, 2+7*1, 7*16+1
+                defb "Tharbad"
+                defb  69, 56, 2+6*1, 6*16+1
+                defb "Edoras"
+                defb  65, 59, 2+9*2, 9*16+2   ; 9x2  antes 10x1 "AbismHelm "
+                defb "Abismo de"
+                defb "Helm     "
+                defb  70, 76, 2+6*2, 6*16+2
+                defb "Dol   "
+                defb "Amroth"
+                defb  81, 73, 2+6*1, 6*16+1
+                defb "Linhir"
+                defb  92, 67, 2+8*1, 8*16+1
+                defb "Pelargir"
+                defb  73,  7, 2+8*2, 8*16+2
+                defb "Monte   "
+                defb "Gundabad"
+                defb  25, 25, 2+7*2, 7*16+2   ; 7x2  antes 12x1 "Ptos  Grises"
+                defb "Puertos"
+                defb "Grises "
+                defb  10,  4, 0                 ; el 0 del tercer byte acaba la tabla
+MI_SITIOS_FIN:
+
 NOMBRES_FIN:

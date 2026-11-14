@@ -140,6 +140,30 @@ def ejecuta_plan(test, rom, plan):
 
     return ram, vram, vdp, psg, salto
 
+def pantallas_de_ruben(plan):
+    """Patrones y colores de PORTADA, VICTORIA y DERROTA.SC2, leidos aqui de los
+    ficheros de Ruben y no de lo que haya hecho haz_rom.py."""
+    sc2 = {}
+    for nombre in ("PORTADA", "VICTORIA", "DERROTA"):
+        v = lee(os.path.join(RAIZ, plan["pantallas"], nombre + ".SC2"))[7:]
+        sc2[nombre] = (bytes(v[0x0000:0x1800]), bytes(v[0x2000:0x3800]))
+    return sc2
+
+
+def canciones_de_ruben(test, plan):
+    """Lo que tiene que acabar en la RAM de las canciones: las tres .mus TAL
+    CUAL, una detras de otra y donde dice el plan, y detras los instrumentos
+    ensamblados (canciones.bin, que es lo unico que se toma de lo derivado)."""
+    c = plan["canciones"]
+    musicas = [lee(os.path.join(RAIZ, "asses", n + ".mus")) for n in c["nombres"]]
+    binario = lee(os.path.join(RAIZ, "work", "unificada", "canciones.bin"))
+    juntas = b"".join(musicas)
+    test.assertEqual(binario[:len(juntas)], juntas, "las tres canciones no van tal cual y en orden")
+    test.assertEqual(c["cancion"], [c["ram"] + sum(len(m) for m in musicas[:k]) for k in range(3)])
+    test.assertEqual(len(binario), c["bytes"])
+    return bytes(binario)
+
+
 class TestLaRom(unittest.TestCase):
 
     # Los mismos requisitos valen para war.rom y para war_musica.rom; lo unico
@@ -192,6 +216,14 @@ class TestLaRom(unittest.TestCase):
         esperado = dict(patrones=pantalla[100:100 + 6144], colores=pantalla[100 + 6144:100 + 12288],
                         bajo=lee(os.path.join(self.CUERPOS, "bajo.raw")), medio=lee(os.path.join(self.CUERPOS, "medio.raw")),
                         alto=lee(os.path.join(self.CUERPOS, "alto.raw")))
+        if self.plan.get("pantallas"):
+            # Las de Ruben: la imagen de carga y las dos finales, de los .SC2
+            sc2 = pantallas_de_ruben(self.plan)
+            esperado["patrones"], esperado["colores"] = sc2["PORTADA"]
+            for n, nombre in enumerate(("VICTORIA", "DERROTA")):
+                esperado["final%dp" % n], esperado["final%dc" % n] = sc2[nombre]
+        if self.plan.get("canciones"):
+            esperado["canciones"] = canciones_de_ruben(self, self.plan)
         # Con musica, con las finales en la ROM y con la vista, los bloques
         # llevan sus parches -el medio, y el bajo desde la vista-: se aplican
         # sobre lo esperado, que para eso el plan dice cuales son y donde caen.
@@ -206,10 +238,12 @@ class TestLaRom(unittest.TestCase):
         # dos pantallas finales comprimidas, cada una en su entrada.
         corte = len(esperado["bajo"])
         for n, (dir_, tam) in enumerate(((0x094F, 6912), (0x244F, 6912))):
+            o = dir_ - 0x0190
             if ("final%d" % n) in self.plan["datos"]:
-                o = dir_ - 0x0190
                 esperado["final%d" % n] = esperado["bajo"][o:o + tam]
                 corte = min(corte, o)
+            elif ("final%dp" % n) in self.plan["datos"]:
+                corte = min(corte, o)   # las de Ruben ya estan en `esperado`; las del ZX no viajan
         esperado["bajo"] = esperado["bajo"][:corte]
 
         if "mapa" in self.plan["datos"]:
@@ -306,8 +340,18 @@ class TestLaRom(unittest.TestCase):
         self.assertEqual(ram[0x012C:0x0190], bytes(100), "el buzon de POKEs tiene que ir a cero")
         # la VRAM: la imagen de carga y lo que deja el SCREEN 2 del BASIC
         pantalla = lee(os.path.join(self.CUERPOS, "pantalla.raw"))
-        self.assertEqual(vram[0x0000:0x1800], pantalla[100:100 + 6144])
-        self.assertEqual(vram[0x2000:0x3800], pantalla[100 + 6144:100 + 12288])
+        if self.plan.get("pantallas"):
+            pat, col = pantallas_de_ruben(self.plan)["PORTADA"]
+        else:
+            pat, col = pantalla[100:100 + 6144], pantalla[100 + 6144:100 + 12288]
+        self.assertEqual(vram[0x0000:0x1800], pat)
+        self.assertEqual(vram[0x2000:0x3800], col)
+        # y las tres canciones con sus instrumentos, en la RAM donde las lee el
+        # reproductor, pegadas al final de la zona libre
+        if self.plan.get("canciones"):
+            c = self.plan["canciones"]
+            self.assertEqual(c["ram"] + c["bytes"], 0x3F4F)
+            self.assertEqual(bytes(ram[c["ram"]:0x3F4F]), canciones_de_ruben(self, self.plan))
         self.assertEqual(vram[0x1800:0x1B00], bytes(range(256)) * 3)
         self.assertEqual(vram[0x1B00:0x1B80], b"".join(bytes([209, 0, n, 1]) for n in range(32)))
         self.assertEqual(set(vram[0x1B80:0x2000]) | set(vram[0x3800:0x4000]), {0})
@@ -584,6 +628,138 @@ class TestLosDosHeroesNuevos(unittest.TestCase):
             esperado = permitido | ({0x1A, 0x1B, 0x1C, 0x1D} if base == 0xC500 else set())
             self.assertTrue(cambiados <= esperado,
                             "0x%04X: tambien cambian %s" % (base, sorted(cambiados - esperado)))
+
+
+class TestLosToponimos(unittest.TestCase):
+    """La tabla de sitios del mapa, mudada a nombres.asm con los nombres enteros.
+
+    Se recorre la RAM que deja el interprete del plan EXACTAMENTE como lo hace
+    BUSCA_EL_SITIO (0x6E50): desde el puntero que el plan declara, cada
+    registro es [x][y][L][ancho<<4|filas][texto] y el siguiente esta en
+    inicio+2+L; un L a cero acaba la tabla. Asi un descuadre de un solo byte
+    -que en el juego se ve como carteles de basura- sale aqui.
+
+    Los 23 toponimos que no se tocan se comparan contra LA CINTA, que es otra
+    fuente: se leen de la tabla de 0x7A5E del bloque medio. Los seis que si
+    cambian van escritos a mano, que es lo que hace que el test sirva de algo.
+    """
+
+    ROM = os.path.join(RAIZ, "war_unificada.rom")
+    DERIVADOS = os.path.join(WORK, "unificada")
+    CUERPOS = CUERPOS_PARCHE
+    TABLA_DE_LA_CINTA = 0x7A5E
+    ORG_MEDIO = 0x5E00
+    ANCHO_PANTALLA = 34         # la pantalla de caracteres de 0x5E00
+    ESQUINA = 0x5E1E            # 0x6E41: el cartel se pega al borde derecho
+
+    # Los seis que pidio el usuario, renglon a renglon y con su relleno. Si
+    # alguno se queda a medias o pierde un espacio, el cartel sale descuadrado.
+    CAMBIADOS = {
+        (96, 55): ["Puerta", "Negra "],
+        (100, 58): ["Garganta ", "de Hierro"],
+        (48, 27): ["Los Gamos"],
+        (31, 23): ["Quebradas", "Lejanas  "],
+        (65, 59): ["Abismo de", "Helm     "],
+        (25, 25): ["Puertos", "Grises "],
+    }
+
+    def setUp(self):
+        plan = os.path.join(self.DERIVADOS, "plan.json")
+        hace_falta(self.ROM, plan)
+        self.rom = lee(self.ROM)
+        with open(plan) as f:
+            self.plan = json.load(f)
+        self.vista = self.plan["vista"]
+        self.parches = {q["dir"]: q for q in self.vista["parches"]}
+        self.ram = ejecuta_plan(self, self.rom, self.plan)[0]
+
+    def recorre(self, memoria, inicio):
+        """La tabla, leida como la lee el Z80. Devuelve [(x, y, ancho, filas, renglones)]."""
+        sitios = []
+        p = inicio
+        while memoria[p + 2]:
+            x, y, largo, formato = memoria[p], memoria[p + 1], memoria[p + 2], memoria[p + 3]
+            ancho, filas = formato >> 4, formato & 0x0F
+            self.assertEqual(largo, 2 + ancho * filas,
+                             "el registro de 0x%04X dice %d bytes y su cartel mide %dx%d"
+                             % (p, largo, ancho, filas))
+            self.assertTrue(ancho and filas, "cartel vacio en 0x%04X" % p)
+            texto = bytes(memoria[p + 4:p + 4 + ancho * filas]).decode("latin-1")
+            sitios.append((x, y, ancho, filas,
+                           [texto[i * ancho:(i + 1) * ancho] for i in range(filas)]))
+            p += 2 + largo
+            self.assertLess(len(sitios), 100, "la tabla no se acaba: se ha ido de paseo")
+        return sitios
+
+    def la_tabla(self):
+        return self.recorre(self.ram, self.vista["sitios"]["ram"])
+
+    def de_la_cinta(self):
+        medio = lee(os.path.join(self.CUERPOS, "medio.raw"))
+        memoria = bytearray(self.ORG_MEDIO) + bytearray(medio)
+        return self.recorre(memoria, self.TABLA_DE_LA_CINTA)
+
+    def test_el_puntero_del_juego_apunta_a_la_tabla_mudada(self):
+        """El operando del `ld hl,07a5eh` de 0x6E52, que es el UNICO sitio que
+        mira la tabla."""
+        q = self.parches[0x6E53]
+        self.assertEqual(bytes.fromhex(q["orig"]),
+                         self.TABLA_DE_LA_CINTA.to_bytes(2, "little"))
+        self.assertEqual(int.from_bytes(bytes.fromhex(q["nuevo"]), "little"),
+                         self.vista["sitios"]["ram"])
+
+    def test_la_tabla_cabe_entera_en_el_bloque_que_se_copia(self):
+        """Si se saliera, el juego leeria lo que hubiera detras: en la RAM de
+        al lado estan los bufers del cargador."""
+        bloque = self.vista["ram"], self.vista["ram"] + self.vista["bytes"]
+        sitios = self.vista["sitios"]
+        self.assertGreaterEqual(sitios["ram"], bloque[0])
+        self.assertLessEqual(sitios["ram"] + sitios["bytes"], bloque[1])
+        bufer = self.plan["zona_libre"]["bufer_z"]["ram"]
+        self.assertLessEqual(bloque[1], bufer,
+                             "el bloque de la vista llega a 0x%04X y el bufer del cargador empieza en 0x%04X"
+                             % (bloque[1], bufer))
+
+    def test_estan_los_mismos_sitios_y_en_el_mismo_orden(self):
+        """Ni uno de mas ni uno de menos, y cada uno en su casilla del mapa."""
+        self.assertEqual([(x, y) for x, y, _, _, _ in self.la_tabla()],
+                         [(x, y) for x, y, _, _, _ in self.de_la_cinta()])
+
+    def test_los_seis_toponimos_van_enteros(self):
+        nuestros = {(x, y): renglones for x, y, _, _, renglones in self.la_tabla()}
+        for casilla, renglones in self.CAMBIADOS.items():
+            self.assertIn(casilla, nuestros, "se ha perdido el sitio de %s" % (casilla,))
+            self.assertEqual(nuestros[casilla], renglones)
+
+    def test_los_demas_van_byte_a_byte_como_en_la_cinta(self):
+        """Mudar la tabla no puede cambiar nada que no se haya pedido."""
+        for x, y, ancho, filas, renglones in self.de_la_cinta():
+            if (x, y) in self.CAMBIADOS:
+                continue
+            nuestro = [s for s in self.la_tabla() if (s[0], s[1]) == (x, y)]
+            self.assertEqual(len(nuestro), 1)
+            self.assertEqual(nuestro[0][2:], (ancho, filas, renglones))
+
+    def test_ningun_cartel_se_sale_de_la_pantalla(self):
+        """VENTANA_DEL_SITIO lo dibuja en 0x5E1E - ancho, o sea que crece hacia
+        la izquierda. Ni el mas ancho puede pasarse de la columna 0 ni caerse
+        de la fila 0 con sus renglones."""
+        fila = (self.ESQUINA - 0x5E00) // self.ANCHO_PANTALLA
+        columna = (self.ESQUINA - 0x5E00) % self.ANCHO_PANTALLA
+        for x, y, ancho, filas, _ in self.la_tabla():
+            self.assertLessEqual(ancho, columna,
+                                 "el cartel de (%d,%d) mide %d columnas y solo hay %d"
+                                 % (x, y, ancho, columna))
+            self.assertLessEqual(fila + filas, 24)
+
+    def test_no_hay_cartel_mas_grande_que_los_que_ya_se_veian(self):
+        """La red de seguridad barata: la ventana se dibuja igual que siempre,
+        asi que mientras no crezca ni a lo ancho ni a lo alto no puede tapar
+        nada que antes no tapara."""
+        antes = self.de_la_cinta()
+        ahora = self.la_tabla()
+        self.assertLessEqual(max(s[2] for s in ahora), max(s[2] for s in antes))
+        self.assertLessEqual(max(s[3] for s in ahora), max(s[3] for s in antes))
 
 
 class TestLaMusica(unittest.TestCase):

@@ -227,14 +227,14 @@ ESPERA   := 150
 #   make verifica_musica MUSICA=/ruta/a/lo_que_sea.mus
 # (la ruta va relativa al repositorio y no por $(HOME), que en el make de msys
 # es /home/usuario y no el del usuario de Windows)
-MUSICA   := ../../msx-msxlib/games/examples/wyzmusic/maryjane2.mus
+MUSICA   := ../../../msx-msxlib/games/examples/wyzmusic/maryjane2.mus
 # El reproductor TAMPOCO va en el repositorio, por lo mismo que no va la cinta:
 # es el WYZ PSG proPLAYER v0.47d, de Wyz, y viaja en msx-msxlib sin licencia
 # escrita. Aqui va la herramienta que lo traduce de tniASM a pasmo; el fuente
 # lo pone cada cual. Son dos ficheros, el codigo y sus variables, y el segundo
 # se busca solo al lado del primero.
-WYZSRC   := ../../msx-msxlib/libext/wyzplayer047d/wyzplayer-ROM.tniasm.asm
-WYZRAM   := ../../msx-msxlib/libext/wyzplayer047d/wyzplayer-RAM.tniasm.asm
+WYZSRC   := ../../../msx-msxlib/libext/wyzplayer047d/wyzplayer-ROM.tniasm.asm
+WYZRAM   := ../../../msx-msxlib/libext/wyzplayer047d/wyzplayer-RAM.tniasm.asm
 # Donde vive el area de trabajo del reproductor: la RAM libre de 0x5C00, 512 B
 # medidos libres en todas las fases. El WYZ pide 233.
 WYZRAMORG := 0x5C00
@@ -312,7 +312,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 #   el mapa por la derecha).
 #
 # Del cartucho (tools/haz_rom.py):
-#   (la musica del menu, quitada el 2026-11-14), las tres imagenes y el mapa general comprimidos con
+#   las tres pantallas y las tres canciones de Ruben (asses/), las imagenes y el mapa general comprimidos con
 #   ZX0, las dos pantallas finales quedandose en la ROM en vez de comer 13.824
 #   bytes de RAM, el mapa general ya dibujado, la vista de cerca por tabla de
 #   nombres con el cursor y el guante como sprites de hardware, el panel con el
@@ -322,13 +322,16 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 # (comprobado), y cursor.png sale de los cuerpos PARCHEADOS, que el parche
 # repinta el cursor de batalla.
 rom_unificada: war_unificada.rom
-# SIN MUSICA desde el 2026-11-14 (a peticion del autor): `--musica muda` pone cuatro
-# `ret` en vez del reproductor WYZ y no lleva cancion (src/cartucho/musica_muda.asm);
-# el puente sigue, que cuenta los cuadros del cursor de la vista. Ya no hace falta
-# el fuente del WYZ. Para volver a meter una: make war_unificada.rom MUSICA_UNI=/ruta/a.mus
-MUSICA_UNI := muda
-war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica_muda.asm src/cartucho/puente.asm src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA_UNI)" --finales-rom --vista --mapa --panel --heroes --salidas work/unificada --kit work/kit
+# LAS PANTALLAS Y LAS CANCIONES DE RUBEN (2026-11-14), en asses/: la portada es la
+# imagen de carga, VICTORIA y DERROTA las dos finales (SCREEN 2 con su color por
+# linea), y las tres canciones suenan TODA la partida: niebla en el menu, taberna
+# jugando y batalla en la batalla. Hace falta el reproductor WYZ traducido
+# (src/cartucho/wyz_player.asm, ver WYZSRC). (Del 2026-11-14 por la tarde hasta
+# esto la ROM fue muda: `--musica muda`, src/cartucho/musica_muda.asm.)
+ASSES := asses
+ASSES_FICHEROS := $(ASSES)/PORTADA.SC2 $(ASSES)/VICTORIA.SC2 $(ASSES)/DERROTA.SC2 $(ASSES)/niebla.mus $(ASSES)/taberna.mus $(ASSES)/batalla.mus $(ASSES)/medieval.mus.asm
+war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica_tres.asm src/cartucho/canciones.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/puente.asm src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png $(ASSES_FICHEROS)
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --canciones $(ASSES) --pantallas $(ASSES) --finales-rom --vista --mapa --panel --heroes --salidas work/unificada --kit work/kit
 
 # EL KIT PARA COMPILAR EL PARCHE SIN PYTHON. Lo deja `--kit` de ahi arriba, al
 # montar la ROM: los intermedios ya cocidos, src/nombres.asm -que es lo unico
@@ -546,6 +549,17 @@ verifica_batalla: war_unificada.rom
 	WAR_OUT="$(abspath work/bat_coteja)" $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_fondo_batalla.tcl
 	@grep -E "BATALLA|volcado" work/bat_coteja/fondo_batalla.log
 	python3 tools/coteja_batalla.py work/bat_coteja
+
+# LAS PANTALLAS Y LAS CANCIONES DE RUBEN, en una partida de verdad: la portada y
+# las dos finales byte a byte en la VRAM, que cancion suena en el menu, en la
+# partida, en la batalla y al volver de ella, que nadie pisa la RAM de las
+# canciones ni el area del WYZ, y que las finales dejan el PSG mudo.
+.PHONY: verifica_ruben
+verifica_ruben: war_unificada.rom
+	@rm -rf work/ruben
+	WAR_OUT="$(abspath work/ruben)" WAR_DIRS="$(abspath work/unificada/musica.tcl)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_ruben.tcl
+	@cat work/ruben/ruben.log
+	python3 tools/coteja_ruben.py work/ruben $(ASSES) work/ruben/png
 
 # LA MARCA DE LAS UNIDADES: que el dibujo se pone donde toca y, sobre todo,
 # que se BORRA al moverse la unidad. Se deja correr el bucle hasta el quinto
