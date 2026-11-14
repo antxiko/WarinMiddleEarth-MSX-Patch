@@ -312,7 +312,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 #   el mapa por la derecha).
 #
 # Del cartucho (tools/haz_rom.py):
-#   musica en el menu, las tres imagenes y el mapa general comprimidos con
+#   (la musica del menu, quitada el 2026-11-14), las tres imagenes y el mapa general comprimidos con
 #   ZX0, las dos pantallas finales quedandose en la ROM en vez de comer 13.824
 #   bytes de RAM, el mapa general ya dibujado, la vista de cerca por tabla de
 #   nombres con el cursor y el guante como sprites de hardware, el panel con el
@@ -322,9 +322,13 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 # (comprobado), y cursor.png sale de los cuerpos PARCHEADOS, que el parche
 # repinta el cursor de batalla.
 rom_unificada: war_unificada.rom
-war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica.asm src/cartucho/puente.asm src/cartucho/wyz_player.asm src/cartucho/wyz_trabajo.inc src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
-	@test -f "$(MUSICA)" || { echo "no encuentro la cancion: $(MUSICA)"; echo "pasa otra con: make $@ MUSICA=/ruta/a.mus"; exit 1; }
-	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA)" --finales-rom --vista --mapa --panel --heroes --salidas work/unificada --kit work/kit
+# SIN MUSICA desde el 2026-11-14 (a peticion del autor): `--musica muda` pone cuatro
+# `ret` en vez del reproductor WYZ y no lleva cancion (src/cartucho/musica_muda.asm);
+# el puente sigue, que cuenta los cuadros del cursor de la vista. Ya no hace falta
+# el fuente del WYZ. Para volver a meter una: make war_unificada.rom MUSICA_UNI=/ruta/a.mus
+MUSICA_UNI := muda
+war_unificada.rom: war_parche.rom tools/haz_rom.py tools/cursor.py tools/guante.py tools/mapa_general.py src/cartucho/musica_muda.asm src/cartucho/puente.asm src/cartucho/finales.asm src/cartucho/nombres.asm src/cartucho/cursor.png src/cartucho/guante.png
+	python3 tools/haz_rom.py work/cuerpos_parche $@ --espera $(ESPERA) --comprime --musica "$(MUSICA_UNI)" --finales-rom --vista --mapa --panel --heroes --salidas work/unificada --kit work/kit
 
 # EL KIT PARA COMPILAR EL PARCHE SIN PYTHON. Lo deja `--kit` de ahi arriba, al
 # montar la ROM: los intermedios ya cocidos, src/nombres.asm -que es lo unico

@@ -1075,7 +1075,37 @@ def main(argv):
     banco_musica = hueco // TAM_BANCO
     musica_org = VENTANA_8000 + hueco - banco_musica * TAM_BANCO
     bloque_musica = None
-    if musica:
+    if musica == "muda":
+        assert banco_musica == (TAM_ROM - 1) // TAM_BANCO, \
+            "el hueco empieza en el banco %d y no en el ultimo" % banco_musica
+        # SIN MUSICA (2026-11-14): cuatro `ret` en vez del reproductor WYZ y ninguna
+        # cancion (src/cartucho/musica_muda.asm). El puente se ensambla igual, porque
+        # tambien cuenta los cuadros del cursor de la vista, pero de una copia que
+        # lleva al lado un wyz_trabajo.inc minimo: asi no hace falta el fuente del WYZ.
+        bloque_musica = pasmo(os.path.join(SRC, "musica_muda.asm"),
+                              os.path.join(salidas, "musica.bin"),
+                              os.path.join(salidas, "musica.sym"),
+                              equs=[("MUSICA_ORG", musica_org)])
+        sim = lee_simbolos(os.path.join(salidas, "musica.sym"))
+        mudo = os.path.join(salidas, "puente_mudo")
+        os.makedirs(mudo, exist_ok=True)
+        shutil.copy(os.path.join(SRC, "puente.asm"), os.path.join(mudo, "puente.asm"))
+        with open(os.path.join(mudo, "wyz_trabajo.inc"), "w") as f:
+            f.write("; sin reproductor: solo los dos nombres que se citan fuera (nadie los usa)\n"
+                    "WYZ_FLAGS       equ 05C00h\nPSG_REG         equ 05C47h\n")
+        puente = pasmo(os.path.join(mudo, "puente.asm"),
+                       os.path.join(salidas, "puente.bin"), os.path.join(salidas, "puente.sym"),
+                       equs=[("PUENTE_ORG", PUENTE_RAM), ("GANCHO_VACIO", GANCHO_VACIO), ("GANCHO", GANCHO_RAM),
+                             ("MENU_NIVEL", MENU_NIVEL)]
+                             + [(k, sim[k]) for k in ("WYZ_PLAYER_INIT", "WYZ_CARGA_CANCION_HL",
+                                                      "WYZ_REPRODUCE_FRAME", "WYZ_PLAYER_OFF",
+                                                      "MODULO")])
+        sim_puente = lee_simbolos(os.path.join(salidas, "puente.sym"))
+        puente_rom = hueco + len(bloque_musica)
+        bloque_musica += puente
+        assert PUENTE_RAM + len(puente) <= BUZON_POKES[0], \
+            "el puente llega a 0x%04X y pisaria el buzon de POKEs" % (PUENTE_RAM + len(puente))
+    elif musica:
         assert banco_musica == (TAM_ROM - 1) // TAM_BANCO, \
             "el hueco empieza en el banco %d y no en el ultimo" % banco_musica
         # La cancion son DOS ficheros: el `.mus` con las notas -que va tal
