@@ -22,18 +22,21 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from estilo_web import ESTILO                                   # noqa: E402
+import md2html                                                  # noqa: E402
 
 # Las cifras salen de las herramientas, no de escribirlas aqui a ojo:
-#   `make parche` -> 1396 bytes cambiados en 130 entradas, 0 fuera de la tabla
-#                    (27 escritas a mano, 548 B; 103 de los lienzos, 848 B)
-#   `make ips`    -> war_parche.ips, 1718 bytes en 39 registros
-#   `make test`   -> 87 comprobaciones (79 del parche y 8 del cartucho)
+#   `make parche` -> 1607 bytes cambiados en 196 entradas, 0 fuera de la tabla
+#                    (30 escritas a mano, 597 B; 166 de los lienzos, 1010 B)
+#   `make ips`    -> war_parche.ips, 2112 bytes en 51 registros
+#   `make test`   -> 237 comprobaciones
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
-BYTES = 1396
-CAMBIOS = 130
-IPS_BYTES = 1718
-IPS_REGISTROS = 39
-TESTS = 87
+# Medido el 2026-11-15. OJO: TEXTO, CADENAS y TILES de abajo son los de
+# septiembre y estan SIN REMEDIR.
+BYTES = 1607
+CAMBIOS = 196
+IPS_BYTES = 2112
+IPS_REGISTROS = 51
+TESTS = 237
 #   los 1396 bytes, repartidos: 137 de codigo, 376 de texto, 10 de punteros,
 #   848 de tiles repintados, 23 de ganchos y trampolines y 2 sueltos (el tope
 #   de la siembra y el papel del texto)
@@ -85,6 +88,50 @@ TXT = {
                 ("LAS-IMAGENES.html", "Las imágenes"),
                 ("HALLAZGOS.html", "Hallazgos"),
                 ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")],
+        intro="<b>War in Middle Earth</b> es un juego de estrategia de 1989 "
+              "para MSX, en cinta. Aquí hay dos cosas hechas sobre él: un "
+              "<b>parche</b> que arregla lo que más molestaba al jugarlo y "
+              "termina de traducirlo, y un <b>cartucho mejorado</b> que "
+              "arranca en nueve segundos en vez de seis minutos y medio y le "
+              "añade música, ilustraciones nuevas y más velocidad.",
+        h_pag="Las páginas",
+        grupos=[
+            ("Lo que cambia", [
+                ("LO-QUE-CAMBIA.html", "El parche de la cinta",
+                 "las seis cosas que hace, cada una con su antes y su después"),
+                ("EL-CARTUCHO.html", "El cartucho mejorado",
+                 "música, tres ilustraciones nuevas, nombres completos y "
+                 "más velocidad")]),
+            ("Curiosidades", [
+                ("HALLAZGOS.html", "Hallazgos",
+                 "lo que se descubrió del juego al abrirlo"),
+                ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas",
+                 "lo que falta y lo que no se sabe")]),
+            ("Por dentro", [
+                ("EMPEZAR.html", "Empezar",
+                 "cómo aplicar el parche y cómo montar el cartucho"),
+                ("EL-PARCHE.html", "El parche, byte a byte",
+                 "la tabla de cambios y cómo se comprueba"),
+                ("COMO-FUNCIONA.html", "Cómo funciona",
+                 "el código de cada uno de los seis cambios"),
+                ("EL-CARTUCHO-POR-DENTRO.html", "El cartucho por dentro",
+                 "cómo arranca un juego de cinta desde un cartucho"),
+                ("LAS-IMAGENES.html", "Las imágenes",
+                 "cómo están hechas las de esta web")])],
+        t_cambia="Lo que cambia el parche",
+        f_cambia="LO-QUE-CAMBIA.html",
+        h_patch="El parche de la cinta",
+        h_gracias="Gracias",
+        gracias="<ul><li><b>Araubi</b> pidió el parche en el foro, lo prueba "
+                "jugando cada versión y ha puesto las canciones y las "
+                "ilustraciones del cartucho.</li>"
+                "<li><b>theNestruo</b> (Néstor Sancho), por "
+                '<a href="https://github.com/theNestruo/msx-msxlib">msx-msxlib'
+                "</a>, de donde sale el reproductor de música.</li>"
+                "<li><b>WYZ</b>, autor de ese reproductor, el WYZ PSG "
+                "proPLAYER.</li>"
+                "<li><b>Einar Saukas</b>, autor de ZX0, el compresor del "
+                "cartucho.</li></ul>",
         otro=("../", "In English"),
         h_num="El parche en cifras",
         h_find="Las seis cosas que hace",
@@ -143,6 +190,50 @@ TXT = {
                 ("THE-PICTURES.html", "The pictures"),
                 ("FINDINGS.html", "Findings"),
                 ("OPEN-QUESTIONS.html", "Open questions")],
+        intro="<b>War in Middle Earth</b> is a 1989 strategy game for MSX, "
+              "on cassette. Two things built on it live here: a <b>patch</b> "
+              "that fixes what hurt most when playing and finishes its "
+              "translation into Spanish, and an <b>enhanced cartridge</b> "
+              "that boots in nine seconds instead of six and a half minutes "
+              "and adds music, new pictures and more speed.",
+        h_pag="The pages",
+        grupos=[
+            ("What changes", [
+                ("WHAT-CHANGES.html", "The cassette patch",
+                 "the six things it does, each with its before and after"),
+                ("THE-CARTRIDGE.html", "The enhanced cartridge",
+                 "music, three new pictures, full place names and more "
+                 "speed")]),
+            ("Curiosities", [
+                ("FINDINGS.html", "Findings",
+                 "what turned up when the game was opened"),
+                ("OPEN-QUESTIONS.html", "Open questions",
+                 "what is missing and what is not known")]),
+            ("Under the hood", [
+                ("GETTING-STARTED.html", "Getting started",
+                 "how to apply the patch and how to build the cartridge"),
+                ("THE-PATCH.html", "The patch, byte by byte",
+                 "the table of changes and how it is checked"),
+                ("HOW-IT-WORKS.html", "How it works",
+                 "the code behind each of the six changes"),
+                ("INSIDE-THE-CARTRIDGE.html", "Inside the cartridge",
+                 "how a tape game starts from a cartridge"),
+                ("THE-PICTURES.html", "The pictures",
+                 "how the ones on this site are made")])],
+        t_cambia="What the patch changes",
+        f_cambia="WHAT-CHANGES.html",
+        h_patch="The cassette patch",
+        h_gracias="Thanks",
+        gracias="<ul><li><b>Araubi</b> asked for the patch on the forum, "
+                "tests every build by playing it and provided the "
+                "cartridge's songs and pictures.</li>"
+                "<li><b>theNestruo</b> (Néstor Sancho), for "
+                '<a href="https://github.com/theNestruo/msx-msxlib">msx-msxlib'
+                "</a>, where the music player comes from.</li>"
+                "<li><b>WYZ</b>, author of that player, the WYZ PSG "
+                "proPLAYER.</li>"
+                "<li><b>Einar Saukas</b>, author of ZX0, the cartridge's "
+                "compressor.</li></ul>",
         otro=("es/", "En castellano"),
         h_num="The patch in numbers",
         h_find="The six things it does",
@@ -466,14 +557,23 @@ def main(argv):
     imgdir, salida, idioma = argv[1:4]
     t = TXT[idioma]
 
-    logo = os.path.join(imgdir, "carga.png")
+    # La cabecera es la portada del cartucho mejorado (la VRAM volcada por la
+    # comprobacion de las pantallas, ampliada al doble); si no esta, la de la cinta.
+    logo = os.path.join(imgdir, "portada.png")
+    if not os.path.exists(logo):
+        logo = os.path.join(imgdir, "carga.png")
     cabecera = (f'<img src="{img64(logo)}" alt="War in Middle Earth">'
                 if os.path.exists(logo) else "<h1>War in Middle Earth</h1>")
 
-    nav = "".join(f'<a href="{h}">{x}</a>' for h, x in t["nav"])
-    nav += "".join(f'<a href="{h}">{x}</a>' for h, x in t["docnav"])
-    nav += (f'<a href="{t["otro"][0]}" style="margin-left:auto;color:var(--oro)">'
-            f'{t["otro"][1]}</a>')
+    # La portada: presentacion, cifras y el indice de paginas en tres bloques.
+    paginas = ""
+    for g, enlaces in t["grupos"]:
+        paginas += f"<h3>{g}</h3><ul>"
+        paginas += "".join(f'<li><a href="{h}">{x}</a>: {que}</li>'
+                           for h, x, que in enlaces)
+        paginas += "</ul>"
+    otro_idioma = (f'<a href="{t["otro"][0]}" style="color:var(--oro)">'
+                   f'{t["otro"][1]}</a>')
 
     cifras = "".join(f'<div class="cifra"><b>{v}</b><span>{e}</span></div>'
                      for v, e in t["cifras"])
@@ -509,24 +609,54 @@ def main(argv):
 <style>{ESTILO}</style>
 <header class="top">
   {cabecera}
-  <p class="claim">{t['claim']}</p>
+  <p class="claim">{t['intro']}</p>
   <p class="ficha">{' · '.join(t['ficha'])}</p>
 </header>
-<p class="ficha" style="border:1px solid var(--oro);padding:.8em 1em;margin:1.5em 0">
-{t['aviso']}</p>
-<nav>{nav}</nav>
+<nav>{otro_idioma}</nav>
+<section id="pages">
+  <h2>{t['h_pag']}</h2>
+  <div class="n">{paginas}</div>
+</section>
 <section id="numbers">
   <h2>{t['h_num']}</h2>
   <div class="cifras">{cifras}</div>
 </section>
+<section id="thanks">
+  <h2>{t['h_gracias']}</h2>
+  <div class="n">{t['gracias']}</div>
+</section>
+<footer><p>{t['pie_leg']}</p></footer>
+"""
+    # Y la pagina de lo que cambia el parche: las seis cosas y, debajo, cada
+    # una con su antes y su despues. Lleva el menu y el pie de las demas.
+    menu = md2html.NAV_EN if idioma == "en" else md2html.NAV_ES
+    nav = "".join(
+        f'<a href="{h}"{" style=color:var(--tinta)" if h == t["f_cambia"] else ""}>'
+        f'{x}</a>' for h, x in menu)
+    pareja = md2html.PAREJA[t["f_cambia"]]
+    nav += (f'<a href="{"es/" if idioma == "en" else "../"}{pareja}" '
+            f'style="margin-left:auto;color:var(--oro)">'
+            f'{"Castellano" if idioma == "en" else "English"}</a>')
+    cambia = f"""<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{t['t_cambia']} — War in Middle Earth (MSX)</title>
+<style>{ESTILO}</style>
+<div class="w"><nav class="top">{nav}</nav>
+<h1>{t['t_cambia']}</h1>
+<p>{t['claim']}</p>
 <section id="findings"><h2>{t['h_find']}</h2>{halls}</section>
 <section id="screens">
   <h2>{t['h_scr']}</h2>
   <p class="n">{t['nota_scr']}</p>
+  <p class="n">{t['aviso']}</p>
   <div class="galeria">{imgs}</div>
 </section>
-<footer><p>{t['pie_leg']}</p></footer>
+<footer><p>{md2html.PIE[idioma]}</p></footer></div>
 """
+    destino = os.path.join(os.path.dirname(salida), t["f_cambia"])
+    with open(destino, "w", encoding="utf-8") as f:
+        f.write(cambia)
+    print("  %s: %d KB (%s)" % (destino, len(cambia) // 1024, idioma))
     with open(salida, "w", encoding="utf-8") as f:
         f.write(html)
     print("  %s: %d KB (%s)" % (salida, len(html) // 1024, idioma))

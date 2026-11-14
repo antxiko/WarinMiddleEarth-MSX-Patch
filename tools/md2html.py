@@ -20,16 +20,24 @@ from estilo_web import ESTILO  # noqa: E402
 
 # Un menu por idioma. La web se publica en ingles en la raiz de docs/ y en
 # castellano bajo docs/es/.
-NAV_EN = [("index.html", "Home"), ("GETTING-STARTED.html", "Start"),
-          ("THE-PATCH.html", "The patch"), ("HOW-IT-WORKS.html", "How it works"),
+NAV_EN = [("index.html", "Home"),
+          ("WHAT-CHANGES.html", "What changes"),
           ("THE-CARTRIDGE.html", "The cartridge"),
-          ("THE-PICTURES.html", "The pictures"), ("FINDINGS.html", "Findings"),
-          ("OPEN-QUESTIONS.html", "Open questions")]
-NAV_ES = [("index.html", "Portada"), ("EMPEZAR.html", "Empezar"),
-          ("EL-PARCHE.html", "El parche"), ("COMO-FUNCIONA.html", "Cómo funciona"),
+          ("FINDINGS.html", "Findings"),
+          ("OPEN-QUESTIONS.html", "Open questions"),
+          ("GETTING-STARTED.html", "Start"),
+          ("THE-PATCH.html", "The patch"), ("HOW-IT-WORKS.html", "How it works"),
+          ("INSIDE-THE-CARTRIDGE.html", "Inside the cartridge"),
+          ("THE-PICTURES.html", "The pictures")]
+NAV_ES = [("index.html", "Portada"),
+          ("LO-QUE-CAMBIA.html", "Lo que cambia"),
           ("EL-CARTUCHO.html", "El cartucho"),
-          ("LAS-IMAGENES.html", "Las imágenes"), ("HALLAZGOS.html", "Hallazgos"),
-          ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas")]
+          ("HALLAZGOS.html", "Hallazgos"),
+          ("PREGUNTAS-ABIERTAS.html", "Preguntas abiertas"),
+          ("EMPEZAR.html", "Empezar"),
+          ("EL-PARCHE.html", "El parche"), ("COMO-FUNCIONA.html", "Cómo funciona"),
+          ("EL-CARTUCHO-POR-DENTRO.html", "El cartucho por dentro"),
+          ("LAS-IMAGENES.html", "Las imágenes")]
 
 # Cada documento se llama distinto en cada idioma, asi que el selector de idioma
 # necesita saber cual es la pareja de cada pagina. Sin esto, cambiar de idioma te
@@ -38,6 +46,8 @@ _PAREJAS = [("GETTING-STARTED.html", "EMPEZAR.html"),
             ("THE-PATCH.html", "EL-PARCHE.html"),
             ("HOW-IT-WORKS.html", "COMO-FUNCIONA.html"),
             ("THE-CARTRIDGE.html", "EL-CARTUCHO.html"),
+            ("WHAT-CHANGES.html", "LO-QUE-CAMBIA.html"),
+            ("INSIDE-THE-CARTRIDGE.html", "EL-CARTUCHO-POR-DENTRO.html"),
             ("THE-PICTURES.html", "LAS-IMAGENES.html"),
             ("FINDINGS.html", "HALLAZGOS.html"),
             ("OPEN-QUESTIONS.html", "PREGUNTAS-ABIERTAS.html")]

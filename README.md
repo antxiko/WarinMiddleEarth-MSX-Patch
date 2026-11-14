@@ -302,14 +302,70 @@ is a single block. All told, **from 8,946 to 15,387 bytes** for whatever comes
 next; what was left alone -the battle sprites, the stack, tape saving- and why,
 in [INVESTIGACION.md](INVESTIGACION.md).
 
+### Music, pictures and full names
+
+*War in Middle Earth* for MSX has no music and no sound effects: it is silent
+from start to finish. The cartridge carries **three songs by Araubi**: *Niebla*
+plays in the opening menu, *Taberna* during the game and *Batalla* from the
+moment a battle is announced until it ends. The **M key** turns the music off
+and, pressed again, back on.
+
+It also carries **three new pictures, by Araubi**: the one shown while the game
+starts, the one for winning and the one for losing. The original ones were
+those of the ZX Spectrum version, with two colours per 8x8 pixel cell; the new
+ones are made for the MSX, with two colours per 8-pixel line.
+
+And **six place names the game cut short now read in full**: `Ptos Grises` is
+Puertos Grises, `Quebradas` is Quebradas Lejanas, `LosGamos` is Los Gamos,
+`Abism Helm` is Abismo de Helm, `Ga. Hierro` is Garganta de Hierro and
+`Puerta N` is Puerta Negra.
+
+The program that plays the songs is the **WYZ PSG proPLAYER**, by **WYZ**, in
+the version **theNestruo** publishes inside
+[msx-msxlib](https://github.com/theNestruo/msx-msxlib).
+
+**The songs and the pictures belong to Araubi and are not in this repository
+yet**, so `make rom_unificada` does not work from a plain clone. `make rom` and
+`make rom_parche` do.
+
+### Tested by playing
+
+**Araubi tests every build of the cartridge by playing it**, and has played many
+whole battles without trouble. That is how a bug turned up: on the overview
+map, the one showing all of Middle Earth, the right-hand side came out as
+stripes instead of the drawing. That map was sent to the video chip at one byte
+every 22 clock cycles, and the chip needs about 29 with the picture on: 4,094
+bytes of 6,144 were lost. It is now sent at 39 cycles and arrives whole.
+
+An automatic check plays a game in the emulator and verifies that the three
+pictures reach the screen without a single byte changed, that the right song
+plays at each moment, and that the M key turns it off and back on.
+
 The ROM to play is `war_unificada.rom` (`make rom_unificada`): the patched tape
-with everything. Details in [INVESTIGACION.md](INVESTIGACION.md).
+with everything in this section. Details in
+[INVESTIGACION.md](INVESTIGACION.md).
+
+## Thanks
+
+- **Araubi** asked for this patch on the forum and is the one who tests it:
+  played a whole game and sent the recording that exposed a bug hanging the
+  game after eight minutes, and plays every build of the cartridge. The three
+  songs and the three pictures are Araubi's too.
+- **theNestruo** (Néstor Sancho) is the author of
+  [msx-msxlib](https://github.com/theNestruo/msx-msxlib), where the music player comes from in the form used
+  here.
+- **WYZ** is the author of the player, the WYZ PSG proPLAYER.
+- **Einar Saukas** is the author of [ZX0](https://github.com/einar-saukas/ZX0), the compressor used to store
+  the pictures, the map and the songs in the ROM.
 
 ## What is still missing
 
-- **Nobody has played a full game** with the map repainted. Araubi did play one with the September build, and that is where the big bug turned up.
-- **The cartridge has only been seen to boot** (the menu and the map); nobody
-  has played a full game from it.
+- **Nobody has finished a game** with the current build, down to the victory or
+  the defeat screen. Araubi played a whole one with the September build and
+  has played many battles from the cartridge.
+- **The six full place names have not been seen on screen.** The tests check
+  that the table is well formed, but nobody has gone to each place to look at
+  its sign.
 - The unit sheet has been seen for a formation leader (Gandalf) and for the
   Ring-bearer (Frodo); **not every unit type has been checked** for the number
   colliding with a long label.

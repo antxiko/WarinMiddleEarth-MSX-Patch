@@ -45,7 +45,7 @@ tiempo emulado; con el acelerador del emulador, mucho menos.
     openmsx -machine Philips_VG_8020 -carta war_parche.rom -romtype ascii16
 
 El juego no se toca: el cartucho es un cargador que deja la RAM igual que la
-deja la cinta. Está contado en [El cartucho](EL-CARTUCHO.html), y **la ROM
+deja la cinta. Está contado en [El cartucho por dentro](EL-CARTUCHO-POR-DENTRO.html), y **la ROM
 tampoco se distribuye**: se monta de tu copia, como todo lo demás.
 
 ## Qué vas a ver distinto

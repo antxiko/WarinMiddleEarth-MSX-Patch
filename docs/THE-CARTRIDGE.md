@@ -4,6 +4,77 @@ The game shipped on cassette and takes **six and a half minutes** to load. This
 turns it into a cartridge that boots in **nine seconds**, without changing a
 single byte of the game.
 
+There are two cartridges. The **plain** one is the game as it is, only without
+waiting for the tape. The **enhanced** one also adds music, pictures and speed,
+and is the one to play. This page covers the
+enhanced one and how to build each of them.
+
+## The enhanced cartridge
+
+It starts from the patched tape and adds things that do not fit on tape. It is
+the one to play and the one the testers get.
+
+**Music.** *War in Middle Earth* for MSX has no music and no sound effects: it
+is silent from start to finish. This cartridge carries three songs by
+**Araubi**:
+
+| when it plays | song |
+|---|---|
+| in the opening menu | *Niebla* |
+| during the game, on the map | *Taberna* |
+| from the moment a battle is announced until it ends | *Batalla* |
+
+The **M key** turns the music off and, pressed again, back on.
+
+**Three new pictures**, also by **Araubi**: the one shown while the game starts,
+the one for winning and the one for losing. The original ones were those of the
+ZX Spectrum version, which allows two colours per 8×8 pixel cell; the new ones
+are made for the MSX, which allows two colours per 8-pixel line.
+
+| on start-up | on winning | on losing |
+|---|---|---|
+| ![The start-up picture](imagenes/portada.png) | ![The victory picture](imagenes/victoria.png) | ![The defeat picture](imagenes/derrota.png) |
+
+**Six place names in full.** On the map, a sign pops up when you move over a
+named place. Six did not fit and the game cut them short (the game is in
+Spanish):
+
+| on tape | on this cartridge |
+|---|---|
+| `Ptos Grises` | Puertos Grises |
+| `Quebradas` | Quebradas Lejanas |
+| `LosGamos` | Los Gamos |
+| `Abism Helm` | Abismo de Helm |
+| `Ga. Hierro` | Garganta de Hierro |
+| `Puerta N` | Puerta Negra |
+
+**And the rest**: the close-up view of the map runs thirteen times faster, the
+cursor is a sprite, every army has a drawing on the map instead of just a
+colour, the battle background follows the terrain, and there are two more
+heroes, Tom Bombadil and Radagast. Each one is explained in the
+[README](https://github.com/antxiko/WarinMiddleEarth-MSX-Patch/blob/main/README.md).
+
+### Tested by playing
+
+**Araubi tests every build by playing it**, and has played many whole battles
+without trouble. That is how a bug turned up: on the overview map, the one
+showing all of Middle Earth, the right-hand side came out as stripes instead of
+the drawing.
+
+The cause: that map was sent to the video chip at one byte every 22 clock
+cycles, and the chip, with the picture on, needs about 29 between bytes. Those
+that arrived too soon were lost: **4,094 of 6,144**. It is now sent at 39
+cycles and arrives whole.
+
+On top of that, an automatic check plays a game in the openMSX emulator and
+checks that the three pictures reach the screen without a single byte changed,
+that the right song plays at each moment, and that the M key turns it off and
+back on.
+
+What is left to do is in [open questions](OPEN-QUESTIONS.html).
+
+## Building it
+
 **There is no ROM here either.** You build it from your own tape:
 
     make rom          # war.rom, from the original tape
@@ -14,95 +85,35 @@ the whole game in a different case (see the [legal notice](https://github.com/an
 
     openmsx -machine Philips_VG_8020 -carta war.rom -romtype ascii16
 
-## The idea: do not touch the game, imitate its loader
+The enhanced cartridge is built with `make rom_unificada` and comes out as
+`war_unificada.rom`. **It needs the songs and the pictures, which are not in this
+repository yet**, so it does not work from a plain clone. The other two do.
 
-The cartridge is not a conversion, it is a **loader**. It leaves RAM exactly as
-the tape loader leaves it and jumps to the same place, `0x0190`, where the game
-itself relocates its blocks the way it always does.
+How a tape game is made to start from a cartridge without changing anything in
+it is told, in full technical detail, in
+[Inside the cartridge](INSIDE-THE-CARTRIDGE.html).
 
-| what it leaves | where |
-|---|---|
-| low block | `0x0190` |
-| middle block | `0x3F4F` |
-| high block | `0x88B8` |
-| POKE mailbox | `0x012C`, zeroed |
-| stack | `SP = 0xFDE8` |
+## Who made what
 
-That is what makes it checkable: if RAM is the same, the game cannot tell how
-it got there.
+The program that plays the songs is not ours. It is the **WYZ PSG proPLAYER**,
+by **WYZ**, in the version that **theNestruo** (Néstor Sancho) publishes inside
+the [msx-msxlib](https://github.com/theNestruo/msx-msxlib) library. That version keeps
+the code apart from its variables, which is what lets it sit in a cartridge
+ROM.
 
-## How it is built
+**The songs and the pictures belong to Araubi and are not in this repository
+yet.** That is why `make rom_unificada` does not work from a plain clone: it
+needs those files. `make rom` and `make rom_parche` do work.
 
-**77 bytes of boot code** in the ROM (`src/cartucho/cargador_rom.asm`): the `AB`
-header, bank 0, copy the rest into RAM and jump to it.
+## Thanks
 
-**A 977-byte stub** running at `0xD800` (`src/cartucho/cargador_ram.asm`): it
-looks for RAM in pages 2, 1 and 0 and interprets a **plan of 52 operations** of
-eight bytes each. The plan is not written by hand: `tools/haz_rom.py` generates
-it from the ROM's real layout and also writes it to `work/plan.json`, so the
-checks never have to assume anything.
-
-The data runs from `0x0800` to `0xF727`. **2,264 bytes** are left over.
-
-## The two hard parts
-
-**Page 1 is the ROM while loading.** With the cartridge in,
-`0x4000`-`0x7FFF` is the cartridge, and **14,400 bytes** of the middle block
-land there (`0x4000`-`0x783F`). There is nowhere to put them — except **VRAM**,
-which is free during loading: they are copied there, the cartridge is switched
-out of page 1, and they come back. The buffer reaches `0x383F` and **overwrites
-the name table and the sprite tables**, so those get written twice, before and
-after.
-
-**The game inherits its screen from BASIC.** It only ever writes VDP register 7
-and **never** the name table: it relies on the `COLOR 1,1,1:SCREEN 2` in the two
-lines of BASIC the tape runs before loading anything. A cartridge boots without
-that BASIC, so it has to be reproduced. This was not deduced, it was
-**measured** on the tape with `tools/omsx_estado_cinta.tcl`.
-
-    VDP R0-R7   02 E0 06 FF 03 36 07 01
-    PSG         R7 reads back 0x3F, R11 = 0x0B
-    VRAM        identity name table, 32 sprites at Y=209
-
-## The slots
-
-The BIOS has `ENASLT` to change what sits in a page, and it works for pages 2
-and 1 as long as page 0 is still the BIOS. Page 0 and everything after it need
-a clone of our own, with one precaution: it **must not flip page 3**, which is
-where the stub lives. It writes `0xFFFF` only when the destination's primary
-slot is the same as page 3's.
-
-Tested with RAM in an **expanded slot** (Philips NMS 8250, 3-2), which is the
-case that breaks loaders that get this wrong.
-
-## What is verified
-
-`tools/omsx_verifica_rom.tcl` boots the machine with the cartridge in and dumps
-exactly what was dumped when loading the tape, at the same two instants;
-`tools/coteja_rom.py` compares them byte for byte.
-
-| instant | what is compared |
-|---|---|
-| at `0x0190` | the blocks as they fall off the tape, before relocation |
-| at `0x5E00` | the three blocks relocated, all 16 KB of VRAM, VDP R0-R7 and PSG R0-R13 |
-
-Result: **everything required matches**, with `war.rom` on a Philips VG-8020, a
-Philips NMS 8250, C-BIOS MSX1 and C-BIOS MSX2, and with `war_parche.rom` on the
-VG-8020 against the patched tape's dumps.
-
-On MSX2, register 1 reads back `0x60`: the V9938 has no 4K/16K bit of the
-TMS9918. That is accepted, and said out loud.
-
-Eight more checks live in `tests/test_cartucho.py`. The strong one is an
-**interpreter of the plan, written separately in Python**, tracking RAM, VRAM
-and what sits in page 1 at every step: if the plan ever tried to write to
-`0x4000`-`0x7FFF` with the cartridge in, it shows up there without an emulator.
-
-## What is not verified
-
-**Nobody has played a whole game from the cartridge.** It has been seen to
-boot, the menu, and the map after pressing `0`. That is all.
-
-And the cartridge has **no music**: the game is silent on tape and stays silent
-here. That is the obvious extension, and it is written down in
-[open questions](OPEN-QUESTIONS.html).
+- **Araubi** asked for this patch on the forum and is the one who tests it:
+  played a whole game and sent the recording that exposed a bug hanging the
+  game after eight minutes, and plays every build of the cartridge. The three
+  songs and the three pictures are Araubi's too.
+- **theNestruo** (Néstor Sancho) is the author of
+  [msx-msxlib](https://github.com/theNestruo/msx-msxlib), where the music player comes
+  from in the form used here.
+- **WYZ** is the author of the player, the WYZ PSG proPLAYER.
+- **Einar Saukas** is the author of [ZX0](https://github.com/einar-saukas/ZX0), the
+  compressor used to store the pictures, the map and the songs in the ROM.

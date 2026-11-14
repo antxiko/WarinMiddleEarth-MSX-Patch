@@ -98,28 +98,39 @@ Los cuatro adjetivos nuevos **sí** se han cazado en pantalla, volcados de la
 cinta parcheada: `Firme`, `Virtuoso`, `Valiente` y `Fuerte` en la ficha de
 Gandalf y en la de Frodo, con `Aliado a la Comunidad` cerrando las dos.
 
-## Nadie ha jugado una partida desde el cartucho
+## ¿Se puede jugar desde el cartucho? (cerrada)
 
-El [cartucho](EL-CARTUCHO.html) deja la RAM, la VRAM, el VDP y el PSG igual que
-la cinta —cotejado byte a byte en cuatro máquinas—, y eso demuestra que el
-juego arranca en las mismas condiciones. **No demuestra que se pueda terminar
-una partida.** Se ha visto el menú y el mapa; nada más.
+El [cartucho](EL-CARTUCHO-POR-DENTRO.html) deja la memoria igual que la deja la cinta al
+terminar de cargar, y eso está comparado byte a byte en cuatro máquinas. Pero
+arrancar igual no prueba que se pueda jugar. **Lo probó Araubi jugando**: muchas
+batallas completas, sin fallos.
 
-Lo que haría falta es lo de siempre: que alguien juegue. Si aparece algo, sería
-un cargador que deja bien la RAM y mal alguna otra cosa, y el sitio donde
-mirar sería lo que el cotejo **no** compara: los puertos que no son VDP ni PSG,
-y el estado de las ranuras a partir del salto.
+Lo que nadie ha hecho todavía es terminar una partida, hasta la pantalla de
+victoria o la de derrota.
 
-## El cartucho no tiene música
+## Lo que queda del cartucho mejorado
 
-El juego es mudo en cinta y sigue mudo en cartucho. Pero un cartucho tiene
-sitio: la ROM puede crecer a 128 KB sin tocar el cargador, y el gancho por
-cuadro que el juego deja vacío está identificado. Lo que falta es el
-reproductor y la música, y decidir dónde vive su área de trabajo: la RAM libre
-en todas las fases son **unos 2,9 KB**, más **13.824 bytes reclamables** en
-`0x094F`-`0x3F4E` (las dos pantallas finales del ZX, que se leen una sola vez).
+El cartucho mejorado es el que lleva música, ilustraciones nuevas y los nombres
+de lugar completos; está descrito en [el cartucho](EL-CARTUCHO.html). De él
+falta:
 
-Es una ampliación, no una duda: no hay nada que averiguar, hay que hacerlo.
+- **Ver en pantalla los seis nombres de lugar completos.** Los tests comprueban
+  que la tabla de nombres está bien formada y que cabe, pero nadie ha ido a
+  cada uno de los seis lugares a mirar su cartel.
+- **La tecla M puede hacer dos cosas a la vez.** El juego deja elegir las
+  teclas de movimiento y disparo. Si alguien elige la M, al pulsarla también
+  quitará o pondrá la música. Con las teclas de fábrica no pasa.
+- **Al cambiar de canción se puede perder un cuadro de imagen.** Preparar una
+  canción tarda algo más de lo que dura un cuadro, y ocurre al empezar y al
+  acabar cada batalla. No se aprecia a simple vista.
+- **El texto que se desliza por la parte baja de la pantalla** se manda al chip
+  de vídeo a 22 ciclos por byte, cuando el chip pide unos 29 con la imagen
+  encendida. Es la misma causa que estropeaba el mapa general. Esa rutina es
+  del juego original y no se ha medido si llega a perder algún byte.
+- **Una comprobación automática que compare la memoria con la pantalla.** El
+  fallo del mapa general lo vio una persona jugando; las comprobaciones que
+  había no podían verlo, porque comparaban dos cartuchos que perdían los
+  mismos bytes.
 
 ## Lo que este parche no toca
 
@@ -127,6 +138,8 @@ Es una ampliación, no una duda: no hay nada que averiguar, hay que hacerlo.
   propias rutinas de bando; nada de lo de aquí entra ahí.
 - **El equilibrio del juego.** No se ha cambiado ni un valor de unidad, ni el
   plazo, ni la corrupción. Sólo se enseña lo que ya había.
-- **El sonido.** Sigue mudo. El motor del altavoz que la conversión trajo está,
-  ahora, ocupado por este parche en **226 de sus 276 bytes**: 137 de código y 89
-  de texto. Quedan 50 libres.
+- **El sonido de la cinta.** La cinta parcheada sigue siendo muda, como la
+  original; la música es sólo del cartucho mejorado. El hueco que deja el motor
+  de sonido del ZX Spectrum, que esta versión trajo y no usa, está ocupado por
+  este parche en **226 de sus 276 bytes**: 137 de código y 89 de texto. Quedan
+  50 libres.

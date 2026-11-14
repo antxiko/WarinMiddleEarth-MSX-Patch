@@ -98,29 +98,37 @@ The four new adjectives **have** been caught on screen, dumped from the patched
 cassette: `Firme`, `Virtuoso`, `Valiente` and `Fuerte` on Gandalf's sheet and on
 Frodo's, with `Aliado a la Comunidad` closing both.
 
-## Nobody has played a game from the cartridge
+## Can the game be played from the cartridge? (closed)
 
-The [cartridge](THE-CARTRIDGE.html) leaves RAM, VRAM, the VDP and the PSG just
-as the tape does — compared byte for byte on four machines — and that proves the
-game starts under the same conditions. **It does not prove a game can be
-finished.** The menu and the map have been seen; nothing else.
+The [cartridge](INSIDE-THE-CARTRIDGE.html) leaves memory just as the tape leaves it
+when loading ends, and that is compared byte for byte on four machines. But
+starting the same way does not prove the game can be played. **Araubi proved it
+by playing**: many whole battles, no faults.
 
-What is needed is the usual thing: someone playing. If something turned up, it
-would be a loader that gets RAM right and something else wrong, and the place to
-look would be what the comparison does **not** cover: ports other than the VDP
-and the PSG, and the state of the slots after the jump.
+What nobody has done yet is finish a game, down to the victory or the defeat
+screen.
 
-## The cartridge has no music
+## What is left on the enhanced cartridge
 
-The game is silent on tape and stays silent on cartridge. But a cartridge has
-room: the ROM can grow to 128 KB without touching the loader, and the per-frame
-hook the game leaves empty is identified. What is missing is the player and the
-music, and a decision about where its work area lives: RAM free in every phase
-comes to **about 2.9 KB**, plus **13,824 reclaimable bytes** at
-`0x094F`-`0x3F4E` (the two ZX end screens, read exactly once).
+The enhanced cartridge is the one with music, new pictures and full place
+names; it is described in [the cartridge](THE-CARTRIDGE.html). Still missing:
 
-That is an extension, not a doubt: there is nothing to find out, it just has to
-be done.
+- **Seeing the six full place names on screen.** The tests check that the name
+  table is well formed and that it fits, but nobody has gone to each of the
+  six places to look at its sign.
+- **The M key can do two things at once.** The game lets you choose the keys
+  for moving and firing. If someone picks M, pressing it will also turn the
+  music off or on. It does not happen with the default keys.
+- **Changing song can drop one frame of picture.** Setting up a song takes a
+  little longer than one frame lasts, and it happens when each battle starts
+  and ends. It cannot be seen with the naked eye.
+- **The text that scrolls along the bottom of the screen** is sent to the video
+  chip at 22 cycles per byte, when the chip needs about 29 with the picture
+  on. It is the same cause that spoiled the overview map. That routine is the
+  original game's, and whether it actually loses bytes has not been measured.
+- **An automatic check comparing memory against the screen.** The overview map
+  bug was seen by a person playing; the existing checks could not see it,
+  because they compared two cartridges that lost the same bytes.
 
 ## What this patch does not touch
 
@@ -128,6 +136,8 @@ be done.
   side-filtering routines; nothing here reaches into it.
 - **Game balance.** Not one unit value has been changed, nor the deadline, nor
   the corruption. It only shows what was already there.
-- **Sound.** Still silent. The beeper engine the conversion brought across now
-  has **226 of its 276 bytes** taken by this patch: 137 of code and 89 of text.
+- **Sound on tape.** The patched tape stays silent, like the original; the
+  music is only on the enhanced cartridge. The room left by the ZX Spectrum
+  sound engine, which this version brought across and never uses, now has
+  **226 of its 276 bytes** taken by this patch: 137 of code and 89 of text.
   Fifty are left.

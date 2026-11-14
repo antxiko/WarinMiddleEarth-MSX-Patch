@@ -1756,7 +1756,7 @@ pantalla, pero no en el cotejo**: la pista fue que fallaran los ocho bytes.
 
 ## 13) La pantalla de pre-batalla, a velocidad humana
 
-Ruben, probando la WIME04: *"el menu va aceleradisimo"*, *"va a toda putisima
+Araubi, probando la WIME04: *"el menu va aceleradisimo"*, *"va a toda putisima
 hostia, pero mucho"*. Y mando su partida grabada, que es lo que permitio
 medirlo en vez de buscarlo a ojo.
 
@@ -1805,7 +1805,7 @@ muerto"*. Primero se midio; luego se hizo lo que la medida dijo que se podia.
 escritura por cada banda de 16 bytes de los 64 KB, que se quitan solos al
 primer toque, y corre una partida grabada. Una banda sin toque al acabar es
 RAM que nadie mira. Se corrio sobre **cinco partidas**: la de Araubi en cinta
-(224 s) y cuatro de Ruben en el cartucho (`work/replay_ruben.omr`, 462 s;
+(224 s) y cuatro de Araubi en el cartucho (`work/replay_ruben.omr`, 462 s;
 `work/aragorn.omr`, 1.544 s; `work/desaparece.omr` y `desaparece02.omr`, 1.324
 s). La sonda acepta ahora `WAR_REPLAY` para elegir cual.
 
@@ -1815,7 +1815,7 @@ Cuatro cosas que no se sabian:
   `work/musica` -la ROM que se juega es la unificada- y contaba el bufer de
   ZX0 de 0x0A50 como "solo durante la carga", cuando lo usaba
   `TRAE_Y_DESCOMPRIME` en cada dibujo del mapa general y en las finales
-  (medido: el PC 0x0992 lo escribe a los 445 s de la partida de Ruben). Decia
+  (medido: el PC 0x0992 lo escribe a los 445 s de la partida de Araubi). Decia
   13.076 B libres; eran **8.946**.
 - **La partida de cinta daba por libres 8,7 KB de la batalla** -los 5.632 B
   de sprites de 0xA2E8, el codigo de 0x8572 y la tabla de 0x0300- porque no

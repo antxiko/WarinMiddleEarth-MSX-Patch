@@ -4,6 +4,75 @@ El juego venía en cinta y tarda **seis minutos y medio** en cargar. Esto lo
 convierte en un cartucho que arranca en **nueve segundos** sin cambiarle un
 solo byte al juego.
 
+Hay dos cartuchos. El **sencillo** es el juego tal cual, sólo que sin esperar a la
+cinta. El **mejorado** además le añade música, ilustraciones y velocidad, y es el
+que se juega. Esta página cuenta el mejorado y cómo se monta cada
+uno.
+
+## El cartucho mejorado
+
+Parte de la cinta parcheada y le añade cosas que en cinta no caben. Es el que
+se juega y el que reciben los testers.
+
+**Música.** *War in Middle Earth* para MSX no tiene música ni efectos: es mudo
+de principio a fin. Este cartucho lleva tres canciones de **Araubi**:
+
+| cuándo suena | canción |
+|---|---|
+| en el menú inicial | *Niebla* |
+| durante la partida, en el mapa | *Taberna* |
+| desde que se anuncia una batalla hasta que termina | *Batalla* |
+
+La **tecla M** quita la música y, pulsada otra vez, la vuelve a poner.
+
+**Tres ilustraciones nuevas**, también de **Araubi**: la que se ve mientras el
+juego arranca, la de ganar la partida y la de perderla. Las del juego original
+eran las de la versión de ZX Spectrum, que sólo admite dos colores por cada
+cuadro de 8×8 píxeles; las nuevas están hechas para el MSX, que admite dos
+colores por cada línea de 8 píxeles.
+
+| al arrancar | al ganar | al perder |
+|---|---|---|
+| ![La ilustración de arranque](../imagenes/portada.png) | ![La ilustración de la victoria](../imagenes/victoria.png) | ![La ilustración de la derrota](../imagenes/derrota.png) |
+
+**Seis nombres de lugar completos.** En el mapa, al pasar por un lugar con
+nombre sale un cartel. Seis no cabían y el juego los recortaba:
+
+| en la cinta | en este cartucho |
+|---|---|
+| `Ptos Grises` | Puertos Grises |
+| `Quebradas` | Quebradas Lejanas |
+| `LosGamos` | Los Gamos |
+| `Abism Helm` | Abismo de Helm |
+| `Ga. Hierro` | Garganta de Hierro |
+| `Puerta N` | Puerta Negra |
+
+**Y lo demás**: la vista de cerca del mapa va trece veces más rápida, el cursor
+es un sprite, cada ejército lleva un dibujo en el mapa en vez de sólo un color,
+el fondo de la batalla cambia según el terreno y hay dos héroes más, Tom
+Bombadil y Radagast. Cada cosa está explicada en el
+[README](https://github.com/antxiko/WarinMiddleEarth-MSX-Patch/blob/main/README.es.md).
+
+### Probado jugando
+
+**Araubi prueba cada versión jugándola**, y ha jugado muchas batallas completas
+sin problemas. Así apareció un fallo: en el mapa general, el que enseña la
+Tierra Media entera, la parte derecha salía con rayas en lugar del dibujo.
+
+La causa: ese mapa se mandaba al chip de vídeo a un byte cada 22 ciclos de
+reloj, y el chip, con la imagen encendida, necesita unos 29 entre byte y byte.
+Los que llegaban demasiado pronto se perdían: **4.094 de 6.144**. Ahora se
+manda a 39 ciclos y llega entero.
+
+Además, una comprobación automática juega una partida en el emulador openMSX y
+comprueba que las tres ilustraciones llegan a la pantalla sin un byte cambiado,
+que en cada momento suena la canción que toca y que la tecla M la quita y la
+devuelve.
+
+Lo que queda por hacer está en [preguntas abiertas](PREGUNTAS-ABIERTAS.html).
+
+## Montarlo
+
 **Aquí tampoco hay ninguna ROM.** Se monta de tu propia cinta:
 
     make rom          # war.rom, de la cinta original
@@ -14,96 +83,35 @@ juego entero en otro envase (ver el [aviso legal](https://github.com/antxiko/War
 
     openmsx -machine Philips_VG_8020 -carta war.rom -romtype ascii16
 
-## La idea: no tocar el juego, imitar al cargador
+El cartucho mejorado se monta con `make rom_unificada` y sale en `war_unificada.rom`.
+**Necesita las canciones y las ilustraciones, que todavía no están en este
+repositorio**, así que con sólo clonarlo no funciona. Los otros dos sí.
 
-El cartucho no es una conversión: es un **cargador**. Deja la RAM exactamente
-como la deja el cargador de la cinta y salta al mismo sitio, `0x0190`, donde el
-propio juego recoloca sus bloques como hace siempre.
+Cómo consigue un juego de cinta arrancar desde un cartucho sin cambiarle nada
+está contado, con todo el detalle técnico, en
+[El cartucho por dentro](EL-CARTUCHO-POR-DENTRO.html).
 
-| lo que deja | dónde |
-|---|---|
-| bloque bajo | `0x0190` |
-| bloque medio | `0x3F4F` |
-| bloque alto | `0x88B8` |
-| buzón de POKEs | `0x012C`, a cero |
-| pila | `SP = 0xFDE8` |
+## De quién es cada cosa
 
-Eso es lo que permite comprobarlo: si la RAM es la misma, el juego no puede
-notar por dónde entró.
+El programa que hace sonar las canciones no es nuestro. Es el **WYZ PSG
+proPLAYER**, de **WYZ**, en la versión que **theNestruo** (Néstor Sancho)
+publica dentro de la biblioteca [msx-msxlib](https://github.com/theNestruo/msx-msxlib).
+Esa versión separa el código de sus variables, y eso es lo que permite tenerlo
+en la ROM de un cartucho.
 
-## Cómo está hecho
+**Las canciones y las ilustraciones son de Araubi y todavía no están en este
+repositorio.** Por eso `make rom_unificada` no funciona con sólo clonarlo:
+necesita esos ficheros. `make rom` y `make rom_parche` sí funcionan.
 
-**77 bytes de arranque** en la ROM (`src/cartucho/cargador_rom.asm`): la
-cabecera `AB`, el banco 0, copiar el resto a RAM y saltar.
+## Gracias
 
-**Un stub de 977 bytes** que corre en `0xD800`
-(`src/cartucho/cargador_ram.asm`): busca RAM en las páginas 2, 1 y 0 e
-interpreta un **plan de 52 operaciones** de ocho bytes. El plan no está escrito
-a mano: lo genera `tools/haz_rom.py` de la disposición real de la ROM y lo deja
-también en `work/plan.json`, para que las comprobaciones no tengan que suponer
-nada.
-
-Los datos van de `0x0800` a `0xF727`. Sobran **2.264 bytes**.
-
-## Las dos cosas que costaron
-
-**La página 1 es la ROM mientras se carga.** Con el cartucho puesto,
-`0x4000`-`0x7FFF` es el cartucho, y ahí caen **14.400 bytes** del bloque medio
-(`0x4000`-`0x783F`). No hay dónde ponerlos... salvo en la **VRAM**, que durante
-la carga está libre: se copian allí, se quita el cartucho de la página 1 y
-vuelven. El búfer llega hasta `0x383F` y **pisa la tabla de nombres y las de
-sprites**, así que ésas se escriben dos veces, antes y después.
-
-**El juego hereda la pantalla del BASIC.** Sólo escribe el registro 7 del VDP y
-**nunca** la tabla de nombres: cuenta con el `COLOR 1,1,1:SCREEN 2` de las dos
-líneas de BASIC que la cinta ejecuta antes de cargar nada. Un cartucho arranca
-sin ese BASIC, así que hay que reproducirlo. No se dedujo: se **midió** en la
-cinta con `tools/omsx_estado_cinta.tcl`.
-
-    VDP R0-R7   02 E0 06 FF 03 36 07 01
-    PSG         R7 se lee 0x3F, R11 = 0x0B
-    VRAM        tabla de nombres identidad, 32 sprites en Y=209
-
-## Las ranuras
-
-La BIOS trae `ENASLT` para cambiar lo que hay en una página, y sirve para las
-páginas 2 y 1 mientras la página 0 siga siendo la BIOS. Para la página 0 y a
-partir de ahí hace falta un clon propio, y con un cuidado: **no puede voltear
-la página 3**, que es donde vive el stub. Escribe `0xFFFF` sólo si la primaria
-de destino es la misma de la página 3.
-
-Probado con la RAM en **ranura expandida** (Philips NMS 8250, 3-2), que es el
-caso que rompe los cargadores mal hechos.
-
-## Qué está comprobado
-
-`tools/omsx_verifica_rom.tcl` arranca la máquina con el cartucho y vuelca lo
-mismo que se volcó cargando la cinta, en los mismos dos instantes;
-`tools/coteja_rom.py` lo compara byte a byte.
-
-| instante | lo que se compara |
-|---|---|
-| en `0x0190` | los bloques como caen de la cinta, antes de recolocar |
-| en `0x5E00` | los tres bloques recolocados, la VRAM entera (16 KB), VDP R0-R7 y PSG R0-R13 |
-
-Resultado: **todo lo exigido coincide**, con `war.rom` en Philips VG-8020,
-Philips NMS 8250, C-BIOS MSX1 y C-BIOS MSX2, y con `war_parche.rom` en la
-VG-8020 contra los volcados de la cinta parcheada.
-
-En MSX2 el registro 1 se lee `0x60`: el V9938 no tiene el bit de 4K/16K del
-TMS9918. Se acepta, y se dice.
-
-Ocho comprobaciones más en `tests/test_cartucho.py`. La fuerte es un
-**intérprete del plan escrito aparte, en Python**, que lleva la cuenta de la
-RAM, de la VRAM y de qué hay en la página 1 en cada paso: si el plan intentara
-escribir en `0x4000`-`0x7FFF` con el cartucho puesto, salta ahí sin necesidad
-de emulador.
-
-## Qué no está comprobado
-
-**Nadie ha jugado una partida entera desde el cartucho.** Se ha visto arrancar,
-el menú y, tras pulsar `0`, el mapa. Eso es todo.
-
-Y el cartucho **no tiene música**: el juego es mudo en cinta y sigue siéndolo
-aquí. Es la ampliación evidente y está apuntada en
-[preguntas abiertas](PREGUNTAS-ABIERTAS.html).
+- **Araubi** pidió este parche en el foro y es quien lo prueba: jugó una
+  partida entera y mandó la grabación con la que se encontró un fallo que
+  colgaba el juego a los ocho minutos, y juega cada versión del cartucho.
+  Suyas son también las tres canciones y las tres ilustraciones.
+- **theNestruo** (Néstor Sancho) es el autor de [msx-msxlib](https://github.com/theNestruo/msx-msxlib),
+  de donde sale el reproductor de música tal como se usa aquí.
+- **WYZ** es el autor del reproductor, el WYZ PSG proPLAYER.
+- **Einar Saukas** es el autor de [ZX0](https://github.com/einar-saukas/ZX0), el
+  compresor con el que van guardadas en la ROM las ilustraciones, el mapa y
+  las canciones.

@@ -307,14 +307,70 @@ es un solo bloque. En total, **de 8.946 a 15.387 bytes** para lo que venga; lo
 que no se ha tocado -los sprites de la batalla, la pila, grabar en cinta- y
 por que, en [INVESTIGACION.md](INVESTIGACION.md).
 
+### Musica, ilustraciones y nombres completos
+
+*War in Middle Earth* para MSX no tiene musica ni efectos: es mudo de principio
+a fin. El cartucho lleva **tres canciones de Araubi**: *Niebla* suena en el menu
+inicial, *Taberna* durante la partida y *Batalla* desde que se anuncia una
+batalla hasta que termina. La **tecla M** quita la musica y, pulsada otra vez,
+la vuelve a poner.
+
+Lleva tambien **tres ilustraciones nuevas, de Araubi**: la que se ve mientras el
+juego arranca, la de ganar y la de perder. Las originales eran las de la version
+de ZX Spectrum, con dos colores por cada cuadro de 8x8 pixeles; las nuevas estan
+hechas para el MSX, con dos colores por cada linea de 8 pixeles.
+
+Y **seis nombres de lugar que el juego recortaba se leen enteros**: `Ptos
+Grises` es Puertos Grises, `Quebradas` es Quebradas Lejanas, `LosGamos` es Los
+Gamos, `Abism Helm` es Abismo de Helm, `Ga. Hierro` es Garganta de Hierro y
+`Puerta N` es Puerta Negra.
+
+El programa que hace sonar las canciones es el **WYZ PSG proPLAYER**, de
+**WYZ**, en la version que **theNestruo** publica dentro de
+[msx-msxlib](https://github.com/theNestruo/msx-msxlib).
+
+**Las canciones y las ilustraciones son de Araubi y todavia no estan en este
+repositorio**, asi que `make rom_unificada` no funciona con solo clonarlo.
+`make rom` y `make rom_parche` si.
+
+### Probado jugando
+
+**Araubi prueba cada version del cartucho jugandola**, y ha jugado muchas
+batallas completas sin problemas. Asi aparecio un fallo: en el mapa general, el
+que ensena la Tierra Media entera, la parte derecha salia con rayas en lugar
+del dibujo. Ese mapa se mandaba al chip de video a un byte cada 22 ciclos de
+reloj, y el chip necesita unos 29 con la imagen encendida: se perdian 4.094
+bytes de 6.144. Ahora se manda a 39 ciclos y llega entero.
+
+Una comprobacion automatica juega una partida en el emulador y mira que las
+tres ilustraciones llegan a la pantalla sin un byte cambiado, que en cada
+momento suena la cancion que toca y que la tecla M la quita y la devuelve.
+
 La ROM que se juega es `war_unificada.rom` (`make rom_unificada`): la cinta
-parcheada con todo. Detalle en [INVESTIGACION.md](INVESTIGACION.md).
+parcheada con todo lo de este apartado. Detalle en
+[INVESTIGACION.md](INVESTIGACION.md).
+
+## Gracias
+
+- **Araubi** pidio este parche en el foro y es quien lo prueba: jugo una
+  partida entera y mando la grabacion con la que se encontro un fallo que
+  colgaba el juego a los ocho minutos, y juega cada version del cartucho.
+  Suyas son tambien las tres canciones y las tres ilustraciones.
+- **theNestruo** (Nestor Sancho) es el autor de
+  [msx-msxlib](https://github.com/theNestruo/msx-msxlib), de donde sale el reproductor de musica tal como se usa
+  aqui.
+- **WYZ** es el autor del reproductor, el WYZ PSG proPLAYER.
+- **Einar Saukas** es el autor de [ZX0](https://github.com/einar-saukas/ZX0), el compresor con el que van
+  guardadas en la ROM las ilustraciones, el mapa y las canciones.
 
 ## Lo que falta
 
-- **Nadie ha jugado una partida entera** con el mapa repintado. Araubi si jugo una con la version de septiembre, y de ahi salio el fallo gordo.
-- **El cartucho solo se ha visto arrancar** (el menu y el mapa); nadie ha jugado
-  una partida entera desde el.
+- **Nadie ha terminado una partida** con la version de ahora, hasta la pantalla
+  de victoria o la de derrota. Araubi jugo una entera con la version de
+  septiembre y ha jugado muchas batallas desde el cartucho.
+- **Los seis nombres de lugar completos no se han visto en pantalla.** Los
+  tests comprueban que la tabla esta bien formada, pero nadie ha ido a cada
+  lugar a mirar su cartel.
 - La ficha se ha visto en el jefe de una formacion (Gandalf) y en el portador
   (Frodo); **no se han comprobado todos los tipos de unidad** por si el numero
   choca con una etiqueta larga.
