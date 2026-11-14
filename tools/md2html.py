@@ -117,6 +117,9 @@ def ruta(href):
     """Los enlaces entre documentos apuntan a .md; en la web van a .html."""
     if href.startswith(("http", "#", "mailto:")):
         return href
+    # El IPS vive en docs/, al lado de la portada: su ruta se deja como viene.
+    if href.endswith(".ips"):
+        return href
     h = href.replace("docs/", "")
     # Lo que no vive bajo docs/ no existe para el navegador: el codigo fuente,
     # las herramientas, las medidas y los ficheros de la raiz se mandan al
@@ -148,6 +151,16 @@ def ancla(titulo):
     t = re.sub(r"[*_`\[\]()]", "", t).lower()
     t = re.sub(r"[^a-z0-9]+", "-", t)
     return t.strip("-")
+
+
+def descarga(idioma):
+    """El enlace al IPS, que va en el menu de todas las paginas: en una web de
+    parche, el parche tiene que estar a mano se entre por donde se entre."""
+    if idioma == "en":
+        return ('<a href="war_parche.ips" download '
+                'style="color:var(--verde)">Download the IPS</a>')
+    return ('<a href="../war_parche.ips" download '
+            'style="color:var(--verde)">Descargar el IPS</a>')
 
 
 def convierte(texto, titulo, actual, idioma="en"):
@@ -241,6 +254,7 @@ def convierte(texto, titulo, actual, idioma="en"):
     menu = NAV_EN if idioma == "en" else NAV_ES
     nav = "".join(f'<a href="{h}"{" style=color:var(--tinta)" if h == actual else ""}>{t}</a>'
                   for h, t in menu)
+    nav += descarga(idioma)
     # Selector de idioma: lleva al documento equivalente, no a la portada
     otro = PAREJA.get(actual, "index.html")
     if idioma == "en":

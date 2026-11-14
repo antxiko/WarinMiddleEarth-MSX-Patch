@@ -45,6 +45,8 @@ TEXTO = 376
 CADENAS = 19
 TILES = 122
 CASILLAS_MAPA = 13260
+# La cinta sobre la que se aplica el IPS: `sha256sum war.tsx`
+SHA256_CINTA = "13c636328d1714d5e00419141ca1a7ac9c7a3a04d7ec2b26545212aab1d81208"
 
 REPO = "https://github.com/antxiko/WarinMiddleEarth-MSX-Patch"
 REPO_DIS = "https://github.com/antxiko/WarinMiddleEarth-MSX-disassembly"
@@ -94,6 +96,13 @@ TXT = {
               "termina de traducirlo, y un <b>cartucho mejorado</b> que "
               "arranca en nueve segundos en vez de seis minutos y medio y le "
               "añade música, ilustraciones nuevas y más velocidad.",
+        ips="Descargar el parche",
+        ips_que=f"<code>war_parche.ips</code> · {mil(IPS_BYTES, 'es')} bytes. "
+                "Se aplica con cualquier programa de parches IPS sobre tu "
+                "imagen de la cinta en formato TSX "
+                f"(sha256 <code>{SHA256_CINTA}</code>). "
+                'Paso a paso, en <a href="EMPEZAR.html">Empezar</a>.',
+        ips_href="../war_parche.ips",
         h_pag="Las páginas",
         grupos=[
             ("Lo que cambia", [
@@ -196,6 +205,14 @@ TXT = {
               "translation into Spanish, and an <b>enhanced cartridge</b> "
               "that boots in nine seconds instead of six and a half minutes "
               "and adds music, new pictures and more speed.",
+        ips="Download the patch",
+        ips_que=f"<code>war_parche.ips</code> · {mil(IPS_BYTES, 'en')} bytes. "
+                "Apply it with any IPS patching tool to your own image of the "
+                "cassette in TSX format "
+                f"(sha256 <code>{SHA256_CINTA}</code>). "
+                'Step by step, in <a href="GETTING-STARTED.html">Getting '
+                'started</a>.',
+        ips_href="war_parche.ips",
         h_pag="The pages",
         grupos=[
             ("What changes", [
@@ -613,6 +630,13 @@ def main(argv):
   <p class="ficha">{' · '.join(t['ficha'])}</p>
 </header>
 <nav>{otro_idioma}</nav>
+<section id="download" style="text-align:center">
+  <p><a href="{t['ips_href']}" download style="display:inline-block;
+  padding:.8em 1.6em;border:2px solid var(--verde);color:var(--verde);
+  font-size:1.2rem;text-decoration:none">&#8595; {t['ips']}</a></p>
+  <p class="n" style="margin:0 auto;color:var(--suave);font-size:14px;
+  overflow-wrap:anywhere">{t['ips_que']}</p>
+</section>
 <section id="pages">
   <h2>{t['h_pag']}</h2>
   <div class="n">{paginas}</div>
@@ -633,6 +657,7 @@ def main(argv):
     nav = "".join(
         f'<a href="{h}"{" style=color:var(--tinta)" if h == t["f_cambia"] else ""}>'
         f'{x}</a>' for h, x in menu)
+    nav += md2html.descarga(idioma)
     pareja = md2html.PAREJA[t["f_cambia"]]
     nav += (f'<a href="{"es/" if idioma == "en" else "../"}{pareja}" '
             f'style="margin-left:auto;color:var(--oro)">'

@@ -196,7 +196,10 @@ test:
 	@echo "=================================================================="
 	@python3 -m unittest discover -s tests -v
 
+# El IPS va tambien en docs/: la web lo ofrece para descargar en la portada y
+# en el menu de cada pagina, y asi es siempre el de este mismo commit.
 web: imagenes
+	cp war_parche.ips docs/war_parche.ips
 	python3 tools/md2html.py docs en
 	python3 tools/md2html.py docs/es es
 	python3 tools/make_web.py docs/imagenes docs/index.html en

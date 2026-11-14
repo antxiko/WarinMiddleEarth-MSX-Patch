@@ -9,7 +9,7 @@ you apply it to your own copy.
 
 ## The quick way: the IPS
 
-The repository carries a **`war_parche.ips`** of 1,718 bytes. It holds only the
+Download **[`war_parche.ips`](war_parche.ips)**, 2,112 bytes. It holds only the
 bytes that change — our own code, the map's 122 repainted tiles and the new
 text — and it
 applies to your own tape with any IPS tool, or with the one included here:
@@ -27,7 +27,7 @@ You need Python 3 and `make`. Put your `war.tsx` in the root and:
     make extract     # pulls the block bodies out of your tape into work/
     make parche      # applies the table and writes war_parche.tsx
     make ips         # and war_parche.ips, the patch on its own
-    make test        # the 87 checks
+    make test        # the 237 checks
 
 `make parche` does not write blind: **each change first checks that the original
 bytes are the ones it expects**, and if a single byte outside the table differs
