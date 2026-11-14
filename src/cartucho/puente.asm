@@ -44,7 +44,7 @@
 
                 IF TRES_CANCIONES
 ; ==========================================================================
-; LAS TRES CANCIONES DE RUBEN (2026-11-14, `haz_rom.py --canciones`)
+; LAS TRES CANCIONES DE ARAUBI (2026-11-14, `haz_rom.py --canciones`)
 ;
 ; La musica ya no calla al empezar la partida: cambia de cancion segun la
 ; fase. La 0 (niebla) suena en el MENU, la 1 (taberna) mientras se juega -el

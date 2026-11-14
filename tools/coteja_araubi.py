@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Coteja lo que deja tools/omsx_ruben.tcl contra los ficheros de Ruben.
+"""Coteja lo que deja tools/omsx_araubi.tcl contra los ficheros de Araubi.
 
-    coteja_ruben.py <dir de la sonda> <asses> [<dir de los png>]
+    coteja_araubi.py <dir de la sonda> <asses> [<dir de los png>]
 
 - La VRAM de la portada y de las dos finales tiene que llevar, byte a byte, los
   patrones (0x0000) y los colores (0x2000) de PORTADA, VICTORIA y DERROTA.SC2,
@@ -74,7 +74,7 @@ def main(argv):
             os.makedirs(dir_png, exist_ok=True)
             pinta(vram, os.path.join(dir_png, "%s.png" % nombre))
 
-    with open(os.path.join(sonda, "ruben.log"), encoding="utf-8") as f:
+    with open(os.path.join(sonda, "araubi.log"), encoding="utf-8") as f:
         log = f.read()
     fases = re.findall(r"FASE (.+?): .* -> (BIEN|MAL)", log)
     for que, v in fases:

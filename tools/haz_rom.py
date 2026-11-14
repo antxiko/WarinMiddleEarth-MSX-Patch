@@ -210,7 +210,7 @@ SITIO_RUTINA = 384          # lo que se le reserva a finales.asm (con las pantal
                             # SCREEN 2 dentro pasa de 256: 2026-11-14)
 NOMBRES_RAM = ZONA_LIBRE + SITIO_RUTINA # 0x0A50: la vista, pegada a la rutina
 TAM_BUFER_Z = 3712          # lo mayor que pasa por el: los patrones de la imagen de carga
-                            # (3.663 B los de la cinta, 3.606 los de Ruben). Era 4.096;
+                            # (3.663 B los de la cinta, 3.606 los de Araubi). Era 4.096;
                             # se recorto para dejarle sitio a SITIO_RUTINA
 TAM_BUFER_D = 6144                      # lo mayor que va a la VRAM: media pantalla
 BUFER_D = CARGA_MEDIO - TAM_BUFER_D     # el descomprimido, camino de la VRAM: 0x274F
@@ -309,7 +309,7 @@ FUERZA_DE_LA_TROPA = 0x8DE4
 FUERZA_DE_LA_TROPA_ORIG = bytes.fromhex("878787c647f6006fce6d95677e")
 # Y LA BATALLA, que subia la pantalla ENTERA al VDP en cada vuelta del tablero:
 # `call BITMAP_A_VRAM` (0x8849) y `call ATRIBUTOS_A_VRAM` (0x884C). Medido en
-# una batalla de verdad -63 vueltas del replay de Ruben, VG-8020-: 169.529 y
+# una batalla de verdad -63 vueltas del replay de Araubi, VG-8020-: 169.529 y
 # 597.698 ciclos, 757.888 juntos, 0,212 s por vuelta. Los atributos no hacen
 # falta (0x90A6 ya los sube al montar la batalla y NADIE escribe 0x5800-0x5AFF
 # dentro del bucle: medido) y del bitmap solo cambian 10,2 fichas de 256, asi
@@ -340,7 +340,7 @@ DIBUJO_DE_UNIDAD_ORIG = bytes.fromhex("cd0406")
 # LA PANTALLA DE PRE-BATALLA (modo 0x17, la del cartel "Comienza la Batalla"):
 # arriba y abajo pasan de una unidad propia a la siguiente, una por vuelta del
 # bucle, y ese bucle repinta la vista de cerca. Con la cache va mucho mas
-# rapido que en la cinta: MEDIDO sobre el replay de Ruben, 32 lecturas del
+# rapido que en la cinta: MEDIDO sobre el replay de Araubi, 32 lecturas del
 # mando por segundo. Se limita a una cada 10 cuadros, como el cursor del mapa.
 PREBATALLA = 0x7564              # el `call LEE_LOS_MANDOS` de MANDO_DE_LA_BATALLA
 PREBATALLA_ORIG = bytes.fromhex("cd6d06")
@@ -971,12 +971,12 @@ def main(argv):
         elif argv[i] == "--musica":
             musica = argv[i + 1]; i += 2
         elif argv[i] == "--pantallas":
-            # Las pantallas de Ruben (2026-11-14): PORTADA, VICTORIA y DERROTA
+            # Las pantallas de Araubi (2026-11-14): PORTADA, VICTORIA y DERROTA
             # .SC2 de ese directorio, en SCREEN 2, en vez de la imagen de carga
             # y las dos finales del Spectrum.
             pantallas = argv[i + 1]; i += 2
         elif argv[i] == "--canciones":
-            # Las tres canciones de Ruben (niebla, taberna y batalla .mus) con
+            # Las tres canciones de Araubi (niebla, taberna y batalla .mus) con
             # sus instrumentos (medieval.mus.asm): suenan TODA la partida.
             canciones = argv[i + 1]; i += 2
         elif argv[i] == "--comprime":
@@ -1058,7 +1058,7 @@ def main(argv):
     colores = pantalla[100 + 6144:100 + 12288]
     sc2 = {}
     if pantallas:
-        # Las de Ruben: BSAVE de SCREEN 2 (cabecera FE 0000 37FF 0000 y la VRAM
+        # Las de Araubi: BSAVE de SCREEN 2 (cabecera FE 0000 37FF 0000 y la VRAM
         # de 0x0000 a 0x36FF), con la tabla de nombres de siempre, 0..255 tres
         # veces. De cada una valen los patrones (0x0000) y los colores (0x2000).
         for nombre in ("PORTADA", "VICTORIA", "DERROTA"):
@@ -1109,13 +1109,13 @@ def main(argv):
         mete("bajo", bajo[:corte], crudo=corte, zx0=False,
              que="bloque bajo: el codigo, hasta donde empiezan las pantallas finales")
         if pantallas:
-            # Las finales de Ruben: patrones y colores, cada mitad por su lado
+            # Las finales de Araubi: patrones y colores, cada mitad por su lado
             # (la rutina las descomprime de una en una en 0x4000). Las dos del
             # Spectrum ya no viajan.
             for n, nombre in enumerate(("VICTORIA", "DERROTA")):
                 pat, col = sc2[nombre]
-                mete_z("final%dp" % n, pat, "%s.SC2 de Ruben: los patrones" % nombre)
-                mete_z("final%dc" % n, col, "%s.SC2 de Ruben: los colores" % nombre)
+                mete_z("final%dp" % n, pat, "%s.SC2 de Araubi: los patrones" % nombre)
+                mete_z("final%dc" % n, col, "%s.SC2 de Araubi: los colores" % nombre)
         else:
             for n, (dir_, tam, que) in enumerate(FINALES):
                 o = dir_ - CARGA_BAJO
@@ -1154,7 +1154,7 @@ def main(argv):
         sim_canciones = lee_simbolos(os.path.join(salidas, "canciones.sym"))
         assert sim_canciones["CANCIONES_FIN"] == CARGA_MEDIO
         mete_z("canciones", bloque_canciones,
-               "las tres canciones de Ruben y sus instrumentos, para la RAM de 0x%04X" % canciones_ram)
+               "las tres canciones de Araubi y sus instrumentos, para la RAM de 0x%04X" % canciones_ram)
     assert pos <= TAM_ROM, "no cabe: %d bytes" % pos
 
     # ---------------------------------------------------------------- musica
@@ -2092,7 +2092,7 @@ def main(argv):
                          ("PSG_REG", sim_puente["PSG_REG"])):
                 f.write("set ::%-15s 0x%04X\n" % (k, v))
             if canciones:
-                # Para tools/omsx_ruben.tcl: que cancion pide el juego, donde
+                # Para tools/omsx_araubi.tcl: que cancion pide el juego, donde
                 # viven en la RAM y por donde lo para la rutina de las finales.
                 for k, v in (("PEDIDA", sim_puente["PEDIDA"]), ("MUDA", sim_puente["MUDA"]),
                              ("CANCIONES_INI", canciones_ram), ("CANCIONES_FIN", CARGA_MEDIO - 1),

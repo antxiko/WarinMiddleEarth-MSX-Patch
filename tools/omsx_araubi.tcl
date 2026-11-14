@@ -1,14 +1,14 @@
-# LAS PANTALLAS Y LAS CANCIONES DE RUBEN, EN UNA PARTIDA DE VERDAD
+# LAS PANTALLAS Y LAS CANCIONES DE ARAUBI, EN UNA PARTIDA DE VERDAD
 #
-# Lo que comprueba (make verifica_ruben, y el cotejo lo hace
-# tools/coteja_ruben.py con lo que deja aqui):
+# Lo que comprueba (make verifica_araubi, y el cotejo lo hace
+# tools/coteja_araubi.py con lo que deja aqui):
 #
 #   1. la PORTADA: la VRAM al llegar el juego a 0x5E00 (el cargador acaba de
 #      repintar la imagen de carga)                       -> vram_portada.bin
 #   2. que cancion suena en cada fase, y que el PSG se escribe en ella (y que
 #      la tecla M la calla y la devuelve):
 #      el menu (0, niebla), la partida (1, taberna), la batalla (2) y la
-#      vuelta al mapa despues de la batalla (1)          -> ruben.log
+#      vuelta al mapa despues de la batalla (1)          -> araubi.log
 #   3. que NADIE mas que el cargador escribe en la RAM de las canciones, y
 #      nadie mas que el reproductor en su area de trabajo (0x5C00)
 #   4. las dos FINALES: se pone PC en 0x83E7 con HL = 0x094F y luego 0x244F,
@@ -19,11 +19,11 @@
 # reloj en marcha y destino al sur para las diez primeras unidades.
 #
 #   WAR_OUT=<dir> WAR_DIRS=work/unificada/musica.tcl openmsx -machine <maq> \
-#       -carta <rom> -romtype ascii16 -script tools/omsx_ruben.tcl
+#       -carta <rom> -romtype ascii16 -script tools/omsx_araubi.tcl
 
 set OUT $::env(WAR_OUT)
 file mkdir $OUT
-set LOG [open "$OUT/ruben.log" w]
+set LOG [open "$OUT/araubi.log" w]
 proc say {m} { global LOG; puts $LOG "\[[format %8.2f [machine_info time]]\] $m"; flush $LOG }
 proc b {a} { return [debug read memory $a] }
 source $::env(WAR_DIRS)

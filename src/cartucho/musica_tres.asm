@@ -4,7 +4,7 @@
 ;
 ; Como musica.asm, en el hueco del ultimo banco y ensamblado en MUSICA_ORG,
 ; pero aqui va SOLO el reproductor y su tabla de canciones: las tres canciones
-; de Ruben (niebla, taberna y batalla) y sus instrumentos van a la RAM de la
+; de Araubi (niebla, taberna y batalla) y sus instrumentos van a la RAM de la
 ; pagina 0 (canciones.asm), comprimidos en la ROM con ZX0, porque en el hueco
 ; no caben enteros detras de las tres pantallas nuevas.
 ;

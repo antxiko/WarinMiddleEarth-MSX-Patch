@@ -140,9 +140,9 @@ def ejecuta_plan(test, rom, plan):
 
     return ram, vram, vdp, psg, salto
 
-def pantallas_de_ruben(plan):
+def pantallas_de_araubi(plan):
     """Patrones y colores de PORTADA, VICTORIA y DERROTA.SC2, leidos aqui de los
-    ficheros de Ruben y no de lo que haya hecho haz_rom.py."""
+    ficheros de Araubi y no de lo que haya hecho haz_rom.py."""
     sc2 = {}
     for nombre in ("PORTADA", "VICTORIA", "DERROTA"):
         v = lee(os.path.join(RAIZ, plan["pantallas"], nombre + ".SC2"))[7:]
@@ -150,7 +150,7 @@ def pantallas_de_ruben(plan):
     return sc2
 
 
-def canciones_de_ruben(test, plan):
+def canciones_de_araubi(test, plan):
     """Lo que tiene que acabar en la RAM de las canciones: las tres .mus TAL
     CUAL, una detras de otra y donde dice el plan, y detras los instrumentos
     ensamblados (canciones.bin, que es lo unico que se toma de lo derivado)."""
@@ -217,13 +217,13 @@ class TestLaRom(unittest.TestCase):
                         bajo=lee(os.path.join(self.CUERPOS, "bajo.raw")), medio=lee(os.path.join(self.CUERPOS, "medio.raw")),
                         alto=lee(os.path.join(self.CUERPOS, "alto.raw")))
         if self.plan.get("pantallas"):
-            # Las de Ruben: la imagen de carga y las dos finales, de los .SC2
-            sc2 = pantallas_de_ruben(self.plan)
+            # Las de Araubi: la imagen de carga y las dos finales, de los .SC2
+            sc2 = pantallas_de_araubi(self.plan)
             esperado["patrones"], esperado["colores"] = sc2["PORTADA"]
             for n, nombre in enumerate(("VICTORIA", "DERROTA")):
                 esperado["final%dp" % n], esperado["final%dc" % n] = sc2[nombre]
         if self.plan.get("canciones"):
-            esperado["canciones"] = canciones_de_ruben(self, self.plan)
+            esperado["canciones"] = canciones_de_araubi(self, self.plan)
         # Con musica, con las finales en la ROM y con la vista, los bloques
         # llevan sus parches -el medio, y el bajo desde la vista-: se aplican
         # sobre lo esperado, que para eso el plan dice cuales son y donde caen.
@@ -243,7 +243,7 @@ class TestLaRom(unittest.TestCase):
                 esperado["final%d" % n] = esperado["bajo"][o:o + tam]
                 corte = min(corte, o)
             elif ("final%dp" % n) in self.plan["datos"]:
-                corte = min(corte, o)   # las de Ruben ya estan en `esperado`; las del ZX no viajan
+                corte = min(corte, o)   # las de Araubi ya estan en `esperado`; las del ZX no viajan
         esperado["bajo"] = esperado["bajo"][:corte]
 
         if "mapa" in self.plan["datos"]:
@@ -341,7 +341,7 @@ class TestLaRom(unittest.TestCase):
         # la VRAM: la imagen de carga y lo que deja el SCREEN 2 del BASIC
         pantalla = lee(os.path.join(self.CUERPOS, "pantalla.raw"))
         if self.plan.get("pantallas"):
-            pat, col = pantallas_de_ruben(self.plan)["PORTADA"]
+            pat, col = pantallas_de_araubi(self.plan)["PORTADA"]
         else:
             pat, col = pantalla[100:100 + 6144], pantalla[100 + 6144:100 + 12288]
         self.assertEqual(vram[0x0000:0x1800], pat)
@@ -351,7 +351,7 @@ class TestLaRom(unittest.TestCase):
         if self.plan.get("canciones"):
             c = self.plan["canciones"]
             self.assertEqual(c["ram"] + c["bytes"], 0x3F4F)
-            self.assertEqual(bytes(ram[c["ram"]:0x3F4F]), canciones_de_ruben(self, self.plan))
+            self.assertEqual(bytes(ram[c["ram"]:0x3F4F]), canciones_de_araubi(self, self.plan))
         self.assertEqual(vram[0x1800:0x1B00], bytes(range(256)) * 3)
         self.assertEqual(vram[0x1B00:0x1B80], b"".join(bytes([209, 0, n, 1]) for n in range(32)))
         self.assertEqual(set(vram[0x1B80:0x2000]) | set(vram[0x3800:0x4000]), {0})
@@ -1516,7 +1516,7 @@ class TestLaVistaPorNombres(unittest.TestCase):
         cada vuelta), 0x90A6 (al montarla se apunta que esta sin subir), 0x914B
         (el infiltrado del centro), 0x9160 (la tecla F) y 0x8E10 (el cursor, al
         paso del reloj). Mas 0x7564, la pantalla de pre-batalla, que se le
-        añadio cuando Ruben dijo que iba disparada. Los dieciocho caen sobre lo
+        añadio cuando Araubi dijo que iba disparada. Los dieciocho caen sobre lo
         que la cinta trae."""
         porque = {q["dir"]: q for q in self.v["parches"]}
         self.assertEqual(sorted(porque),
@@ -2116,7 +2116,7 @@ class TestLaVistaPorNombres(unittest.TestCase):
         cartel "Comienza la Batalla") arriba y abajo pasan de una unidad propia
         a la siguiente UNA POR VUELTA del bucle, y ese bucle repinta la vista de
         cerca. Con la cache eso son 32 cambios por segundo, medidos sobre el
-        replay que mando Ruben: "va a toda putisima hostia".
+        replay que mando Araubi: "va a toda putisima hostia".
 
         Se limita como el cursor del mapa y el de la batalla: las direcciones
         solo pasan una vez cada PASO_EN_LA_PREBATALLA cuadros. El disparo y la

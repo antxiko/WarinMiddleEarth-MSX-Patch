@@ -1,4 +1,4 @@
-# EL REPLAY DE RUBEN, CON Y SIN EL ARREGLO
+# EL REPLAY DE ARAUBI, CON Y SIN EL ARREGLO
 #
 # El .omr lleva dentro el estado de la maquina con la ROM de entonces, asi que
 # no se puede reproducir con la ROM nueva. Pero el juego CORRE DESDE LA RAM -el

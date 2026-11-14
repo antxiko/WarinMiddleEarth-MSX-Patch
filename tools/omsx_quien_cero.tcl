@@ -4,7 +4,7 @@
 # DESCOMPRIME_EL_MAPA (0x9366). 29.004 escrituras con valor 0x00 en un solo
 # tramo de partida.
 #
-# Medido sobre el replay de Ruben: el terreno de las ultimas columnas se va a
+# Medido sobre el replay de Araubi: el terreno de las ultimas columnas se va a
 # 0x00, de la 122 hacia la izquierda, y no vuelve. Esto se planta en medio de
 # su partida, pone un punto de observacion de escritura en esa cola -por
 # encima de 0xF400, para no recoger el trasiego de la batalla, que usa

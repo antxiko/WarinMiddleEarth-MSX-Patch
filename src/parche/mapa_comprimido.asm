@@ -12,7 +12,7 @@
 ; --------------------------------------------------------------------------
 ; EL FALLO, MEDIDO
 ;
-; Ruben lo conto asi: "segun avanza el juego va desapareciendo el mapa por la
+; Araubi lo conto asi: "segun avanza el juego va desapareciendo el mapa por la
 ; derecha". Pasa en el mapa grande y en la vista de cerca, y va a mas.
 ;
 ; El mapa vive en 0xCC00 POR COLUMNAS -130 de 0x66 bytes, hasta 0xFFCB-, asi
@@ -39,7 +39,7 @@
 ; mascara 0x7F, o sea que baja el bit 7 y DEJA EL BIT 5 PUESTO PARA SIEMPRE.
 ; Cada marca parte una tira y suma dos bytes al paquete.
 ;
-; Medido sobre la partida de Ruben (WarInMiddleEarthNivelMordor.omr, 5,6 h):
+; Medido sobre la partida de Araubi (WarInMiddleEarthNivelMordor.omr, 5,6 h):
 ; las marcas van de 9 a 1382 y TODAS las compresiones se pasan. Lo que sobra
 ; no se copia, y al volver de la batalla el desempaquetado se queda sin con
 ; que rehacer el final del mapa: la cola se va a 0x00 -que es terreno "nada"-

@@ -1,6 +1,6 @@
 # ¿CABE EL MAPA EMPAQUETADO, Y VUELVE ENTERO?
 #
-# La prueba del arreglo de la tercera tanda, con el mapa de Ruben metido a
+# La prueba del arreglo de la tercera tanda, con el mapa de Araubi metido a
 # mano: su terreno de la primera hora con las 1048 marcas de bando que tenia
 # al final de la partida. Asi no hace falta jugar hasta alli ni esperar a que
 # el juego recentre: se le mete el mapa, se le manda por COMPRIME_EL_MAPA

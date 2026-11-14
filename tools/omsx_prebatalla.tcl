@@ -5,7 +5,7 @@
 # pasan de una a otra UNA POR VUELTA del bucle, y ese bucle repinta la vista de
 # cerca, que con la cache va muchisimo mas rapido que en la cinta.
 #
-# Medido sobre el replay de Ruben con la ROM de la WIME04: 32 lecturas del
+# Medido sobre el replay de Araubi con la ROM de la WIME04: 32 lecturas del
 # mando por segundo. El tester: "va a toda putisima hostia". MI_PREBATALLA lo
 # limita a una cada PASO_EN_LA_PREBATALLA cuadros.
 #

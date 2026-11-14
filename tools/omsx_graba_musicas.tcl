@@ -1,4 +1,4 @@
-# LAS TRES CANCIONES DE RUBEN, GRABADAS EN WAV DESDE EL CARTUCHO
+# LAS TRES CANCIONES DE ARAUBI, GRABADAS EN WAV DESDE EL CARTUCHO
 #
 # Arranca la ROM y, ya en el menu, le pide al puente cada cancion escribiendo
 # PEDIDA (0 niebla, 1 taberna, 2 batalla), que es lo mismo que hacen el menu y

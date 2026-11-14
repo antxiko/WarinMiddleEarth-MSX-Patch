@@ -48,6 +48,6 @@ __pycache__/
 .forja/
 *.omr
 
-# El material de Ruben (pantallas .SC2 y canciones): es SUYO y no se publica hasta
+# El material de Araubi (pantallas .SC2 y canciones): es SUYO y no se publica hasta
 # que el lo diga. `make war_unificada.rom` lo lee de aqui igual.
 asses/

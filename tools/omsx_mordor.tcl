@@ -1,4 +1,4 @@
-# LA PARTIDA DE RUBEN, MUESTREADA: en que momento y donde se le come el mapa.
+# LA PARTIDA DE ARAUBI, MUESTREADA: en que momento y donde se le come el mapa.
 #
 # Carga el replay y va saltando por el con `reverse goto`. En cada parada
 # vuelca el MAPA (0xCC00, 0x33CC bytes) y los ATRIBUTOS de la pantalla ZX

@@ -182,7 +182,7 @@ PARCHES = [
 
     # ---- (3b) QUE EL MAPA NO SE BORRE POR LA DERECHA ---------------------
     # El bit 5 que siembra (3) tiene un precio que no se vio hasta la partida
-    # de Ruben: el mapa se guarda COMPRIMIDO antes de cada batalla, y el sitio
+    # de Araubi: el mapa se guarda COMPRIMIDO antes de cada batalla, y el sitio
     # que tiene para el paquete esta clavado en el codigo.
     #
     #     93A4  call EMPAQUETA     ; empaqueta de 0xCC00 a 0x4000
@@ -191,7 +191,7 @@ PARCHES = [
     # El mapa limpio mide empaquetado 0x16EA: entra con DOS bytes de sobra.
     # Cada casilla con el bit 5 parte una tira y suma dos. Y ese bit no lo baja
     # nadie: el barrido de 0x7FE8 usa mascara 0x7F. Medido en la partida de
-    # Ruben (WarInMiddleEarthNivelMordor.omr): las marcas van de 9 a 1382 y
+    # Araubi (WarInMiddleEarthNivelMordor.omr): las marcas van de 9 a 1382 y
     # TODAS las compresiones se pasan, de +4 a +64 bytes. Lo que sobra se
     # pierde, y al volver de la batalla el final del mapa se queda a 0x00: la
     # cola del buffer es la DERECHA del mapa, porque va por columnas.

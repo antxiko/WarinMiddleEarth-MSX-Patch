@@ -106,7 +106,7 @@ SIGUE_EL_MAPA   equ 081C1h      ; el `call 005bdh` que sube el lienzo al VDP: po
 ; --------------------------------------------------------------------------
                 IF SC2
 ; --------------------------------------------------------------------------
-; LAS PANTALLAS DE RUBEN (--pantallas, 2026-11-14). Ya no son pantallas del
+; LAS PANTALLAS DE ARAUBI (--pantallas, 2026-11-14). Ya no son pantallas del
 ; Spectrum que el juego traduce: son de SCREEN 2, patrones y colores, cada
 ; una con su color por linea. Asi que esta rutina NO VUELVE: descomprime
 ; cada mitad en 0x4000, la sube ella misma a la VRAM y se queda parada, que

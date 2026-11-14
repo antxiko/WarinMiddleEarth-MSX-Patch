@@ -315,7 +315,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 #   el mapa por la derecha).
 #
 # Del cartucho (tools/haz_rom.py):
-#   las tres pantallas y las tres canciones de Ruben (asses/), las imagenes y el mapa general comprimidos con
+#   las tres pantallas y las tres canciones de Araubi (asses/), las imagenes y el mapa general comprimidos con
 #   ZX0, las dos pantallas finales quedandose en la ROM en vez de comer 13.824
 #   bytes de RAM, el mapa general ya dibujado, la vista de cerca por tabla de
 #   nombres con el cursor y el guante como sprites de hardware, el panel con el
@@ -325,7 +325,7 @@ war_parche.rom: parche src/cartucho/cargador_rom.asm src/cartucho/cargador_ram.a
 # (comprobado), y cursor.png sale de los cuerpos PARCHEADOS, que el parche
 # repinta el cursor de batalla.
 rom_unificada: war_unificada.rom
-# LAS PANTALLAS Y LAS CANCIONES DE RUBEN (2026-11-14), en asses/: la portada es la
+# LAS PANTALLAS Y LAS CANCIONES DE ARAUBI (2026-11-14), en asses/: la portada es la
 # imagen de carga, VICTORIA y DERROTA las dos finales (SCREEN 2 con su color por
 # linea), y las tres canciones suenan TODA la partida: niebla en el menu, taberna
 # jugando y batalla en la batalla. Hace falta el reproductor WYZ traducido
@@ -553,16 +553,16 @@ verifica_batalla: war_unificada.rom
 	@grep -E "BATALLA|volcado" work/bat_coteja/fondo_batalla.log
 	python3 tools/coteja_batalla.py work/bat_coteja
 
-# LAS PANTALLAS Y LAS CANCIONES DE RUBEN, en una partida de verdad: la portada y
+# LAS PANTALLAS Y LAS CANCIONES DE ARAUBI, en una partida de verdad: la portada y
 # las dos finales byte a byte en la VRAM, que cancion suena en el menu, en la
 # partida, en la batalla y al volver de ella, que nadie pisa la RAM de las
 # canciones ni el area del WYZ, y que las finales dejan el PSG mudo.
-.PHONY: verifica_ruben
-verifica_ruben: war_unificada.rom
-	@rm -rf work/ruben
-	WAR_OUT="$(abspath work/ruben)" WAR_DIRS="$(abspath work/unificada/musica.tcl)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_ruben.tcl
-	@cat work/ruben/ruben.log
-	python3 tools/coteja_ruben.py work/ruben $(ASSES) work/ruben/png
+.PHONY: verifica_araubi
+verifica_araubi: war_unificada.rom
+	@rm -rf work/araubi
+	WAR_OUT="$(abspath work/araubi)" WAR_DIRS="$(abspath work/unificada/musica.tcl)" 	  $(OPENMSX) -machine $(MAQUINA) -carta "$(abspath war_unificada.rom)" -romtype ascii16 -script tools/omsx_araubi.tcl
+	@cat work/araubi/araubi.log
+	python3 tools/coteja_araubi.py work/araubi $(ASSES) work/araubi/png
 
 # LA MARCA DE LAS UNIDADES: que el dibujo se pone donde toca y, sobre todo,
 # que se BORRA al moverse la unidad. Se deja correr el bucle hasta el quinto

@@ -3,7 +3,7 @@
 # En la cinta, (0x56,0x3F) -Minas Tirith- arranca con 21 unidades del jugador:
 # la 0x13 (Denethor) y los ejercitos 0x61-0x74. Si se quedan sin ninguna y
 # llega una del otro bando, 0x92DE manda a DERROTA sin que haya habido una sola
-# batalla. En la partida de Ruben ya no habia ninguna a los 30 segundos.
+# batalla. En la partida de Araubi ya no habia ninguna a los 30 segundos.
 #
 # Esto pone un punto de observacion de ESCRITURA sobre las coordenadas de tres
 # de ellas y apunta quien las toca y desde donde.

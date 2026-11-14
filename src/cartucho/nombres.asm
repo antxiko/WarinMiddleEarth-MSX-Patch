@@ -705,7 +705,7 @@ ULTIMO_PASO_BATALLA: defb 0             ; el cuadro del ultimo paso del cursor d
 ;
 ; Ahi arriba y abajo pasan de una unidad propia a la siguiente, una por vuelta
 ; del bucle. Y ese bucle repinta la vista de cerca, que con la cache va
-; muchisimo mas rapido que en la cinta: MEDIDO sobre el replay que mando Ruben
+; muchisimo mas rapido que en la cinta: MEDIDO sobre el replay que mando Araubi
 ; (tools/omsx_quien_lee_el_mando.tcl), **96 lecturas del mando en 3 segundos =
 ; 32 por segundo**. El tester: "va a toda putisima hostia".
 ;
@@ -899,7 +899,7 @@ MF_CON_FICHA:   add a,a
 ;     884C  call 00604h   ; ATRIBUTOS_A_VRAM  los 768, traducidos a 6.144 escrituras
 ;     884F  ret
 ;
-; Medido en una batalla de verdad -63 vueltas del replay de Ruben, VG-8020-:
+; Medido en una batalla de verdad -63 vueltas del replay de Araubi, VG-8020-:
 ;
 ;     BITMAP_A_VRAM       169.529 ciclos
 ;     ATRIBUTOS_A_VRAM    597.698 ciclos
@@ -985,7 +985,7 @@ MI_SUBE_TABLERO:
 ; tercios van seguidos en la VRAM, asi que la direccion se pone una sola vez;
 ; dentro de cada tercio, las ocho lineas de una celda estan a 256 bytes.
 ;
-; Y EL MAPA GENERAL, por lo mismo (2026-11-15, lo vio Ruben con la WIME08: "la
+; Y EL MAPA GENERAL, por lo mismo (2026-11-15, lo vio Araubi con la WIME08: "la
 ; derecha del mapa rayada"). DIBUJA_EL_MAPA lo sube con el `call 005bdh` de
 ; 0x81C1, a 22 ciclos, y medido en openMSX se caian 4.094 de los 6.144 bytes:
 ; lo que se veia era lo que hubiera antes en la VRAM. verifica_mapa_parche no

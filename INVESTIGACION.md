@@ -1805,7 +1805,7 @@ muerto"*. Primero se midio; luego se hizo lo que la medida dijo que se podia.
 escritura por cada banda de 16 bytes de los 64 KB, que se quitan solos al
 primer toque, y corre una partida grabada. Una banda sin toque al acabar es
 RAM que nadie mira. Se corrio sobre **cinco partidas**: la de Araubi en cinta
-(224 s) y cuatro de Araubi en el cartucho (`work/replay_ruben.omr`, 462 s;
+(224 s) y cuatro de Araubi en el cartucho (`work/replay_araubi.omr`, 462 s;
 `work/aragorn.omr`, 1.544 s; `work/desaparece.omr` y `desaparece02.omr`, 1.324
 s). La sonda acepta ahora `WAR_REPLAY` para elegir cual.
 
@@ -1819,7 +1819,7 @@ Cuatro cosas que no se sabian:
   13.076 B libres; eran **8.946**.
 - **La partida de cinta daba por libres 8,7 KB de la batalla** -los 5.632 B
   de sprites de 0xA2E8, el codigo de 0x8572 y la tabla de 0x0300- porque no
-  llega a ninguna. `replay_ruben.omr` tampoco: acaba en derrota a los 434 s
+  llega a ninguna. `replay_araubi.omr` tampoco: acaba en derrota a los 434 s
   sin pelear; las otras tres si (la primera batalla a los 98 y 121 s).
 - **El parche de la cinta vive sobre el motor de sonido muerto**: 0x6600-0x66FA
   son MUESTRA_LOS_VALORES, el Ojo, el plazo, LIMPIA_Y_EMPAQUETA, los adjetivos

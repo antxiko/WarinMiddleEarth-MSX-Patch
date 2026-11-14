@@ -24,7 +24,7 @@
 #       [WAR_REPLAY=<otro.omr>] openmsx -script tools/omsx_ram_libre.tcl
 #
 # Sin -machine: el replay trae la suya dentro. WAR_REPLAY sirve para medir
-# sobre otra partida -la de Ruben, work/replay_ruben.omr, que si llega a la
+# sobre otra partida -la de Araubi, work/replay_araubi.omr, que si llega a la
 # batalla y corre sobre el cartucho-: la de Araubi no pisa ni una y dejaba los
 # sprites de la batalla (0xA2E8-0xB8E7) como si fueran RAM libre.
 set OUT   $::env(WAR_OUT)

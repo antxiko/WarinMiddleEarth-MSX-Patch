@@ -1,7 +1,7 @@
 # LA BATALLA, MEDIDA DE VERDAD
 #
 # El plan del 2026-09-13 dejo dos cosas por medir y las dos necesitaban una
-# partida que llegara a una batalla. El replay de Ruben tiene treinta y tantas.
+# partida que llegara a una batalla. El replay de Araubi tiene treinta y tantas.
 #
 # Cada vuelta del tablero acaba subiendo la pantalla ENTERA al VDP:
 #     8849  call 005bdh   ; BITMAP_A_VRAM   (6.144 B)

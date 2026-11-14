@@ -1,5 +1,5 @@
 ; ==========================================================================
-; WAR IN MIDDLE EARTH - de cinta a cartucho: LAS TRES CANCIONES DE RUBEN
+; WAR IN MIDDLE EARTH - de cinta a cartucho: LAS TRES CANCIONES DE ARAUBI
 ;
 ; Lo que el cargador descomprime en la RAM de la pagina 0 (CANCIONES_ORG, al
 ; final de la zona que liberaron las pantallas finales) y el reproductor lee
