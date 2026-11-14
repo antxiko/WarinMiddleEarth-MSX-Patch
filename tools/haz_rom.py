@@ -317,6 +317,7 @@ FUERZA_DE_LA_TROPA_ORIG = bytes.fromhex("878787c647f6006fce6d95677e")
 SIGUE_LA_FICHA = 0x8828          # el `ld hl,(0x87DC)` de SIGUIENTE_FICHA
 SIGUE_LA_FICHA_ORIG = bytes.fromhex("2adc87")
 SUBE_EL_TABLERO = 0x8849         # el `call BITMAP_A_VRAM` de cada vuelta
+SUBE_EL_MAPA = 0x81C1            # y el de DIBUJA_EL_MAPA: el mapa general entero (2026-11-15)
 SUBE_EL_TABLERO_ORIG = bytes.fromhex("cdbd05")
 SUBE_LOS_ATRIBUTOS = 0x884C      # el `call ATRIBUTOS_A_VRAM` de cada vuelta
 SUBE_LOS_ATRIBUTOS_ORIG = bytes.fromhex("cd0406")
@@ -1691,6 +1692,11 @@ def main(argv):
             SUBE_EL_TABLERO, SUBE_EL_TABLERO_ORIG,
             bytes([0xCD]) + sim_nombres["MI_SUBE_TABLERO"].to_bytes(2, "little"),
             "el tablero entero se sube SOLO la primera vuelta de cada batalla (MI_SUBE_TABLERO)"))
+        parches_vista.append(parchea(
+            SUBE_EL_MAPA, SUBE_EL_TABLERO_ORIG,
+            bytes([0xCD]) + sim_nombres["MI_SUBE_EL_MAPA"].to_bytes(2, "little"),
+            "el mapa general sube a la VRAM a 39 ciclos por byte y no a 22: se le caian "
+            "~4.000 de los 6.144 bytes y la derecha salia rayada (MI_SUBE_EL_MAPA)"))
         parches_vista.append(parchea(
             SUBE_LOS_ATRIBUTOS, SUBE_LOS_ATRIBUTOS_ORIG, bytes(3),
             "fuera los 768 atributos de cada vuelta: 597.698 ciclos que nadie necesita"))

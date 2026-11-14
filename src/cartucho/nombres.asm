@@ -984,6 +984,15 @@ MI_SUBE_TABLERO:
 ; El tablero entero, del bufer de 0x4000 a la tabla de patrones. Los tres
 ; tercios van seguidos en la VRAM, asi que la direccion se pone una sola vez;
 ; dentro de cada tercio, las ocho lineas de una celda estan a 256 bytes.
+;
+; Y EL MAPA GENERAL, por lo mismo (2026-11-15, lo vio Ruben con la WIME08: "la
+; derecha del mapa rayada"). DIBUJA_EL_MAPA lo sube con el `call 005bdh` de
+; 0x81C1, a 22 ciclos, y medido en openMSX se caian 4.094 de los 6.144 bytes:
+; lo que se veia era lo que hubiera antes en la VRAM. verifica_mapa_parche no
+; lo pillaba porque cotejaba contra otra ROM que perdia los mismos bytes. El
+; `call` de 0x81C1 pasa a llamar aqui: el lienzo esta en 0x4000 igual que el
+; tablero, asi que es la misma subida.
+MI_SUBE_EL_MAPA:
 TABLERO_A_VRAM: ld hl,VRAM_PATRONES
                 call DIRECCION_VRAM
                 ld hl,04000h            ; el primer tercio del bitmap emulado
