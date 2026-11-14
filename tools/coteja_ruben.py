@@ -79,9 +79,12 @@ def main(argv):
     fases = re.findall(r"FASE (.+?): .* -> (BIEN|MAL)", log)
     for que, v in fases:
         print("fase %-22s %s" % (que, v))
-    if len(fases) != 4 or any(v != "BIEN" for _q, v in fases):
-        print("las cuatro fases no estan BIEN (%d vistas)" % len(fases))
+    if len(fases) != 5 or any(v != "BIEN" for _q, v in fases):
+        print("las cinco fases no estan BIEN (%d vistas)" % len(fases))
         fallos += 1
+    m = re.search(r"MUDA con la M: .* -> (BIEN|MAL)", log)
+    print("la M calla la musica: %s" % (m.group(1) if m else "NO SE VIO"))
+    fallos += not m or m.group(1) != "BIEN"
     for que in ("canciones", "el area del WYZ"):
         m = re.search(r"intrusos en (?:la RAM de las )?%s: (\d+)" % que, log)
         n = int(m.group(1)) if m else -1

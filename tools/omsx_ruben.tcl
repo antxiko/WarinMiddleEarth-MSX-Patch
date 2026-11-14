@@ -5,7 +5,8 @@
 #
 #   1. la PORTADA: la VRAM al llegar el juego a 0x5E00 (el cargador acaba de
 #      repintar la imagen de carga)                       -> vram_portada.bin
-#   2. que cancion suena en cada fase, y que el PSG se escribe en ella:
+#   2. que cancion suena en cada fase, y que el PSG se escribe en ella (y que
+#      la tecla M la calla y la devuelve):
 #      el menu (0, niebla), la partida (1, taberna), la batalla (2) y la
 #      vuelta al mapa despues de la batalla (1)          -> ruben.log
 #   3. que NADIE mas que el cargador escribe en la RAM de las canciones, y
@@ -95,6 +96,23 @@ proc en_marcha {} {
     }
     say "partida en marcha, destino (0x66,0x3D) para las diez primeras unidades"
     fase "partida" 1
+    after time 2 { pulsa_m ; after time 1 { muda } }
+    after time 5 { pulsa_m ; after time 1 { fase "con la M otra vez" 1 } }
+}
+# LA TECLA M: fila 4, bit 2. Una pulsacion la calla, otra la devuelve.
+proc pulsa_m {} {
+    keymatrixdown 4 0x04
+    after time 0.3 { keymatrixup 4 0x04 }
+}
+proc muda {} {
+    set ::psg 0
+    after time 1 {
+        set m [b $::MUDA]
+        set vol {}
+        foreach r {8 9 10} { lappend vol [debug read "PSG regs" $r] }
+        if {$m == 0xFF && $::psg == 0 && $vol eq "0 0 0"} { set v "BIEN" } else { set v "MAL" }
+        say "MUDA con la M: bandera [format 0x%02X $m], $::psg escrituras al PSG en 1 s, volumenes $vol -> $v"
+    }
 }
 set ::fuego 0
 proc fuego {} {

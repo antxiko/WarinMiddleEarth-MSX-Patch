@@ -2088,7 +2088,7 @@ def main(argv):
             if canciones:
                 # Para tools/omsx_ruben.tcl: que cancion pide el juego, donde
                 # viven en la RAM y por donde lo para la rutina de las finales.
-                for k, v in (("PEDIDA", sim_puente["PEDIDA"]),
+                for k, v in (("PEDIDA", sim_puente["PEDIDA"]), ("MUDA", sim_puente["MUDA"]),
                              ("CANCIONES_INI", canciones_ram), ("CANCIONES_FIN", CARGA_MEDIO - 1),
                              ("MUSICA_INI", musica_org), ("MUSICA_FIN", sim["MUSICA_FIN"] - 1),
                              ("WYZ_AREA_INI", sim_puente["WYZ_FLAGS"]),

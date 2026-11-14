@@ -76,6 +76,45 @@ PUENTE_RANURA:
                 ld hl,CUADROS
                 inc (hl)
 
+                ; LA TECLA M (pedida por el usuario el 2026-11-14): calla o
+                ; devuelve la musica en cualquier momento. Fila 4 del teclado
+                ; (R Q P O N M L K), bit 2, a cero si esta pulsada. La fila que
+                ; tuviera puesta el juego se devuelve enseguida: si la
+                ; interrupcion cae entre su `out (0AAh)` y su `in (0A9h)`, el
+                ; juego lee lo que esperaba.
+                in a,(0AAh)
+                ld b,a
+                and 0F0h                ; los cuatro bits de arriba no son la fila
+                or 004h
+                out (0AAh),a
+                in a,(0A9h)
+                ld c,a
+                ld a,b
+                out (0AAh),a            ; la fila del juego, como estaba
+                ld a,c
+                cpl
+                and 004h                ; 4: la M esta pulsada
+                ld hl,TECLA_M
+                ld c,(hl)               ; como estaba el cuadro anterior
+                ld (hl),a
+                xor c                   ; lo que ha cambiado ...
+                and (hl)                ; ... y esta pulsado: se ACABA de pulsar
+                jr z,PUENTE_SIN_M
+                ld a,(MUDA)
+                cpl
+                ld (MUDA),a
+                or a
+                jr z,PUENTE_VUELVE
+                call WYZ_PLAYER_OFF     ; callada: el PSG a cero
+                jr PUENTE_FUERA
+PUENTE_VUELVE:
+                ld a,0FFh               ; vuelve: la cancion de la fase, desde el principio
+                ld (PUENTE_SONANDO),a
+PUENTE_SIN_M:
+                ld a,(MUDA)
+                or a
+                jr nz,PUENTE_FUERA      ; callada: ni cambia de cancion ni suena
+
                 ld a,(PEDIDA)
                 ld hl,PUENTE_SONANDO
                 cp (hl)
@@ -91,6 +130,7 @@ PUENTE_CUADRO:
                 ; mantiene el ritmo parejo- y luego prepara el cuadro siguiente.
                 call WYZ_REPRODUCE_FRAME
 
+PUENTE_FUERA:
                 pop af
                 out (0A8h),a            ; y la RAM del juego otra vez en su sitio
                 ret
@@ -98,6 +138,8 @@ PUENTE_CUADRO:
 PUENTE_SONANDO: defb 0FFh               ; la que suena; 0xFF: ninguna todavia
 PEDIDA:         defb 0                  ; la que el juego quiere: niebla al encender
 CUADROS:        defb 0
+TECLA_M:        defb 0                  ; 4 si la M estaba pulsada el cuadro anterior
+MUDA:           defb 0                  ; 0xFF: callada con la M
 
 ; Se queda por el nombre, que lo citan las sondas: con tres canciones el
 ; gancho no pasa nunca por aqui.
