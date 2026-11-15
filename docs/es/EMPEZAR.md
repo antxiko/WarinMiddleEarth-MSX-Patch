@@ -6,9 +6,23 @@ Esto es un **parche de jugabilidad** para la cinta MSX de *War in Middle Earth*
 **Aquí no hay ninguna imagen de cinta.** Se reparte el parche y cada cual lo
 aplica sobre su copia.
 
-## La vía rápida: el IPS
+## La vía rápida: la ROM del cartucho
 
-Descarga **[`war_parche.ips`](../war_parche.ips)**, de 2.112 bytes. Lleva sólo los
+Descarga **[`war_cartucho.bps`](../war_cartucho.bps)** (26.744 bytes) y aplícalo con
+[RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/) o Floating IPS sobre tu cinta
+`War_In_The_Middle_Earth_1989Melbourne_House_DroESRUNCAS_v0_8.tsx`.
+Sale `war_unificada.rom`, la **ROM de 64 KB** del cartucho mejorado: música,
+ilustraciones nuevas y más velocidad. Se juega como MegaROM ASCII16:
+
+    openmsx -machine Philips_VG_8020 -carta war_unificada.rom -romtype ascii16
+
+Es un parche **BPS** y no IPS porque la ROM no se parece a la cinta byte a byte:
+un IPS llevaría la ROM entera dentro, y el BPS copia de tu cinta lo que ya está
+en ella. Sin Python también vale `python3 tools/bps.py aplica war.tsx war_cartucho.bps war_unificada.rom`.
+
+## La cinta parcheada: el IPS
+
+Si prefieres seguir con la cinta, **[`war_parche.ips`](../war_parche.ips)**, de 2.112 bytes. Lleva sólo los
 bytes que cambian —código nuestro, los 122 tiles repintados del mapa y el texto
 nuevo— y se aplica sobre tu
 propia cinta con cualquier herramienta de IPS, o con la que viene aquí:
@@ -26,7 +40,7 @@ Necesitas Python 3 y `make`. Pon tu `war.tsx` en la raíz y:
     make extract     # saca los cuerpos de los bloques de tu cinta a work/
     make parche      # aplica la tabla y escribe war_parche.tsx
     make ips         # y war_parche.ips, el parche a secas
-    make test        # las 237 comprobaciones
+    make test        # las 241 comprobaciones
 
 `make parche` no escribe a ciegas: **cada cambio comprueba antes que los bytes
 originales son los que espera**, y si al terminar hay un solo byte distinto

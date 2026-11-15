@@ -7,9 +7,23 @@ in it.
 **No cassette image is distributed here.** The patch is what gets shared, and
 you apply it to your own copy.
 
-## The quick way: the IPS
+## The quick way: the cartridge ROM
 
-Download **[`war_parche.ips`](war_parche.ips)**, 2,112 bytes. It holds only the
+Download **[`war_cartucho.bps`](war_cartucho.bps)** (26,744 bytes) and apply it with
+[RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/) or Floating IPS to your tape
+`War_In_The_Middle_Earth_1989Melbourne_House_DroESRUNCAS_v0_8.tsx`.
+You get `war_unificada.rom`, the **64 KB ROM** of the enhanced cartridge: music,
+new pictures and more speed. It runs as an ASCII16 MegaROM:
+
+    openmsx -machine Philips_VG_8020 -carta war_unificada.rom -romtype ascii16
+
+It is a **BPS** patch, not IPS, because the ROM looks nothing like the tape byte by
+byte: an IPS would carry the whole ROM, while BPS copies from your tape what is
+already there. With Python, `python3 tools/bps.py aplica war.tsx war_cartucho.bps war_unificada.rom` works too.
+
+## The patched tape: the IPS
+
+If you would rather keep the tape, **[`war_parche.ips`](war_parche.ips)**, 2,112 bytes. It holds only the
 bytes that change — our own code, the map's 122 repainted tiles and the new
 text — and it
 applies to your own tape with any IPS tool, or with the one included here:
@@ -27,7 +41,7 @@ You need Python 3 and `make`. Put your `war.tsx` in the root and:
     make extract     # pulls the block bodies out of your tape into work/
     make parche      # applies the table and writes war_parche.tsx
     make ips         # and war_parche.ips, the patch on its own
-    make test        # the 237 checks
+    make test        # the 241 checks
 
 `make parche` does not write blind: **each change first checks that the original
 bytes are the ones it expects**, and if a single byte outside the table differs

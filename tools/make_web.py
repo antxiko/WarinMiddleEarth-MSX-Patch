@@ -28,7 +28,7 @@ import md2html                                                  # noqa: E402
 #   `make parche` -> 1607 bytes cambiados en 196 entradas, 0 fuera de la tabla
 #                    (30 escritas a mano, 597 B; 166 de los lienzos, 1010 B)
 #   `make ips`    -> war_parche.ips, 2112 bytes en 51 registros
-#   `make test`   -> 237 comprobaciones
+#   `make test`   -> 241 comprobaciones
 #   pasmo src/parche/*.asm -> 76 + 61 = 137 bytes de codigo nuevo
 # Medido el 2026-11-15. OJO: TEXTO, CADENAS y TILES de abajo son los de
 # septiembre y estan SIN REMEDIR.
@@ -36,7 +36,7 @@ BYTES = 1607
 CAMBIOS = 196
 IPS_BYTES = 2112
 IPS_REGISTROS = 51
-TESTS = 237
+TESTS = 241
 #   los 1396 bytes, repartidos: 137 de codigo, 376 de texto, 10 de punteros,
 #   848 de tiles repintados, 23 de ganchos y trampolines y 2 sueltos (el tope
 #   de la siembra y el papel del texto)
@@ -96,13 +96,16 @@ TXT = {
               "termina de traducirlo, y un <b>cartucho mejorado</b> que "
               "arranca en nueve segundos en vez de seis minutos y medio y le "
               "añade música, ilustraciones nuevas y más velocidad.",
-        ips="Descargar el parche",
-        ips_que=f"<code>war_parche.ips</code> · {mil(IPS_BYTES, 'es')} bytes. "
-                "Se aplica con cualquier programa de parches IPS sobre tu "
-                "imagen de la cinta en formato TSX "
-                f"(sha256 <code>{SHA256_CINTA}</code>). "
+        ips="Descargar el parche: la ROM del cartucho",
+        ips_que="<code>war_cartucho.bps</code> · 26.744 bytes. Es un parche "
+                "<b>BPS</b>: aplicado con RomPatcher.js o Floating IPS sobre tu "
+                "cinta <code>War_In_The_Middle_Earth_1989Melbourne_House_DroESRUNCAS_v0_8.tsx</code> "
+                f"(sha256 <code>{SHA256_CINTA}</code>) da la <b>ROM de 64 KB</b> "
+                "del cartucho mejorado, con música. ¿Prefieres la cinta "
+                'parcheada? <a href="../war_parche.ips" download>war_parche.ips</a> '
+                f"({mil(IPS_BYTES, 'es')} bytes) da un .tsx. "
                 'Paso a paso, en <a href="EMPEZAR.html">Empezar</a>.',
-        ips_href="../war_parche.ips",
+        ips_href="../war_cartucho.bps",
         h_pag="Las páginas",
         grupos=[
             ("Lo que cambia", [
@@ -205,14 +208,17 @@ TXT = {
               "translation into Spanish, and an <b>enhanced cartridge</b> "
               "that boots in nine seconds instead of six and a half minutes "
               "and adds music, new pictures and more speed.",
-        ips="Download the patch",
-        ips_que=f"<code>war_parche.ips</code> · {mil(IPS_BYTES, 'en')} bytes. "
-                "Apply it with any IPS patching tool to your own image of the "
-                "cassette in TSX format "
-                f"(sha256 <code>{SHA256_CINTA}</code>). "
+        ips="Download the patch: the cartridge ROM",
+        ips_que="<code>war_cartucho.bps</code> · 26,744 bytes. It is a "
+                "<b>BPS</b> patch: applied with RomPatcher.js or Floating IPS to "
+                "your tape <code>War_In_The_Middle_Earth_1989Melbourne_House_DroESRUNCAS_v0_8.tsx</code> "
+                f"(sha256 <code>{SHA256_CINTA}</code>) it gives the <b>64 KB "
+                "ROM</b> of the enhanced cartridge, with music. Rather have the "
+                'patched tape? <a href="war_parche.ips" download>war_parche.ips</a> '
+                f"({mil(IPS_BYTES, 'en')} bytes) gives a .tsx. "
                 'Step by step, in <a href="GETTING-STARTED.html">Getting '
                 'started</a>.',
-        ips_href="war_parche.ips",
+        ips_href="war_cartucho.bps",
         h_pag="The pages",
         grupos=[
             ("What changes", [

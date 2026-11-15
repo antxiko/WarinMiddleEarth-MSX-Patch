@@ -117,8 +117,8 @@ def ruta(href):
     """Los enlaces entre documentos apuntan a .md; en la web van a .html."""
     if href.startswith(("http", "#", "mailto:")):
         return href
-    # El IPS vive en docs/, al lado de la portada: su ruta se deja como viene.
-    if href.endswith(".ips"):
+    # Los parches (IPS y BPS) viven en docs/, al lado de la portada: su ruta se deja como viene.
+    if href.endswith((".ips", ".bps")):
         return href
     h = href.replace("docs/", "")
     # Lo que no vive bajo docs/ no existe para el navegador: el codigo fuente,
@@ -154,13 +154,13 @@ def ancla(titulo):
 
 
 def descarga(idioma):
-    """El enlace al IPS, que va en el menu de todas las paginas: en una web de
-    parche, el parche tiene que estar a mano se entre por donde se entre."""
+    """El parche, en el menu de todas las paginas: en una web de parche tiene
+    que estar a mano se entre por donde se entre. El BPS da la ROM del cartucho."""
     if idioma == "en":
-        return ('<a href="war_parche.ips" download '
-                'style="color:var(--verde)">Download the IPS</a>')
-    return ('<a href="../war_parche.ips" download '
-            'style="color:var(--verde)">Descargar el IPS</a>')
+        return ('<a href="war_cartucho.bps" download '
+                'style="color:var(--verde)">Download the patch (ROM)</a>')
+    return ('<a href="../war_cartucho.bps" download '
+            'style="color:var(--verde)">Descargar el parche (ROM)</a>')
 
 
 def convierte(texto, titulo, actual, idioma="en"):

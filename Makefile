@@ -198,8 +198,15 @@ test:
 
 # El IPS va tambien en docs/: la web lo ofrece para descargar en la portada y
 # en el menu de cada pagina, y asi es siempre el de este mismo commit.
-web: imagenes
+# EL PARCHE QUE DA LA ROM: un BPS de tu cinta a war_unificada.rom. Un IPS no
+# vale: solo escribe en su sitio y llevaria la ROM entera (tools/bps.py).
+bps: war_cartucho.bps
+war_cartucho.bps: war_unificada.rom tools/bps.py
+	python3 tools/bps.py hace war.tsx war_unificada.rom $@
+
+web: imagenes war_cartucho.bps
 	cp war_parche.ips docs/war_parche.ips
+	cp war_cartucho.bps docs/war_cartucho.bps
 	python3 tools/md2html.py docs en
 	python3 tools/md2html.py docs/es es
 	python3 tools/make_web.py docs/imagenes docs/index.html en
